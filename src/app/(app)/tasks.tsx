@@ -16,8 +16,10 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ScreenHeader } from '@/components/ScreenHeader';
+import { SidebarButton } from '@/components/SidebarButton';
 import { TaskItem } from '@/components/TaskItem';
 import { useSession } from '@/context/auth';
+import { useSidebar } from '@/context/sidebar';
 import { parseTaskText } from '@/lib/dates';
 import {
   completeTask,
@@ -42,6 +44,7 @@ export default function TasksScreen() {
   const db = useSQLiteContext();
   const insets = useSafeAreaInsets();
   const { user } = useSession();
+  const { open: openSidebar } = useSidebar();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [filter, setFilter] = useState<Filter>('open');
   const [text, setText] = useState('');
@@ -164,6 +167,7 @@ export default function TasksScreen() {
           eyebrow="LOCAL TASKS"
           title="Tasks"
           subtitle={`${tasks.length} ${filter === 'all' ? 'total' : filter} task${tasks.length === 1 ? '' : 's'}`}
+          left={<SidebarButton onPress={openSidebar} />}
         />
 
         <View style={styles.addRow}>

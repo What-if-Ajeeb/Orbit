@@ -1,8 +1,10 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Tabs, router, type Href } from 'expo-router';
 import { useEffect } from 'react';
-import { Platform } from 'react-native';
+import { Platform, StyleSheet, View } from 'react-native';
 
+import { AppSidebar } from '@/components/AppSidebar';
+import { SidebarProvider } from '@/context/sidebar';
 import { colors } from '@/theme';
 
 function NotificationRedirect() {
@@ -56,82 +58,92 @@ function NotificationRedirect() {
 
 export default function AppLayout() {
   return (
-    <>
-      <NotificationRedirect />
-      <Tabs
-        screenOptions={{
-          headerShown: false,
-          tabBarActiveTintColor: colors.accent,
-          tabBarInactiveTintColor: colors.textFaint,
-          tabBarHideOnKeyboard: true,
-          tabBarStyle: {
-            backgroundColor: colors.backgroundElevated,
-            borderTopColor: colors.border,
-            borderTopWidth: 1,
-            paddingTop: 5,
-          },
-          tabBarLabelStyle: {
-            fontSize: 11,
-            fontWeight: '600',
-          },
-          sceneStyle: {
-            backgroundColor: colors.background,
-          },
-        }}
-      >
-        <Tabs.Screen
-          name="index"
-          options={{
-            title: 'Today',
-            tabBarIcon: ({ color, size, focused }) => (
-              <Ionicons
-                name={focused ? 'planet' : 'planet-outline'}
-                size={size}
-                color={typeof color === 'string' ? color : colors.textMuted}
-              />
-            ),
+    <SidebarProvider>
+      <View style={styles.root}>
+        <NotificationRedirect />
+        <Tabs
+          screenOptions={{
+            headerShown: false,
+            tabBarActiveTintColor: colors.accent,
+            tabBarInactiveTintColor: colors.textFaint,
+            tabBarHideOnKeyboard: true,
+            tabBarStyle: {
+              backgroundColor: colors.backgroundElevated,
+              borderTopColor: colors.border,
+              borderTopWidth: 1,
+              paddingTop: 5,
+            },
+            tabBarLabelStyle: {
+              fontSize: 11,
+              fontWeight: '600',
+            },
+            sceneStyle: {
+              backgroundColor: colors.background,
+            },
           }}
-        />
-        <Tabs.Screen
-          name="chat"
-          options={{
-            title: 'Agent',
-            tabBarIcon: ({ color, size, focused }) => (
-              <Ionicons
-                name={focused ? 'sparkles' : 'sparkles-outline'}
-                size={size}
-                color={typeof color === 'string' ? color : colors.textMuted}
-              />
-            ),
-          }}
-        />
-        <Tabs.Screen
-          name="tasks"
-          options={{
-            title: 'Tasks',
-            tabBarIcon: ({ color, size, focused }) => (
-              <Ionicons
-                name={focused ? 'checkbox' : 'checkbox-outline'}
-                size={size}
-                color={typeof color === 'string' ? color : colors.textMuted}
-              />
-            ),
-          }}
-        />
-        <Tabs.Screen
-          name="settings"
-          options={{
-            title: 'Settings',
-            tabBarIcon: ({ color, size, focused }) => (
-              <Ionicons
-                name={focused ? 'settings' : 'settings-outline'}
-                size={size}
-                color={typeof color === 'string' ? color : colors.textMuted}
-              />
-            ),
-          }}
-        />
-      </Tabs>
-    </>
+        >
+          <Tabs.Screen
+            name="index"
+            options={{
+              title: 'Today',
+              tabBarIcon: ({ color, size, focused }) => (
+                <Ionicons
+                  name={focused ? 'planet' : 'planet-outline'}
+                  size={size}
+                  color={typeof color === 'string' ? color : colors.textMuted}
+                />
+              ),
+            }}
+          />
+          <Tabs.Screen
+            name="chat"
+            options={{
+              title: 'Agent',
+              tabBarIcon: ({ color, size, focused }) => (
+                <Ionicons
+                  name={focused ? 'sparkles' : 'sparkles-outline'}
+                  size={size}
+                  color={typeof color === 'string' ? color : colors.textMuted}
+                />
+              ),
+            }}
+          />
+          <Tabs.Screen
+            name="tasks"
+            options={{
+              title: 'Tasks',
+              tabBarIcon: ({ color, size, focused }) => (
+                <Ionicons
+                  name={focused ? 'checkbox' : 'checkbox-outline'}
+                  size={size}
+                  color={typeof color === 'string' ? color : colors.textMuted}
+                />
+              ),
+            }}
+          />
+          <Tabs.Screen
+            name="settings"
+            options={{
+              title: 'Settings',
+              tabBarIcon: ({ color, size, focused }) => (
+                <Ionicons
+                  name={focused ? 'settings' : 'settings-outline'}
+                  size={size}
+                  color={typeof color === 'string' ? color : colors.textMuted}
+                />
+              ),
+            }}
+          />
+        </Tabs>
+        <AppSidebar />
+      </View>
+    </SidebarProvider>
   );
 }
+
+const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+});

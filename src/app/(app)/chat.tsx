@@ -5,6 +5,7 @@ import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useEffect, useRef, useState, type ComponentRef } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Keyboard,
   KeyboardAvoidingView,
   Pressable,
@@ -18,12 +19,23 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Brand } from '@/components/Brand';
 import { ChatBubble } from '@/components/ChatBubble';
+import { ChatHistoryPanel } from '@/components/ChatHistoryPanel';
 import { FormError } from '@/components/FormError';
 import { ScreenHeader } from '@/components/ScreenHeader';
+import { SidebarButton } from '@/components/SidebarButton';
 import { useSession } from '@/context/auth';
+import { useSidebar } from '@/context/sidebar';
 import { runAgent } from '@/lib/ai/agent';
 import { isAiConfigured, loadAiSettings } from '@/lib/ai/settings';
-import { addMessage, listMessages, type ChatMessage } from '@/lib/chat';
+import {
+  addMessage,
+  createConversation,
+  deleteConversation,
+  listConversations,
+  listMessages,
+  type ChatMessage,
+  type Conversation,
+} from '@/lib/chat';
 import { colors, radius, spacing } from '@/theme';
 
 const SUGGESTIONS = [
@@ -37,14 +49,19 @@ export default function ChatScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { user } = useSession();
+  const { open: openSidebar } = useSidebar();
   const scrollRef = useRef<ComponentRef<typeof ScrollView>>(null);
   const blurTargetRef = useRef<ComponentRef<typeof View> | null>(null);
+  const activeIdRef = useRef<number | null>(null);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [activeId, setActiveId] = useState<number | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [aiReady, setAiReady] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [composerHeight, setComposerHeight] = useState(0);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   const load = useCallback(async () => {
     if (!user) {
@@ -52,13 +69,26 @@ export default function ChatScreen() {
     }
 
     try {
-      const [nextMessages, settings] = await Promise.all([
-        listMessages(db, user.id, 100),
+      const [list, settings] = await Promise.all([
+        listConversations(db, user.id),
         loadAiSettings(),
       ]);
 
-      setMessages(nextMessages);
       setAiReady(isAiConfigured(settings));
+
+      let currentId = activeIdRef.current;
+
+      if (currentId === null || !list.some((item) => item.id === currentId)) {
+        currentId = list[0]?.id ?? null;
+        activeIdRef.current = currentId;
+        setActiveId(currentId);
+      }
+
+      const nextMessages =
+        currentId === null ? [] : await listMessages(db, user.id, currentId, 200);
+
+      setConversations(list);
+      setMessages(nextMessages);
     } catch (loadError) {
       console.warn('Could not load the conversation.', loadError);
     }
@@ -84,6 +114,16 @@ export default function ChatScreen() {
 
   const activeUser = user;
 
+  function openHistory() {
+    Keyboard.dismiss();
+    setHistoryOpen(true);
+  }
+
+  async function refreshConversations() {
+    const list = await listConversations(db, activeUser.id);
+    setConversations(list);
+  }
+
   async function send(rawText?: string) {
     if (isSending) {
       return;
@@ -100,7 +140,17 @@ export default function ChatScreen() {
     setIsSending(true);
 
     try {
-      const userMessage = await addMessage(db, activeUser.id, 'user', text);
+      let conversationId = activeIdRef.current;
+
+      if (conversationId === null) {
+        const created = await createConversation(db, activeUser.id);
+        conversationId = created.id;
+        activeIdRef.current = conversationId;
+        setActiveId(conversationId);
+        setConversations((current) => [created, ...current]);
+      }
+
+      const userMessage = await addMessage(db, activeUser.id, conversationId, 'user', text);
       const nextMessages = [...messages, userMessage];
       setMessages(nextMessages);
 
@@ -123,12 +173,14 @@ export default function ChatScreen() {
       const assistantMessage = await addMessage(
         db,
         activeUser.id,
+        conversationId,
         'assistant',
         result.reply,
         result.traces
       );
 
       setMessages((current) => [...current, assistantMessage]);
+      await refreshConversations();
     } catch (sendError) {
       setError(
         sendError instanceof Error
@@ -138,6 +190,102 @@ export default function ChatScreen() {
     } finally {
       setIsSending(false);
     }
+  }
+
+  async function startNewChat() {
+    if (isSending) {
+      return;
+    }
+
+    setHistoryOpen(false);
+    setError(null);
+
+    const current = conversations.find((item) => item.id === activeIdRef.current);
+
+    if (!current || (current.messageCount === 0 && current.title === 'New chat')) {
+      setMessages([]);
+      return;
+    }
+
+    try {
+      const created = await createConversation(db, activeUser.id);
+      activeIdRef.current = created.id;
+      setActiveId(created.id);
+      setConversations((prev) => [created, ...prev]);
+      setMessages([]);
+    } catch (createError) {
+      setError(
+        createError instanceof Error ? createError.message : 'New chat nahi ban payi.'
+      );
+    }
+  }
+
+  async function selectConversation(conversation: Conversation) {
+    setHistoryOpen(false);
+
+    if (isSending || conversation.id === activeIdRef.current) {
+      return;
+    }
+
+    setError(null);
+    activeIdRef.current = conversation.id;
+    setActiveId(conversation.id);
+
+    try {
+      setMessages(await listMessages(db, activeUser.id, conversation.id, 200));
+    } catch (selectError) {
+      setError(
+        selectError instanceof Error ? selectError.message : 'Chat load nahi ho payi.'
+      );
+    }
+  }
+
+  async function removeConversation(conversation: Conversation) {
+    if (isSending) {
+      return;
+    }
+
+    try {
+      await deleteConversation(db, activeUser.id, conversation.id);
+
+      const list = await listConversations(db, activeUser.id);
+
+      if (conversation.id === activeIdRef.current) {
+        if (list.length === 0) {
+          activeIdRef.current = null;
+          setActiveId(null);
+          setMessages([]);
+        } else {
+          const next = list[0];
+          activeIdRef.current = next.id;
+          setActiveId(next.id);
+          setMessages(await listMessages(db, activeUser.id, next.id, 200));
+        }
+      }
+
+      setConversations(list);
+    } catch (deleteError) {
+      setError(
+        deleteError instanceof Error ? deleteError.message : 'Chat delete nahi ho payi.'
+      );
+    }
+  }
+
+  function confirmDeleteConversation(conversation: Conversation) {
+    Alert.alert(
+      'Delete chat?',
+      `“${conversation.title}” aur uske messages permanently delete ho jayenge.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            void removeConversation(conversation);
+          },
+        },
+      ]
+    );
   }
 
   return (
@@ -150,15 +298,34 @@ export default function ChatScreen() {
             eyebrow="ORBIT AGENT"
             title="Chat"
             subtitle="Tasks aur reminders, ek hi jagah."
+            left={<SidebarButton onPress={openSidebar} style={styles.menuButton} />}
             right={
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="AI settings"
-                onPress={() => router.push('/settings')}
-                style={styles.iconButton}
-              >
-                <Ionicons name="settings-outline" size={19} color={colors.textMuted} />
-              </Pressable>
+              <View style={styles.headerActions}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Open chat history"
+                  onPress={openHistory}
+                  style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
+                >
+                  <Ionicons name="time-outline" size={19} color={colors.textMuted} />
+                  {conversations.length > 0 ? (
+                    <View style={styles.historyBadge}>
+                      <Text style={styles.historyBadgeText}>
+                        {conversations.length > 9 ? '9+' : conversations.length}
+                      </Text>
+                    </View>
+                  ) : null}
+                </Pressable>
+
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="AI settings"
+                  onPress={() => router.push('/settings')}
+                  style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
+                >
+                  <Ionicons name="settings-outline" size={19} color={colors.textMuted} />
+                </Pressable>
+              </View>
             }
           />
 
@@ -287,6 +454,21 @@ export default function ChatScreen() {
           </Text>
         </View>
       </View>
+
+      <ChatHistoryPanel
+        visible={historyOpen}
+        conversations={conversations}
+        activeId={activeId}
+        busy={isSending}
+        onClose={() => setHistoryOpen(false)}
+        onSelect={(conversation) => {
+          void selectConversation(conversation);
+        }}
+        onNew={() => {
+          void startNewChat();
+        }}
+        onDelete={confirmDeleteConversation}
+      />
     </KeyboardAvoidingView>
   );
 }
@@ -312,6 +494,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.sm,
   },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginTop: 18,
+  },
+  menuButton: {
+    marginTop: 16,
+  },
   iconButton: {
     width: 40,
     height: 40,
@@ -321,7 +512,25 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(148, 177, 255, 0.18)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 18,
+  },
+  historyBadge: {
+    position: 'absolute',
+    top: -3,
+    right: -3,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    paddingHorizontal: 4,
+    backgroundColor: colors.accentStrong,
+    borderWidth: 1,
+    borderColor: colors.background,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  historyBadgeText: {
+    color: colors.white,
+    fontSize: 8,
+    fontWeight: '700',
   },
   modeBanner: {
     flexDirection: 'row',

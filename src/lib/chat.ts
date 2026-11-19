@@ -10,6 +10,15 @@ export type ChatMessage = {
   createdAt: number;
 };
 
+export type Conversation = {
+  id: number;
+  userId: number;
+  title: string;
+  messageCount: number;
+  createdAt: number;
+  updatedAt: number;
+};
+
 type MessageRow = {
   id: number;
   role: string;
@@ -17,6 +26,21 @@ type MessageRow = {
   meta: string | null;
   created_at: number;
 };
+
+type ConversationRow = {
+  id: number;
+  user_id: number;
+  title: string;
+  message_count: number;
+  created_at: number;
+  updated_at: number;
+};
+
+const CONVERSATION_SELECT = `
+  SELECT c.id, c.user_id, c.title, c.created_at, c.updated_at,
+    (SELECT COUNT(*) FROM messages m WHERE m.conversation_id = c.id) AS message_count
+  FROM conversations c
+`;
 
 function parseTraces(meta: string | null): string[] {
   if (!meta) {
@@ -46,9 +70,82 @@ function toMessage(row: MessageRow): ChatMessage {
   };
 }
 
+function toConversation(row: ConversationRow): Conversation {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    title: row.title,
+    messageCount: row.message_count,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function cleanTitle(value: string): string {
+  return value.replace(/\s+/g, ' ').trim().slice(0, 80);
+}
+
+export async function listConversations(
+  db: SQLiteDatabase,
+  userId: number,
+  limit = 50
+): Promise<Conversation[]> {
+  const rows = await db.getAllAsync<ConversationRow>(
+    `${CONVERSATION_SELECT}
+     WHERE c.user_id = ?
+     ORDER BY c.updated_at DESC, c.id DESC
+     LIMIT ?`,
+    userId,
+    Math.min(Math.max(limit, 1), 100)
+  );
+
+  return rows.map(toConversation);
+}
+
+export async function getConversation(
+  db: SQLiteDatabase,
+  userId: number,
+  conversationId: number
+): Promise<Conversation | null> {
+  const row = await db.getFirstAsync<ConversationRow>(
+    `${CONVERSATION_SELECT} WHERE c.id = ? AND c.user_id = ?`,
+    conversationId,
+    userId
+  );
+
+  return row ? toConversation(row) : null;
+}
+
+export async function createConversation(
+  db: SQLiteDatabase,
+  userId: number,
+  title = 'New chat'
+): Promise<Conversation> {
+  const now = Date.now();
+  const clean = cleanTitle(title) || 'New chat';
+
+  const result = await db.runAsync(
+    'INSERT INTO conversations (user_id, title, created_at, updated_at) VALUES (?, ?, ?, ?)',
+    userId,
+    clean,
+    now,
+    now
+  );
+
+  return {
+    id: result.lastInsertRowId,
+    userId,
+    title: clean,
+    messageCount: 0,
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
 export async function listMessages(
   db: SQLiteDatabase,
   userId: number,
+  conversationId: number,
   limit = 100
 ): Promise<ChatMessage[]> {
   const rows = await db.getAllAsync<MessageRow>(
@@ -56,12 +153,13 @@ export async function listMessages(
      FROM (
        SELECT id, role, content, meta, created_at
        FROM messages
-       WHERE user_id = ?
+       WHERE user_id = ? AND conversation_id = ?
        ORDER BY id DESC
        LIMIT ?
      )
      ORDER BY id ASC`,
     userId,
+    conversationId,
     Math.min(Math.max(limit, 1), 300)
   );
 
@@ -71,20 +169,46 @@ export async function listMessages(
 export async function addMessage(
   db: SQLiteDatabase,
   userId: number,
+  conversationId: number,
   role: ChatRole,
   content: string,
   traces: string[] = []
 ): Promise<ChatMessage> {
+  const conversation = await getConversation(db, userId, conversationId);
+
+  if (!conversation) {
+    throw new Error('Conversation not found.');
+  }
+
   const createdAt = Date.now();
   const meta = traces.length > 0 ? JSON.stringify({ traces }) : null;
 
   const result = await db.runAsync(
-    'INSERT INTO messages (user_id, role, content, meta, created_at) VALUES (?, ?, ?, ?, ?)',
+    `INSERT INTO messages (user_id, conversation_id, role, content, meta, created_at)
+     VALUES (?, ?, ?, ?, ?, ?)`,
     userId,
+    conversationId,
     role,
     content,
     meta,
     createdAt
+  );
+
+  const nextTitle = role === 'user' ? cleanTitle(content) : '';
+
+  await db.runAsync(
+    `UPDATE conversations
+     SET title = CASE
+           WHEN title = 'New chat' AND ? <> '' THEN ?
+           ELSE title
+         END,
+         updated_at = ?
+     WHERE id = ? AND user_id = ?`,
+    nextTitle,
+    nextTitle,
+    createdAt,
+    conversationId,
+    userId
   );
 
   return {
@@ -96,6 +220,24 @@ export async function addMessage(
   };
 }
 
-export async function clearMessages(db: SQLiteDatabase, userId: number): Promise<void> {
+export async function deleteConversation(
+  db: SQLiteDatabase,
+  userId: number,
+  conversationId: number
+): Promise<void> {
+  await db.runAsync(
+    'DELETE FROM messages WHERE user_id = ? AND conversation_id = ?',
+    userId,
+    conversationId
+  );
+  await db.runAsync(
+    'DELETE FROM conversations WHERE id = ? AND user_id = ?',
+    conversationId,
+    userId
+  );
+}
+
+export async function clearAllChat(db: SQLiteDatabase, userId: number): Promise<void> {
   await db.runAsync('DELETE FROM messages WHERE user_id = ?', userId);
+  await db.runAsync('DELETE FROM conversations WHERE user_id = ?', userId);
 }

@@ -7,8 +7,10 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Brand } from '@/components/Brand';
+import { SidebarButton } from '@/components/SidebarButton';
 import { TaskItem } from '@/components/TaskItem';
 import { useSession } from '@/context/auth';
+import { useSidebar } from '@/context/sidebar';
 import { isAiConfigured, loadAiSettings } from '@/lib/ai/settings';
 import { completeTask, getTaskStats, listTasks, reopenTask, type Task, type TaskStats } from '@/lib/tasks';
 import { colors, radius, spacing } from '@/theme';
@@ -51,6 +53,7 @@ export default function HomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { user } = useSession();
+  const { open: openSidebar } = useSidebar();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [stats, setStats] = useState<TaskStats | null>(null);
   const [aiReady, setAiReady] = useState(false);
@@ -119,6 +122,7 @@ export default function HomeScreen() {
       >
         <View style={styles.topBar}>
           <View style={styles.brandRow}>
+            <SidebarButton onPress={openSidebar} />
             <Brand size={38} />
             <Text style={styles.wordmark}>ORBIT</Text>
           </View>
@@ -210,7 +214,7 @@ export default function HomeScreen() {
         </View>
 
         <Text style={styles.footer}>
-          Orbit v{Constants.expoConfig?.version ?? '1.1.1'} · local-first · Android
+          Orbit v{Constants.expoConfig?.version ?? '1.2.0'} · local-first · Android
         </Text>
       </ScrollView>
     </View>

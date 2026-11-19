@@ -16,6 +16,8 @@ and **expo-notifications**.
 - Tool-using agent: create, list, update, complete, and delete tasks
 - Local notifications for due dates and reminders, even when the app is closed
 - Task list with quick-add (`pay bill tomorrow 5pm`), filters, and long-press delete
+- App-wide navigation drawer with profile, AI status, and sign out
+- Multi-conversation chat history with per-chat delete and a slide-in history panel
 - AI settings screen with provider presets, connection test, and secure key storage
 - Offline **local mode** for basic commands when no API key is configured
 
@@ -71,8 +73,8 @@ the GitHub Release. Download it on your phone and install it (allow "Install
 unknown apps" for your browser/file manager).
 
 ```sh
-git tag v1.1.1
-git push origin v1.1.0
+git tag v1.2.0
+git push origin v1.2.0
 ```
 
 Releases page:
@@ -106,13 +108,15 @@ src/
     sign-in.tsx
     sign-up.tsx
     (app)/
-      _layout.tsx         # bottom tabs + notification taps
+      _layout.tsx         # bottom tabs + app sidebar + notification taps
       index.tsx           # Today dashboard
-      chat.tsx            # agent conversation
+      chat.tsx            # agent conversation + chat history panel
       tasks.tsx           # task list + quick add
       settings.tsx        # AI, reminders, account, data
-  components/             # Brand, Button, TextField, TaskItem, ChatBubble, ...
-  context/auth.tsx        # session state + sign in/up/out
+  components/             # Brand, Button, TaskItem, ChatBubble, AppSidebar, ...
+  context/
+    auth.tsx              # session state + sign in/up/out
+    sidebar.tsx           # app-wide drawer state
   lib/
     ai/
       agent.ts            # tool-calling loop (max 6 rounds)
@@ -122,8 +126,8 @@ src/
       local-agent.ts      # offline fallback parser
       settings.ts         # provider presets + SecureStore config
     auth.ts               # hashing, sessions, account queries
-    chat.ts               # persisted chat messages
-    db.ts                 # SQLite schema + migrations (v2)
+    chat.ts             # persisted conversations + messages
+    db.ts               # SQLite schema + migrations (v3)
     dates.ts              # formatting + natural-language date parsing
     notifications.ts      # local notification scheduling
     tasks.ts              # task CRUD + reminder sync
@@ -137,9 +141,10 @@ New screens added under `src/app/` become routes automatically.
 
 - `users`, `sessions` — local accounts
 - `tasks` — title, notes, due/remind timestamps, priority, status, notification id
-- `messages` — persisted agent conversation with tool traces
+- `conversations` — one row per chat, ordered by last update
+- `messages` — persisted agent messages linked to a conversation, with tool traces
 
-Tasks and messages cascade-delete when their user is removed.
+Chats, messages, and tasks cascade-delete when their user is removed.
 
 ## Notes
 

@@ -7,12 +7,14 @@ type ScreenHeaderProps = {
   eyebrow?: string;
   title: string;
   subtitle?: string;
+  left?: ReactNode;
   right?: ReactNode;
 };
 
-export function ScreenHeader({ eyebrow, title, subtitle, right }: ScreenHeaderProps) {
+export function ScreenHeader({ eyebrow, title, subtitle, left, right }: ScreenHeaderProps) {
   return (
     <View style={styles.row}>
+      {left ? <View style={styles.left}>{left}</View> : null}
       <View style={styles.textBlock}>
         {eyebrow ? <Text style={styles.eyebrow}>{eyebrow}</Text> : null}
         <Text style={styles.title}>{title}</Text>
@@ -29,6 +31,9 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     justifyContent: 'space-between',
     gap: spacing.md,
+  },
+  left: {
+    paddingTop: 2,
   },
   textBlock: {
     flex: 1,

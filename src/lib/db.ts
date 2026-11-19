@@ -7,7 +7,7 @@ export const DATABASE_NAME = 'orbit.db';
  * tasks and the agent conversation) lives in SQLite on the device.
  */
 export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
-  const DATABASE_VERSION = 2;
+  const DATABASE_VERSION = 3;
 
   const result = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
   let currentDbVersion = result?.user_version ?? 0;
@@ -82,6 +82,59 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
     `);
 
     currentDbVersion = 2;
+  }
+
+  if (currentDbVersion === 2) {
+    const messageColumns = await db.getAllAsync<{ name: string }>('PRAGMA table_info(messages)');
+    const hasConversationId = messageColumns.some(
+      (column) => column.name === 'conversation_id'
+    );
+
+    await db.execAsync(`
+      CREATE TABLE IF NOT EXISTS conversations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        title TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_conversations_user_updated
+        ON conversations (user_id, updated_at DESC);
+    `);
+
+    if (!hasConversationId) {
+      await db.execAsync(`
+        ALTER TABLE messages ADD COLUMN conversation_id INTEGER
+          REFERENCES conversations (id) ON DELETE CASCADE;
+      `);
+    }
+
+    await db.execAsync(`
+      CREATE INDEX IF NOT EXISTS idx_messages_conversation_created
+        ON messages (conversation_id, id);
+
+      INSERT INTO conversations (user_id, title, created_at, updated_at)
+      SELECT m.user_id, 'Earlier chat', MIN(m.created_at), MAX(m.created_at)
+      FROM messages m
+      WHERE NOT EXISTS (
+        SELECT 1 FROM conversations c WHERE c.user_id = m.user_id
+      )
+      GROUP BY m.user_id;
+
+      UPDATE messages
+      SET conversation_id = (
+        SELECT c.id
+        FROM conversations c
+        WHERE c.user_id = messages.user_id
+        ORDER BY c.id ASC
+        LIMIT 1
+      )
+      WHERE conversation_id IS NULL;
+    `);
+
+    currentDbVersion = 3;
   }
 
   await db.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);

@@ -18,8 +18,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button } from '@/components/Button';
 import { FormError } from '@/components/FormError';
 import { ScreenHeader } from '@/components/ScreenHeader';
+import { SidebarButton } from '@/components/SidebarButton';
 import { TextField } from '@/components/TextField';
 import { useSession } from '@/context/auth';
+import { useSidebar } from '@/context/sidebar';
 import { pingAi } from '@/lib/ai/providers';
 import {
   applyProviderPreset,
@@ -31,7 +33,7 @@ import {
   type AiProvider,
   type AiSettings,
 } from '@/lib/ai/settings';
-import { clearMessages } from '@/lib/chat';
+import { clearAllChat } from '@/lib/chat';
 import {
   getNotificationPermission,
   requestNotificationPermission,
@@ -56,6 +58,7 @@ export default function SettingsScreen() {
   const db = useSQLiteContext();
   const insets = useSafeAreaInsets();
   const { user, signOut } = useSession();
+  const { open: openSidebar } = useSidebar();
   const [settings, setSettings] = useState<AiSettings | null>(null);
   const [permission, setPermission] = useState<NotificationPermissionState>('undetermined');
   const [isSaving, setIsSaving] = useState(false);
@@ -230,7 +233,7 @@ export default function SettingsScreen() {
         style: 'destructive',
         onPress: () => {
           void (async () => {
-            await clearMessages(db, activeUser.id);
+            await clearAllChat(db, activeUser.id);
             setNotice('Chat history clear ho gayi.');
           })();
         },
@@ -275,6 +278,7 @@ export default function SettingsScreen() {
           eyebrow="SETTINGS"
           title="Setup"
           subtitle="AI brain, reminders aur your account."
+          left={<SidebarButton onPress={openSidebar} />}
         />
 
         {error ? (
@@ -493,7 +497,7 @@ export default function SettingsScreen() {
         </View>
 
         <Text style={styles.footer}>
-          Orbit v{Constants.expoConfig?.version ?? '1.1.1'} · local-first · Android
+          Orbit v{Constants.expoConfig?.version ?? '1.2.0'} · local-first · Android
         </Text>
       </ScrollView>
     </View>
