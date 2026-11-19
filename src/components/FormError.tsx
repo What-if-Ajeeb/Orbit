@@ -1,0 +1,47 @@
+import { StyleSheet, Text, View } from 'react-native';
+
+import { colors, radius, spacing } from '@/theme';
+
+type FormMessageProps = {
+  message: string | null;
+};
+
+export function FormError({ message }: FormMessageProps) {
+  if (!message) {
+    return null;
+  }
+
+  return (
+    <View accessibilityRole="alert" style={styles.banner}>
+      <View style={styles.dot} />
+      <Text style={styles.text}>{message}</Text>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  banner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    backgroundColor: colors.dangerSoft,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 107, 122, 0.25)',
+    borderRadius: radius.md,
+    paddingVertical: spacing.sm + 2,
+    paddingHorizontal: spacing.md,
+  },
+  dot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginTop: 6,
+    backgroundColor: colors.danger,
+  },
+  text: {
+    flex: 1,
+    color: colors.danger,
+    fontSize: 14,
+    lineHeight: 20,
+  },
+});
