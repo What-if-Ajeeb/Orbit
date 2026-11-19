@@ -1,10 +1,16 @@
+import Ionicons from '@expo/vector-icons/Ionicons';
+import Constants from 'expo-constants';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useSQLiteContext } from 'expo-sqlite';
+import { useCallback, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Brand } from '@/components/Brand';
-import { Button } from '@/components/Button';
+import { TaskItem } from '@/components/TaskItem';
 import { useSession } from '@/context/auth';
+import { isAiConfigured, loadAiSettings } from '@/lib/ai/settings';
+import { completeTask, getTaskStats, listTasks, reopenTask, type Task, type TaskStats } from '@/lib/tasks';
 import { colors, radius, spacing } from '@/theme';
 
 function getGreeting(): string {
@@ -31,27 +37,49 @@ function getInitials(name: string): string {
     .toUpperCase();
 }
 
-function formatDate(timestamp: number): string {
-  return new Date(timestamp).toLocaleDateString(undefined, {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  });
-}
-
-function InfoRow({ label, value, last = false }: { label: string; value: string; last?: boolean }) {
+function StatCard({ value, label, tone }: { value: number; label: string; tone: string }) {
   return (
-    <View style={[styles.infoRow, !last && styles.infoRowBorder]}>
-      <Text style={styles.infoLabel}>{label}</Text>
-      <Text style={styles.infoValue}>{value}</Text>
+    <View style={styles.statCard}>
+      <Text style={[styles.statValue, { color: tone }]}>{value}</Text>
+      <Text style={styles.statLabel}>{label}</Text>
     </View>
   );
 }
 
 export default function HomeScreen() {
-  const { user, signOut } = useSession();
+  const db = useSQLiteContext();
+  const router = useRouter();
   const insets = useSafeAreaInsets();
-  const [isSigningOut, setIsSigningOut] = useState(false);
+  const { user } = useSession();
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [stats, setStats] = useState<TaskStats | null>(null);
+  const [aiReady, setAiReady] = useState(false);
+
+  const load = useCallback(async () => {
+    if (!user) {
+      return;
+    }
+
+    try {
+      const [nextTasks, nextStats, settings] = await Promise.all([
+        listTasks(db, user.id, { status: 'open', limit: 5 }),
+        getTaskStats(db, user.id),
+        loadAiSettings(),
+      ]);
+
+      setTasks(nextTasks);
+      setStats(nextStats);
+      setAiReady(isAiConfigured(settings));
+    } catch (loadError) {
+      console.warn('Could not load the dashboard.', loadError);
+    }
+  }, [db, user]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void load();
+    }, [load])
+  );
 
   if (!user) {
     return null;
@@ -60,31 +88,22 @@ export default function HomeScreen() {
   const firstName = user.name.split(/\s+/)[0] ?? user.name;
   const initials = getInitials(user.name);
 
-  async function handleSignOut() {
-    setIsSigningOut(true);
+  async function toggleTask(task: Task) {
+    if (!user) {
+      return;
+    }
 
     try {
-      await signOut();
-    } finally {
-      setIsSigningOut(false);
-    }
-  }
+      if (task.status === 'done') {
+        await reopenTask(db, user.id, task.id);
+      } else {
+        await completeTask(db, user.id, task.id);
+      }
 
-  function confirmSignOut() {
-    Alert.alert(
-      'Sign out?',
-      'You can sign back in anytime. Your local account stays on this device.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Sign out',
-          style: 'destructive',
-          onPress: () => {
-            void handleSignOut();
-          },
-        },
-      ]
-    );
+      await load();
+    } catch (toggleError) {
+      console.warn('Could not update the task.', toggleError);
+    }
   }
 
   return (
@@ -94,85 +113,105 @@ export default function HomeScreen() {
       <ScrollView
         contentContainerStyle={[
           styles.content,
-          { paddingTop: insets.top + spacing.md, paddingBottom: insets.bottom + spacing.xl },
+          { paddingTop: insets.top + spacing.md, paddingBottom: spacing.xl },
         ]}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.header}>
+        <View style={styles.topBar}>
           <View style={styles.brandRow}>
-            <Brand size={40} />
+            <Brand size={38} />
             <Text style={styles.wordmark}>ORBIT</Text>
           </View>
 
-          <View style={styles.avatar}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Open settings"
+            onPress={() => router.push('/settings')}
+            style={styles.avatar}
+          >
             <Text style={styles.avatarText}>{initials || 'O'}</Text>
-          </View>
+          </Pressable>
         </View>
 
         <Text style={styles.greeting}>
           {getGreeting()}, {firstName}
         </Text>
-        <Text style={styles.subGreeting}>Your local space is ready.</Text>
+        <Text style={styles.subGreeting}>Aaj kya karna hai?</Text>
 
-        <View style={styles.card}>
-          <View style={styles.statusHeader}>
-            <View style={styles.statusDot} />
-            <Text style={styles.statusTitle}>Local backend active</Text>
-            <View style={styles.chip}>
-              <Text style={styles.chipText}>SQLITE</Text>
+        <View style={styles.hero}>
+          <View style={styles.heroTop}>
+            <View style={styles.heroIcon}>
+              <Ionicons name="sparkles" size={18} color={colors.accent} />
+            </View>
+            <Text style={styles.heroTitle}>Orbit Agent</Text>
+            <View style={[styles.statusChip, aiReady ? styles.statusOn : styles.statusOff]}>
+              <Text style={[styles.statusChipText, { color: aiReady ? colors.success : colors.textMuted }]}>
+                {aiReady ? 'AI READY' : 'LOCAL MODE'}
+              </Text>
             </View>
           </View>
 
-          <Text style={styles.cardCaption}>
-            Accounts and sessions live on this device. No server, no cloud.
+          <Text style={styles.heroText}>
+            Tasks bolo, reminders set karo, pending check karo. Sab kuch is device par rehta hai.
           </Text>
 
-          <View style={styles.infoList}>
-            <InfoRow label="Database" value="orbit.db" />
-            <InfoRow label="Sessions" value="30 days · encrypted" />
-            <InfoRow label="Network" value="Not required" last />
-          </View>
+          <Text style={styles.heroExample}>“Remind me to call mom at 7pm”</Text>
+
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => router.push('/chat')}
+            style={({ pressed }) => [styles.heroButton, pressed && styles.pressed]}
+          >
+            <Text style={styles.heroButtonText}>Open agent</Text>
+            <Ionicons name="arrow-forward" size={17} color={colors.white} />
+          </Pressable>
+
+          {!aiReady ? (
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => router.push('/settings')}
+              style={({ pressed }) => [styles.heroHint, pressed && styles.pressed]}
+            >
+              <Ionicons name="key-outline" size={13} color={colors.accent} />
+              <Text style={styles.heroHintText}>AI key add karo for full chat</Text>
+            </Pressable>
+          ) : null}
         </View>
 
-        <Text style={styles.sectionLabel}>ACCOUNT</Text>
+        <View style={styles.statsRow}>
+          <StatCard value={stats?.openCount ?? 0} label="Open" tone={colors.text} />
+          <StatCard value={stats?.dueToday ?? 0} label="Due today" tone={colors.accent} />
+          <StatCard value={stats?.doneCount ?? 0} label="Done" tone={colors.success} />
+        </View>
 
-        <View style={styles.card}>
-          <View style={styles.profileRow}>
-            <View style={styles.profileAvatar}>
-              <Text style={styles.profileAvatarText}>{initials || 'O'}</Text>
+        <View style={styles.sectionRow}>
+          <Text style={styles.sectionLabel}>NEXT UP</Text>
+          <Pressable accessibilityRole="button" onPress={() => router.push('/tasks')} hitSlop={8}>
+            <Text style={styles.link}>View all</Text>
+          </Pressable>
+        </View>
+
+        <View style={styles.list}>
+          {tasks.length > 0 ? (
+            tasks.map((task) => (
+              <TaskItem key={task.id} task={task} onToggle={toggleTask} />
+            ))
+          ) : (
+            <View style={styles.emptyCard}>
+              <Ionicons name="checkmark-done-circle-outline" size={26} color={colors.success} />
+              <View style={styles.emptyText}>
+                <Text style={styles.emptyTitle}>All clear</Text>
+                <Text style={styles.emptySubtitle}>
+                  Koi open task nahi hai. Agent se naya task add karwao.
+                </Text>
+              </View>
             </View>
-            <View style={styles.profileText}>
-              <Text style={styles.profileName}>{user.name}</Text>
-              <Text style={styles.profileEmail}>{user.email}</Text>
-            </View>
-          </View>
-
-          <View style={styles.infoList}>
-            <InfoRow label="Member since" value={formatDate(user.createdAt)} />
-            <InfoRow label="Sign-in" value="Email + password" last />
-          </View>
+          )}
         </View>
 
-        <Text style={styles.sectionLabel}>NEXT STEP</Text>
-
-        <View style={styles.card}>
-          <Text style={styles.nextTitle}>Build your idea here</Text>
-          <Text style={styles.nextText}>
-            Add your first feature in{' '}
-            <Text style={styles.code}>src/app/(app)/index.tsx</Text>. New screens become routes
-            automatically.
-          </Text>
-        </View>
-
-        <Button
-          label="Sign out"
-          onPress={confirmSignOut}
-          variant="danger"
-          loading={isSigningOut}
-          style={styles.signOutButton}
-        />
-
-        <Text style={styles.footer}>Orbit v1.0.0 · Android · local-first</Text>
+        <Text style={styles.footer}>
+          Orbit v{Constants.expoConfig?.version ?? '1.1.0'} · local-first · Android
+        </Text>
       </ScrollView>
     </View>
   );
@@ -196,7 +235,7 @@ const styles = StyleSheet.create({
     borderRadius: 170,
     backgroundColor: colors.accentSoft,
   },
-  header: {
+  topBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -229,7 +268,7 @@ const styles = StyleSheet.create({
   },
   greeting: {
     color: colors.text,
-    fontSize: 30,
+    fontSize: 29,
     fontWeight: '700',
     letterSpacing: -0.6,
     marginTop: spacing.xl,
@@ -239,138 +278,167 @@ const styles = StyleSheet.create({
     fontSize: 15,
     marginTop: spacing.xs,
   },
-  card: {
-    backgroundColor: colors.surface,
+  hero: {
+    backgroundColor: colors.backgroundElevated,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: 'rgba(109, 139, 255, 0.3)',
     borderRadius: radius.lg,
     padding: spacing.md + 2,
     marginTop: spacing.lg,
+    gap: spacing.sm,
   },
-  statusHeader: {
+  heroTop: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
   },
-  statusDot: {
-    width: 9,
-    height: 9,
-    borderRadius: 5,
-    backgroundColor: colors.success,
+  heroIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: colors.accentSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  statusTitle: {
+  heroTitle: {
     flex: 1,
     color: colors.text,
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: 17,
+    fontWeight: '700',
   },
-  chip: {
-    backgroundColor: colors.successSoft,
+  statusChip: {
     borderRadius: radius.pill,
     paddingHorizontal: spacing.sm,
     paddingVertical: 4,
   },
-  chipText: {
-    color: colors.success,
-    fontSize: 10,
+  statusOn: {
+    backgroundColor: colors.successSoft,
+  },
+  statusOff: {
+    backgroundColor: colors.surfaceAlt,
+  },
+  statusChipText: {
+    fontSize: 9,
     fontWeight: '700',
-    letterSpacing: 1,
+    letterSpacing: 0.9,
   },
-  cardCaption: {
+  heroText: {
     color: colors.textMuted,
+    fontSize: 14,
+    lineHeight: 20,
+    marginTop: 2,
+  },
+  heroExample: {
+    color: colors.textFaint,
     fontSize: 13,
-    lineHeight: 19,
-    marginTop: spacing.sm,
+    fontStyle: 'italic',
   },
-  infoList: {
+  heroButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.accentStrong,
+    borderRadius: radius.md,
+    minHeight: 48,
+    marginTop: spacing.xs,
+  },
+  heroButtonText: {
+    color: colors.white,
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  heroHint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingTop: 2,
+  },
+  heroHintText: {
+    color: colors.accent,
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  pressed: {
+    opacity: 0.8,
+  },
+  statsRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
     marginTop: spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
   },
-  infoRow: {
+  statCard: {
+    flex: 1,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    paddingVertical: spacing.md,
+    alignItems: 'center',
+  },
+  statValue: {
+    fontSize: 24,
+    fontWeight: '700',
+    letterSpacing: -0.5,
+  },
+  statLabel: {
+    color: colors.textFaint,
+    fontSize: 11,
+    fontWeight: '600',
+    letterSpacing: 0.6,
+    marginTop: 2,
+    textTransform: 'uppercase',
+  },
+  sectionRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: spacing.md,
-    paddingVertical: spacing.sm + 2,
-  },
-  infoRowBorder: {
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  infoLabel: {
-    color: colors.textMuted,
-    fontSize: 14,
-  },
-  infoValue: {
-    color: colors.text,
-    fontSize: 14,
-    fontWeight: '500',
+    marginTop: spacing.xl,
+    marginBottom: spacing.sm,
   },
   sectionLabel: {
     color: colors.textFaint,
     fontSize: 11,
     fontWeight: '700',
     letterSpacing: 1.6,
-    marginTop: spacing.xl,
-    marginBottom: spacing.xs,
   },
-  profileRow: {
+  link: {
+    color: colors.accent,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  list: {
+    gap: spacing.sm,
+  },
+  emptyCard: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-  },
-  profileAvatar: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: colors.accentSoft,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: 'rgba(109, 139, 255, 0.3)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    padding: spacing.md,
   },
-  profileAvatarText: {
-    color: colors.accent,
-    fontSize: 17,
-    fontWeight: '700',
-  },
-  profileText: {
+  emptyText: {
     flex: 1,
+    gap: 2,
   },
-  profileName: {
+  emptyTitle: {
     color: colors.text,
-    fontSize: 17,
+    fontSize: 15,
     fontWeight: '600',
   },
-  profileEmail: {
+  emptySubtitle: {
     color: colors.textMuted,
-    fontSize: 14,
-    marginTop: 2,
-  },
-  nextTitle: {
-    color: colors.text,
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  nextText: {
-    color: colors.textMuted,
-    fontSize: 14,
-    lineHeight: 21,
-    marginTop: spacing.xs,
-  },
-  code: {
-    color: colors.accent,
-    fontFamily: 'monospace',
     fontSize: 13,
-  },
-  signOutButton: {
-    marginTop: spacing.xl,
+    lineHeight: 18,
   },
   footer: {
     color: colors.textFaint,
     fontSize: 12,
     textAlign: 'center',
-    marginTop: spacing.lg,
+    marginTop: spacing.xl,
   },
 });

@@ -2,7 +2,7 @@
   "expo": {
     "name": "Orbit",
     "slug": "orbit",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "orientation": "portrait",
     "scheme": "orbit",
     "icon": "./assets/icon.png",
@@ -14,6 +14,10 @@
     },
     "android": {
       "package": "com.orbit.app",
+      "permissions": [
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.SCHEDULE_EXACT_ALARM"
+      ],
       "adaptiveIcon": {
         "backgroundColor": "#070B14",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -30,13 +34,21 @@
       "expo-sqlite",
       "expo-secure-store",
       [
+        "expo-notifications",
+        {
+          "icon": "./assets/android-icon-monochrome.png",
+          "color": "#6D8BFF"
+        }
+      ],
+      [
         "expo-splash-screen",
         {
           "backgroundColor": "#070B14",
           "image": "./assets/splash-icon.png",
           "imageWidth": 180
         }
-      ]
+      ],
+      "expo-font"
     ],
     "experiments": {
       "typedRoutes": true

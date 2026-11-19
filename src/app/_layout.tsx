@@ -5,6 +5,7 @@ import { useEffect } from 'react';
 
 import { SessionProvider, useSession } from '@/context/auth';
 import { DATABASE_NAME, migrateDbIfNeeded } from '@/lib/db';
+import { configureNotifications } from '@/lib/notifications';
 import { colors } from '@/theme';
 
 void SplashScreen.preventAutoHideAsync();
@@ -13,12 +14,21 @@ export default function RootLayout() {
   return (
     <SQLiteProvider databaseName={DATABASE_NAME} onInit={migrateDbIfNeeded}>
       <SessionProvider>
+        <NotificationSetup />
         <SplashController />
         <RootNavigator />
         <StatusBar style="light" />
       </SessionProvider>
     </SQLiteProvider>
   );
+}
+
+function NotificationSetup() {
+  useEffect(() => {
+    void configureNotifications();
+  }, []);
+
+  return null;
 }
 
 function SplashController() {

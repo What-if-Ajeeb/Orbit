@@ -56,12 +56,13 @@ jobs:
           if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
             VERSION="${GITHUB_REF_NAME}"
           else
-            VERSION="v1.0.0-build.${GITHUB_RUN_NUMBER}"
+            VERSION="v$(node -p "require('./package.json').version")-build.${GITHUB_RUN_NUMBER}"
           fi
           APK_NAME="orbit-${VERSION}.apk"
           cp android/app/build/outputs/apk/release/app-release.apk "${APK_NAME}"
           echo "name=${APK_NAME}" >> "$GITHUB_OUTPUT"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag=${VERSION}" >> "$GITHUB_OUTPUT"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
@@ -73,7 +74,7 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || format('v1.0.0-build.{0}', github.run_number) }}
+          tag_name: ${{ steps.apk.outputs.tag }}
           name: Orbit ${{ steps.apk.outputs.version }}
           files: ${{ steps.apk.outputs.name }}
           generate_release_notes: true
