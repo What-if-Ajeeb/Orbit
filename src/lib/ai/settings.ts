@@ -12,6 +12,8 @@ export type AiSettings = {
 
 export type ProviderPreset = {
   id: AiProvider;
+  /** Registered wire-protocol adapter used by this preset. */
+  adapterId: string;
   label: string;
   shortLabel: string;
   baseUrl: string;
@@ -24,6 +26,7 @@ export type ProviderPreset = {
 export const PROVIDER_PRESETS: Record<AiProvider, ProviderPreset> = {
   openai: {
     id: 'openai',
+    adapterId: 'openai-compatible',
     label: 'OpenAI',
     shortLabel: 'OpenAI',
     baseUrl: 'https://api.openai.com/v1',
@@ -34,6 +37,7 @@ export const PROVIDER_PRESETS: Record<AiProvider, ProviderPreset> = {
   },
   gemini: {
     id: 'gemini',
+    adapterId: 'gemini',
     label: 'Google Gemini',
     shortLabel: 'Gemini',
     baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
@@ -44,6 +48,7 @@ export const PROVIDER_PRESETS: Record<AiProvider, ProviderPreset> = {
   },
   openrouter: {
     id: 'openrouter',
+    adapterId: 'openai-compatible',
     label: 'OpenRouter',
     shortLabel: 'OpenRouter',
     baseUrl: 'https://openrouter.ai/api/v1',
@@ -54,6 +59,7 @@ export const PROVIDER_PRESETS: Record<AiProvider, ProviderPreset> = {
   },
   custom: {
     id: 'custom',
+    adapterId: 'openai-compatible',
     label: 'Custom (OpenAI-compatible)',
     shortLabel: 'Custom',
     baseUrl: '',

@@ -28,11 +28,7 @@ import { useSidebar } from '@/context/sidebar';
 import { runAgent } from '@/lib/ai/agent';
 import { isAiConfigured, loadAiSettings } from '@/lib/ai/settings';
 import {
-  addMessage,
-  createConversation,
-  deleteConversation,
-  listConversations,
-  listMessages,
+  getChatStore,
   type ChatMessage,
   type Conversation,
 } from '@/lib/chat';
@@ -46,6 +42,7 @@ const SUGGESTIONS = [
 
 export default function ChatScreen() {
   const db = useSQLiteContext();
+  const store = getChatStore(db);
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { user } = useSession();
@@ -70,7 +67,7 @@ export default function ChatScreen() {
 
     try {
       const [list, settings] = await Promise.all([
-        listConversations(db, user.id),
+        store.listConversations(user.id),
         loadAiSettings(),
       ]);
 
@@ -85,14 +82,14 @@ export default function ChatScreen() {
       }
 
       const nextMessages =
-        currentId === null ? [] : await listMessages(db, user.id, currentId, 200);
+        currentId === null ? [] : await store.listMessages(user.id, currentId, 200);
 
       setConversations(list);
       setMessages(nextMessages);
     } catch (loadError) {
       console.warn('Could not load the conversation.', loadError);
     }
-  }, [db, user]);
+  }, [store, user]);
 
   useFocusEffect(
     useCallback(() => {
@@ -120,7 +117,7 @@ export default function ChatScreen() {
   }
 
   async function refreshConversations() {
-    const list = await listConversations(db, activeUser.id);
+    const list = await store.listConversations(activeUser.id);
     setConversations(list);
   }
 
@@ -143,14 +140,19 @@ export default function ChatScreen() {
       let conversationId = activeIdRef.current;
 
       if (conversationId === null) {
-        const created = await createConversation(db, activeUser.id);
+        const created = await store.createConversation(activeUser.id);
         conversationId = created.id;
         activeIdRef.current = conversationId;
         setActiveId(conversationId);
         setConversations((current) => [created, ...current]);
       }
 
-      const userMessage = await addMessage(db, activeUser.id, conversationId, 'user', text);
+      const userMessage = await store.addMessage(
+        activeUser.id,
+        conversationId,
+        'user',
+        text
+      );
       const nextMessages = [...messages, userMessage];
       setMessages(nextMessages);
 
@@ -170,8 +172,7 @@ export default function ChatScreen() {
         settings,
       });
 
-      const assistantMessage = await addMessage(
-        db,
+      const assistantMessage = await store.addMessage(
         activeUser.id,
         conversationId,
         'assistant',
@@ -208,7 +209,7 @@ export default function ChatScreen() {
     }
 
     try {
-      const created = await createConversation(db, activeUser.id);
+      const created = await store.createConversation(activeUser.id);
       activeIdRef.current = created.id;
       setActiveId(created.id);
       setConversations((prev) => [created, ...prev]);
@@ -232,7 +233,7 @@ export default function ChatScreen() {
     setActiveId(conversation.id);
 
     try {
-      setMessages(await listMessages(db, activeUser.id, conversation.id, 200));
+      setMessages(await store.listMessages(activeUser.id, conversation.id, 200));
     } catch (selectError) {
       setError(
         selectError instanceof Error ? selectError.message : 'Chat load nahi ho payi.'
@@ -246,9 +247,9 @@ export default function ChatScreen() {
     }
 
     try {
-      await deleteConversation(db, activeUser.id, conversation.id);
+      await store.deleteConversation(activeUser.id, conversation.id);
 
-      const list = await listConversations(db, activeUser.id);
+      const list = await store.listConversations(activeUser.id);
 
       if (conversation.id === activeIdRef.current) {
         if (list.length === 0) {
@@ -259,7 +260,7 @@ export default function ChatScreen() {
           const next = list[0];
           activeIdRef.current = next.id;
           setActiveId(next.id);
-          setMessages(await listMessages(db, activeUser.id, next.id, 200));
+          setMessages(await store.listMessages(activeUser.id, next.id, 200));
         }
       }
 

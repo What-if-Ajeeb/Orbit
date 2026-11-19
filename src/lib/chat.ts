@@ -1,243 +1,82 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-export type ChatRole = 'user' | 'assistant';
+import { createSqliteChatStore, type ChatRole, type ChatStore } from './chat-store';
 
-export type ChatMessage = {
-  id: number;
-  role: ChatRole;
-  content: string;
-  traces: string[];
-  createdAt: number;
-};
+export type {
+  ChatMessage,
+  ChatRole,
+  ChatStore,
+  Conversation,
+} from './chat-store';
+export { createSqliteChatStore } from './chat-store';
 
-export type Conversation = {
-  id: number;
-  userId: number;
-  title: string;
-  messageCount: number;
-  createdAt: number;
-  updatedAt: number;
-};
+const stores = new WeakMap<SQLiteDatabase, ChatStore>();
 
-type MessageRow = {
-  id: number;
-  role: string;
-  content: string;
-  meta: string | null;
-  created_at: number;
-};
+/**
+ * Resolves the conversation store for a database instance. Screens depend on
+ * the ChatStore interface, so a different provider can be swapped in later.
+ */
+export function getChatStore(db: SQLiteDatabase): ChatStore {
+  let store = stores.get(db);
 
-type ConversationRow = {
-  id: number;
-  user_id: number;
-  title: string;
-  message_count: number;
-  created_at: number;
-  updated_at: number;
-};
-
-const CONVERSATION_SELECT = `
-  SELECT c.id, c.user_id, c.title, c.created_at, c.updated_at,
-    (SELECT COUNT(*) FROM messages m WHERE m.conversation_id = c.id) AS message_count
-  FROM conversations c
-`;
-
-function parseTraces(meta: string | null): string[] {
-  if (!meta) {
-    return [];
+  if (!store) {
+    store = createSqliteChatStore(db);
+    stores.set(db, store);
   }
 
-  try {
-    const value = JSON.parse(meta) as { traces?: unknown };
-
-    if (!Array.isArray(value.traces)) {
-      return [];
-    }
-
-    return value.traces.filter((item): item is string => typeof item === 'string');
-  } catch {
-    return [];
-  }
+  return store;
 }
 
-function toMessage(row: MessageRow): ChatMessage {
-  return {
-    id: row.id,
-    role: row.role === 'assistant' ? 'assistant' : 'user',
-    content: row.content,
-    traces: parseTraces(row.meta),
-    createdAt: row.created_at,
-  };
+// Function wrappers keep older call sites on the same seam. New code can use
+// getChatStore(db) directly.
+export function listConversations(db: SQLiteDatabase, userId: number, limit = 50) {
+  return getChatStore(db).listConversations(userId, limit);
 }
 
-function toConversation(row: ConversationRow): Conversation {
-  return {
-    id: row.id,
-    userId: row.user_id,
-    title: row.title,
-    messageCount: row.message_count,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-  };
-}
-
-function cleanTitle(value: string): string {
-  return value.replace(/\s+/g, ' ').trim().slice(0, 80);
-}
-
-export async function listConversations(
-  db: SQLiteDatabase,
-  userId: number,
-  limit = 50
-): Promise<Conversation[]> {
-  const rows = await db.getAllAsync<ConversationRow>(
-    `${CONVERSATION_SELECT}
-     WHERE c.user_id = ?
-     ORDER BY c.updated_at DESC, c.id DESC
-     LIMIT ?`,
-    userId,
-    Math.min(Math.max(limit, 1), 100)
-  );
-
-  return rows.map(toConversation);
-}
-
-export async function getConversation(
+export function getConversation(
   db: SQLiteDatabase,
   userId: number,
   conversationId: number
-): Promise<Conversation | null> {
-  const row = await db.getFirstAsync<ConversationRow>(
-    `${CONVERSATION_SELECT} WHERE c.id = ? AND c.user_id = ?`,
-    conversationId,
-    userId
-  );
-
-  return row ? toConversation(row) : null;
+) {
+  return getChatStore(db).getConversation(userId, conversationId);
 }
 
-export async function createConversation(
+export function createConversation(
   db: SQLiteDatabase,
   userId: number,
   title = 'New chat'
-): Promise<Conversation> {
-  const now = Date.now();
-  const clean = cleanTitle(title) || 'New chat';
-
-  const result = await db.runAsync(
-    'INSERT INTO conversations (user_id, title, created_at, updated_at) VALUES (?, ?, ?, ?)',
-    userId,
-    clean,
-    now,
-    now
-  );
-
-  return {
-    id: result.lastInsertRowId,
-    userId,
-    title: clean,
-    messageCount: 0,
-    createdAt: now,
-    updatedAt: now,
-  };
+) {
+  return getChatStore(db).createConversation(userId, title);
 }
 
-export async function listMessages(
+export function listMessages(
   db: SQLiteDatabase,
   userId: number,
   conversationId: number,
   limit = 100
-): Promise<ChatMessage[]> {
-  const rows = await db.getAllAsync<MessageRow>(
-    `SELECT id, role, content, meta, created_at
-     FROM (
-       SELECT id, role, content, meta, created_at
-       FROM messages
-       WHERE user_id = ? AND conversation_id = ?
-       ORDER BY id DESC
-       LIMIT ?
-     )
-     ORDER BY id ASC`,
-    userId,
-    conversationId,
-    Math.min(Math.max(limit, 1), 300)
-  );
-
-  return rows.map(toMessage);
+) {
+  return getChatStore(db).listMessages(userId, conversationId, limit);
 }
 
-export async function addMessage(
+export function addMessage(
   db: SQLiteDatabase,
   userId: number,
   conversationId: number,
   role: ChatRole,
   content: string,
   traces: string[] = []
-): Promise<ChatMessage> {
-  const conversation = await getConversation(db, userId, conversationId);
-
-  if (!conversation) {
-    throw new Error('Conversation not found.');
-  }
-
-  const createdAt = Date.now();
-  const meta = traces.length > 0 ? JSON.stringify({ traces }) : null;
-
-  const result = await db.runAsync(
-    `INSERT INTO messages (user_id, conversation_id, role, content, meta, created_at)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-    userId,
-    conversationId,
-    role,
-    content,
-    meta,
-    createdAt
-  );
-
-  const nextTitle = role === 'user' ? cleanTitle(content) : '';
-
-  await db.runAsync(
-    `UPDATE conversations
-     SET title = CASE
-           WHEN title = 'New chat' AND ? <> '' THEN ?
-           ELSE title
-         END,
-         updated_at = ?
-     WHERE id = ? AND user_id = ?`,
-    nextTitle,
-    nextTitle,
-    createdAt,
-    conversationId,
-    userId
-  );
-
-  return {
-    id: result.lastInsertRowId,
-    role,
-    content,
-    traces,
-    createdAt,
-  };
+) {
+  return getChatStore(db).addMessage(userId, conversationId, role, content, traces);
 }
 
-export async function deleteConversation(
+export function deleteConversation(
   db: SQLiteDatabase,
   userId: number,
   conversationId: number
-): Promise<void> {
-  await db.runAsync(
-    'DELETE FROM messages WHERE user_id = ? AND conversation_id = ?',
-    userId,
-    conversationId
-  );
-  await db.runAsync(
-    'DELETE FROM conversations WHERE id = ? AND user_id = ?',
-    conversationId,
-    userId
-  );
+) {
+  return getChatStore(db).deleteConversation(userId, conversationId);
 }
 
-export async function clearAllChat(db: SQLiteDatabase, userId: number): Promise<void> {
-  await db.runAsync('DELETE FROM messages WHERE user_id = ?', userId);
-  await db.runAsync('DELETE FROM conversations WHERE user_id = ?', userId);
+export function clearAllChat(db: SQLiteDatabase, userId: number) {
+  return getChatStore(db).clearAllChat(userId);
 }

@@ -18,6 +18,7 @@ and **expo-notifications**.
 - Task list with quick-add (`pay bill tomorrow 5pm`), filters, and long-press delete
 - App-wide navigation drawer with profile, AI status, and sign out
 - Multi-conversation chat history with per-chat delete and a slide-in history panel
+- Plugin-style seams for AI providers, agent tools, and chat storage
 - AI settings screen with provider presets, connection test, and secure key storage
 - Offline **local mode** for basic commands when no API key is configured
 
@@ -44,6 +45,44 @@ Remind me to call mom at 7pm
 What's pending?
 Complete 3
 ```
+
+## Plugin-style seams
+
+The agent core stays small and capabilities are replaceable, inspired by the
+"everything is a plugin" idea from DeepSeek Harness (MIT):
+
+- **Provider seam** — `src/lib/ai/provider-registry.ts`. Presets in
+  `settings.ts` point at an `adapterId`; `requestCompletion` resolves it.
+- **Tool seam** — `src/lib/ai/tool-registry.ts`. Built-in task tools live in
+  `task-tools.ts`; the agent reads `listAgentTools()` every run.
+- **Storage seam** — `src/lib/chat-store.ts` defines `ChatStore`; SQLite is the
+  default provider via `getChatStore(db)`.
+
+Add a provider adapter and point a preset's `adapterId` at it:
+
+```ts
+aiProviderRegistry.register({
+  id: 'my-protocol',
+  label: 'My protocol',
+  complete: async ({ settings, messages, tools }) => {
+    // return { text, toolCalls }
+  },
+});
+```
+
+Add a tool:
+
+```ts
+agentToolRegistry.register({
+  definition: { name: 'my_tool', description: '...', parameters: { ... } },
+  execute: async ({ db, userId }, args) => ({
+    content: toolOk({ done: true }),
+    trace: 'Ran my_tool',
+  }),
+});
+```
+
+No Cordis runtime and no harness dependency — just three explicit seams.
 
 ## Run on your Android phone
 
@@ -120,14 +159,18 @@ src/
   lib/
     ai/
       agent.ts            # tool-calling loop (max 6 rounds)
-      providers.ts        # OpenAI-compatible + Gemini clients
-      tools.ts            # task tools exposed to the model
+      provider-registry.ts # provider plugin seam
+      providers.ts        # OpenAI-compatible + Gemini adapters
+      tool-registry.ts    # tool plugin seam
+      task-tools.ts       # built-in task tools
+      tools.ts            # registers built-ins + agent-facing helpers
       prompt.ts           # system prompt with local date/time
       local-agent.ts      # offline fallback parser
       settings.ts         # provider presets + SecureStore config
     auth.ts               # hashing, sessions, account queries
-    chat.ts             # persisted conversations + messages
-    db.ts               # SQLite schema + migrations (v3)
+    chat-store.ts         # ChatStore seam + SQLite provider
+    chat.ts               # resolves the chat store for a database
+    db.ts                 # SQLite schema + migrations (v3)
     dates.ts              # formatting + natural-language date parsing
     notifications.ts      # local notification scheduling
     tasks.ts              # task CRUD + reminder sync

@@ -4,7 +4,7 @@ import { runLocalAgent } from './local-agent';
 import { buildSystemPrompt } from './prompt';
 import { requestCompletion } from './providers';
 import { isAiConfigured, type AiSettings } from './settings';
-import { AGENT_TOOLS, executeTool } from './tools';
+import { executeTool, listAgentTools } from './tools';
 import type { LlmMessage } from './types';
 
 export type AgentHistoryItem = {
@@ -52,11 +52,12 @@ export async function runAgent(input: AgentInput): Promise<AgentResult> {
       .map((item) => ({ role: item.role, content: item.content }) as LlmMessage),
   ];
 
+  const toolDefinitions = listAgentTools();
   const traces: string[] = [];
 
   try {
     for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
-      const turn = await requestCompletion(settings, messages, AGENT_TOOLS);
+      const turn = await requestCompletion(settings, messages, toolDefinitions);
 
       if (turn.toolCalls.length === 0) {
         return {

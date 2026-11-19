@@ -1,4 +1,5 @@
-import type { AiSettings } from './settings';
+import { aiProviderRegistry, type AiProviderAdapter } from './provider-registry';
+import { PROVIDER_PRESETS, type AiSettings } from './settings';
 import type { LlmMessage, LlmToolDefinition, LlmToolCall, LlmTurn } from './types';
 
 const REQUEST_TIMEOUT_MS = 45_000;
@@ -418,6 +419,23 @@ async function geminiCompletion(
   };
 }
 
+const openAiAdapter: AiProviderAdapter = {
+  id: 'openai-compatible',
+  label: 'OpenAI-compatible',
+  complete: ({ settings, messages, tools }) => openAiCompletion(settings, messages, tools),
+};
+
+const geminiAdapter: AiProviderAdapter = {
+  id: 'gemini',
+  label: 'Google Gemini',
+  complete: ({ settings, messages, tools }) => geminiCompletion(settings, messages, tools),
+};
+
+// Built-in adapters. Add-ons can register another protocol at startup with
+// aiProviderRegistry.register(...) and point a preset's adapterId at it.
+aiProviderRegistry.register(openAiAdapter, { replace: true });
+aiProviderRegistry.register(geminiAdapter, { replace: true });
+
 export async function requestCompletion(
   settings: AiSettings,
   messages: LlmMessage[],
@@ -427,11 +445,14 @@ export async function requestCompletion(
     throw new AiError('AI is not configured yet. Add your provider and key in Settings → AI.');
   }
 
-  if (settings.provider === 'gemini') {
-    return geminiCompletion(settings, messages, tools);
+  const adapterId = PROVIDER_PRESETS[settings.provider]?.adapterId ?? 'openai-compatible';
+  const adapter = aiProviderRegistry.get(adapterId);
+
+  if (!adapter) {
+    throw new AiError(`No AI adapter is registered for “${settings.provider}”.`);
   }
 
-  return openAiCompletion(settings, messages, tools);
+  return adapter.complete({ settings, messages, tools });
 }
 
 export async function pingAi(settings: AiSettings): Promise<string> {

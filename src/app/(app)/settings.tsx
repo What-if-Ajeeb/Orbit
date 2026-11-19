@@ -33,7 +33,7 @@ import {
   type AiProvider,
   type AiSettings,
 } from '@/lib/ai/settings';
-import { clearAllChat } from '@/lib/chat';
+import { getChatStore } from '@/lib/chat';
 import {
   getNotificationPermission,
   requestNotificationPermission,
@@ -233,7 +233,7 @@ export default function SettingsScreen() {
         style: 'destructive',
         onPress: () => {
           void (async () => {
-            await clearAllChat(db, activeUser.id);
+            await getChatStore(db).clearAllChat(activeUser.id);
             setNotice('Chat history clear ho gayi.');
           })();
         },
