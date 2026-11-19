@@ -32,6 +32,30 @@ Phone and computer must be on the same Wi-Fi. If that is not possible, use a tun
 npx expo start --tunnel
 ```
 
+## Installable APK (GitHub Releases)
+
+Every version tag builds a signed release APK in GitHub Actions and attaches it to
+the GitHub Release. Download it on your phone and install it (allow "Install
+unknown apps" for your browser/file manager).
+
+```sh
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+Releases page:
+
+```text
+https://github.com/What-if-Ajeeb/Orbit/releases
+```
+
+You can also start a build manually: **Actions → Android APK Release → Run
+workflow**. Builds take roughly 10–20 minutes.
+
+> The release APK is signed with the debug keystore, which is fine for testing and
+> sideloading but not for publishing to the Play Store. For a Play Store build,
+> use EAS Build with a production keystore.
+
 ## Scripts
 
 ```sh
