@@ -71,7 +71,7 @@ the GitHub Release. Download it on your phone and install it (allow "Install
 unknown apps" for your browser/file manager).
 
 ```sh
-git tag v1.1.0
+git tag v1.1.1
 git push origin v1.1.0
 ```
 

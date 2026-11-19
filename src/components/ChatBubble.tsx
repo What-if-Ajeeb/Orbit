@@ -75,8 +75,9 @@ const styles = StyleSheet.create({
     borderBottomRightRadius: 6,
   },
   assistantBubble: {
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
+    backgroundColor: 'rgba(16, 26, 44, 0.72)',
+    borderColor: 'rgba(148, 177, 255, 0.16)',
+    borderTopColor: 'rgba(255, 255, 255, 0.14)',
     borderBottomLeftRadius: 6,
   },
   text: {
