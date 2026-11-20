@@ -1,7 +1,16 @@
 import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 
-export type AiProvider = 'openai' | 'gemini' | 'openrouter' | 'custom';
+export type AiProvider =
+  | 'deepseek'
+  | 'openai'
+  | 'gemini'
+  | 'anthropic'
+  | 'mistral'
+  | 'huggingface'
+  | 'ollama'
+  | 'openrouter'
+  | 'custom';
 
 export type AiSettings = {
   provider: AiProvider;
@@ -68,9 +77,74 @@ export const PROVIDER_PRESETS: Record<AiProvider, ProviderPreset> = {
     docsUrl: '',
     note: 'Groq, Together, LM Studio ya koi bhi OpenAI-compatible endpoint.',
   },
+  deepseek: {
+    id: 'deepseek',
+    adapterId: 'openai-compatible',
+    label: 'DeepSeek',
+    shortLabel: 'DeepSeek',
+    baseUrl: 'https://api.deepseek.com/v1',
+    model: 'deepseek-chat',
+    keyHint: 'sk-...',
+    docsUrl: 'https://platform.deepseek.com/api-keys',
+    note: 'DeepSeek-V4 compatible models. Orbit ke liye recommended.',
+  },
+  anthropic: {
+    id: 'anthropic',
+    adapterId: 'openai-compatible',
+    label: 'Anthropic',
+    shortLabel: 'Anthropic',
+    baseUrl: 'https://api.anthropic.com/v1',
+    model: 'claude-3-5-sonnet-20241022',
+    keyHint: 'sk-ant-...',
+    docsUrl: 'https://console.anthropic.com/',
+    note: 'Claude models via OpenAI-compatible proxy (e.g. LiteLLM).',
+  },
+  mistral: {
+    id: 'mistral',
+    adapterId: 'openai-compatible',
+    label: 'Mistral',
+    shortLabel: 'Mistral',
+    baseUrl: 'https://api.mistral.ai/v1',
+    model: 'mistral-large-latest',
+    keyHint: '...',
+    docsUrl: 'https://console.mistral.ai/',
+    note: 'Mistral AI ke models via OpenAI-compatible endpoint.',
+  },
+  huggingface: {
+    id: 'huggingface',
+    adapterId: 'openai-compatible',
+    label: 'Hugging Face',
+    shortLabel: 'HF',
+    baseUrl: 'https://api-inference.huggingface.co/v1/',
+    model: '',
+    keyHint: 'hf_...',
+    docsUrl: 'https://huggingface.co/docs/huggingface_hub/v0.14.0/package_reference/inference_client#huggingface_hub.InferenceClient.chat_completion',
+    note: 'Hugging Face Inference API. Model naam manually दें।',
+  },
+  ollama: {
+    id: 'ollama',
+    adapterId: 'openai-compatible',
+    label: 'Ollama',
+    shortLabel: 'Ollama',
+    baseUrl: 'http://localhost:11434/v1',
+    model: 'llama3',
+    keyHint: 'optional',
+    docsUrl: 'https://github.com/ollama/ollama/blob/main/docs/api.md',
+    note: 'लोकल Ollama इंस्टेंस। URL अपने इंस्टेंस के मुताबिक बदलें।',
+  },
 };
 
-export const PROVIDER_ORDER: AiProvider[] = ['openai', 'gemini', 'openrouter', 'custom'];
+export const PROVIDER_ORDER: AiProvider[] = [
+  'deepseek',
+  'openai',
+  'gemini',
+  'anthropic',
+  'mistral',
+  'huggingface',
+  'ollama',
+  'openrouter',
+  'custom',
+];
 
 const SETTINGS_KEY = 'orbit.ai.settings.v1';
 

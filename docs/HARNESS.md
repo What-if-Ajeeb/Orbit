@@ -89,6 +89,39 @@ aiProviderRegistry.register({
 Presets in `src/lib/ai/settings.ts` point at an adapter id. Adding a preset is a
 settings change; adding a protocol is a one-file plugin.
 
+## Model-agnostic routing
+
+Orbit does not tie itself to a single model family. Every provider speaks the
+same OpenAI-compatible wire protocol (`POST /v1/chat/completions` with Bearer
+token auth), so adding a new provider is just a preset with a base URL and
+default model:
+
+| Provider | Default model | Endpoint | Notes |
+| --- | --- | --- | --- |
+| DeepSeek | `deepseek-chat` | `https://api.deepseek.com/v1` | Recommended default. |
+| OpenAI | `gpt-4.1-mini` | `https://api.openai.com/v1` | Official OpenAI API. |
+| Google Gemini | `gemini-2.5-flash` | `https://generativelanguage.googleapis.com/v1beta` | Gemini via OpenAI-compatible shim. |
+| Anthropic | `claude-3-5-sonnet-20241022` | `https://api.anthropic.com/v1` | Via OpenAI-compatible proxy (e.g. LiteLLM). |
+| Mistral | `mistral-large-latest` | `https://api.mistral.ai/v1` | OpenAI-compatible endpoint. |
+| Hugging Face | your model | `https://api-inference.huggingface.co/v1/` | HF Inference API. |
+| Ollama | `llama3` | `http://localhost:11434/v1` | Local Ollama instance — no key needed. |
+| OpenRouter | `openai/gpt-4.1-mini` | `https://openrouter.ai/api/v1` | One key, many models. |
+| Custom | your model | any URL | Any OpenAI-compatible endpoint. |
+
+The base URL and model are editable in **Settings → AI BRAIN**, so you can point
+Orbit at a self-hosted LiteLLM, vLLM, or any other OpenAI-compatible server.
+Chat messages go only to the provider you choose; tasks and account data stay
+local on the device.
+
+Without a key, the agent runs in local mode and understands commands like:
+
+```text
+Add task pay electricity bill tomorrow 5pm
+Remind me to call mom at 7pm
+What's pending?
+Complete 3
+```
+
 ## Tool plugins
 
 Tools own their schema and implementation. Registering a tool makes it available to

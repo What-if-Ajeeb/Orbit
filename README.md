@@ -36,8 +36,13 @@ Open **Settings → AI BRAIN**, pick a provider, paste a key, and tap **Test**:
 
 | Provider | Default model | Get a key |
 | --- | --- | --- |
+| DeepSeek | `deepseek-chat` | https://platform.deepseek.com/api-keys |
 | OpenAI | `gpt-4.1-mini` | https://platform.openai.com/api-keys |
 | Google Gemini | `gemini-2.5-flash` | https://aistudio.google.com/apikey |
+| Anthropic | `claude-3-5-sonnet-20241022` | https://console.anthropic.com/ |
+| Mistral | `mistral-large-latest` | https://console.mistral.ai/ |
+| Hugging Face | your model | https://huggingface.co/settings/tokens |
+| Ollama | `llama3` | (local — no key needed) |
 | OpenRouter | `openai/gpt-4.1-mini` | https://openrouter.ai/keys |
 | Custom | your model | any OpenAI-compatible endpoint |
 
