@@ -134,6 +134,7 @@ export default function AppLayout() {
               ),
             }}
           />
+          <Tabs.Screen name="harness" options={{ href: null }} />
         </Tabs>
         <AppSidebar />
       </View>

@@ -1,5 +1,7 @@
 # Orbit
 
+**Orbit Harness** — everything is a plugin, and MCP is the universal adapter.
+
 A local-first Android agent for **tasks and reminders**. Accounts, tasks, and chat
 history live in SQLite on the phone. The agent brain is a cloud LLM that you connect
 with your own API key — there is no shared Orbit server.
@@ -18,8 +20,10 @@ and **expo-notifications**.
 - Task list with quick-add (`pay bill tomorrow 5pm`), filters, and long-press delete
 - App-wide navigation drawer with profile, AI status, and sign out
 - Multi-conversation chat history with per-chat delete and a slide-in history panel
-- Plugin-style seams for AI providers, agent tools, and chat storage
+- **Orbit Harness** registry for providers, tools, storage, and MCP servers
+- Harness screen with live plugin status, MCP tool counts, and manual sync
 - AI settings screen with provider presets, connection test, and secure key storage
+- MCP server connections (HTTP endpoints + optional bearer token) with per-server sync status
 - Offline **local mode** for basic commands when no API key is configured
 
 ## Connect the AI brain
@@ -46,21 +50,46 @@ What's pending?
 Complete 3
 ```
 
-## Plugin-style seams
+## Connect MCP tools
 
-The agent core stays small and capabilities are replaceable, inspired by the
-"everything is a plugin" idea from DeepSeek Harness (MIT):
+Orbit can mirror tools from any **MCP server that speaks Streamable HTTP**. Open
+**Settings → MCP TOOLS → Add server**, enter the endpoint URL (for example
+`https://mcp.example.com/mcp`) and an optional bearer token, then tap **Add**.
+Orbit connects immediately and shows how many tools the server exposes.
 
-- **Provider seam** — `src/lib/ai/provider-registry.ts`. Presets in
+- Toggle a server off to remove its tools from the agent without deleting it.
+- Tap **Sync** to reconnect and refresh the tool list.
+- The token is stored with the server config in encrypted SecureStore.
+- MCP tools are only used in cloud AI mode; results are treated as untrusted data.
+
+Servers whose names start with `mcp__` appear in the agent's tool list on the next
+message (the list refreshes at most every five minutes, or immediately after a
+manual sync).
+
+## Orbit Harness: Everything is a Plugin and MCP
+
+The agent core stays small and every capability is replaceable. The **Orbit Harness**
+is the set of registries behind that idea — no Cordis runtime and no harness
+dependency, just explicit seams:
+
+- **Provider plugin** — `src/lib/ai/provider-registry.ts`. Presets in
   `settings.ts` point at an `adapterId`; `requestCompletion` resolves it.
-- **Tool seam** — `src/lib/ai/tool-registry.ts`. Built-in task tools live in
+- **Tool plugin** — `src/lib/ai/tool-registry.ts`. Built-in task tools live in
   `task-tools.ts`; the agent reads `listAgentTools()` every run.
-- **Storage seam** — `src/lib/chat-store.ts` defines `ChatStore`; SQLite is the
-  default provider via `getChatStore(db)`.
+- **Storage plugin** — `src/lib/chat.ts` registers chat stores; SQLite is the
+  default via `getChatStore(db)`.
+- **MCP plugin** — `src/lib/mcp/registry.ts` mirrors external MCP tools into the
+  same tool registry under the `mcp__` prefix.
+
+`src/lib/harness/` ties the registries together and powers the **Harness** screen
+(**Harness** in the drawer), which shows the active provider, every registered
+tool, the active store, and each MCP server's sync state.
 
 Add a provider adapter and point a preset's `adapterId` at it:
 
 ```ts
+import { aiProviderRegistry } from '@/lib/harness';
+
 aiProviderRegistry.register({
   id: 'my-protocol',
   label: 'My protocol',
@@ -73,6 +102,9 @@ aiProviderRegistry.register({
 Add a tool:
 
 ```ts
+import { agentToolRegistry } from '@/lib/harness';
+import { toolOk } from '@/lib/ai/tool-registry';
+
 agentToolRegistry.register({
   definition: { name: 'my_tool', description: '...', parameters: { ... } },
   execute: async ({ db, userId }, args) => ({
@@ -82,7 +114,9 @@ agentToolRegistry.register({
 });
 ```
 
-No Cordis runtime and no harness dependency — just three explicit seams.
+Add a chat store with `registerChatStorePlugin(...)`, then activate it with
+`setActiveChatStore('my-store')`. The full lifecycle, MCP caching, and security
+rules are in **[`docs/HARNESS.md`](docs/HARNESS.md)**.
 
 ## Run on your Android phone
 
@@ -151,7 +185,8 @@ src/
       index.tsx           # Today dashboard
       chat.tsx            # agent conversation + chat history panel
       tasks.tsx           # task list + quick add
-      settings.tsx        # AI, reminders, account, data
+      settings.tsx        # AI, MCP, reminders, account, data
+      harness.tsx         # plugin dashboard (drawer entry)
   components/             # Brand, Button, TaskItem, ChatBubble, AppSidebar, ...
   context/
     auth.tsx              # session state + sign in/up/out
@@ -167,9 +202,16 @@ src/
       prompt.ts           # system prompt with local date/time
       local-agent.ts      # offline fallback parser
       settings.ts         # provider presets + SecureStore config
+    harness/
+      index.ts            # plugin facade + live snapshot builder
+      types.ts            # HarnessPlugin + HarnessSnapshot types
+    mcp/
+      client.ts           # Streamable HTTP MCP client
+      registry.ts         # mirrors MCP tools into the agent registry
+      settings.ts         # MCP server config in SecureStore
     auth.ts               # hashing, sessions, account queries
-    chat-store.ts         # ChatStore seam + SQLite provider
-    chat.ts               # resolves the chat store for a database
+    chat-store.ts         # ChatStore interface + SQLite implementation
+    chat.ts               # chat store plugin registry (SQLite default)
     db.ts                 # SQLite schema + migrations (v3)
     dates.ts              # formatting + natural-language date parsing
     notifications.ts      # local notification scheduling
@@ -179,6 +221,7 @@ src/
 ```
 
 New screens added under `src/app/` become routes automatically.
+Architecture and plugin guide: [`docs/HARNESS.md`](docs/HARNESS.md).
 
 ## Data model
 

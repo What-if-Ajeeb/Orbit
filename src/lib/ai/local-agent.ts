@@ -44,13 +44,6 @@ function extractCreateText(text: string): { text: string; reminder: boolean } | 
   return null;
 }
 
-function looksLikeQuestion(text: string): boolean {
-  return (
-    /[?]$/.test(text) ||
-    /^(?:what|why|how|who|when|where|which|kya|kaise|kyu|kab|kaun)\b/i.test(text)
-  );
-}
-
 function isGreeting(text: string): boolean {
   return /^(?:hi|hello|hey|namaste|namaskar|hola|yo)\b[!. ]*$/i.test(text.trim());
 }
@@ -59,18 +52,6 @@ function isAcknowledgement(text: string): boolean {
   return /^(?:thanks|thank you|ok|okay|cool|great|nice|perfect|sounds good|haan|theek hai|shukriya|dhanyavad)[!. ]*$/i.test(
     text.trim()
   );
-}
-
-function looksLikeTask(text: string): boolean {
-  if (looksLikeQuestion(text) || text.length < 2 || text.length > 120) {
-    return false;
-  }
-
-  if (text.split(/\s+/).length > 8) {
-    return false;
-  }
-
-  return !/^(?:tell|explain|write|suggest|can you|could you|help me|please tell)\b/i.test(text);
 }
 
 export async function runLocalAgent(
@@ -155,12 +136,12 @@ export async function runLocalAgent(
     return createFromText(db, userId, createIntent.text, createIntent.reminder);
   }
 
-  if (looksLikeTask(input)) {
-    // In local mode a short free-form line is most useful as a task.
-    return createFromText(db, userId, input, false);
-  }
-
-  return { reply: HELP_TEXT, traces: [] };
+  // Never auto-save arbitrary text as a task. Only explicit task or reminder
+  // phrasing above creates something; otherwise explain the local commands.
+  return {
+    reply: `Main is message se apne aap task nahi banata. Task save karne ke liye "add task ..." ya "remind me ..." likho. Natural AI chat ke liye Settings → AI me API key daalo.`,
+    traces: [],
+  };
 }
 
 async function createFromText(

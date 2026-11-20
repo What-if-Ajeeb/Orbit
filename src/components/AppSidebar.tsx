@@ -53,6 +53,13 @@ const NAV_ITEMS: NavItem[] = [
     activeIcon: 'checkbox',
   },
   {
+    label: 'Harness',
+    caption: 'Plugins aur MCP',
+    href: '/harness',
+    icon: 'git-network-outline',
+    activeIcon: 'git-network',
+  },
+  {
     label: 'Settings',
     caption: 'AI key aur account',
     href: '/settings',

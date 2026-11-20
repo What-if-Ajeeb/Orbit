@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Button } from '@/components/Button';
 import { FormError } from '@/components/FormError';
+import { McpServersCard } from '@/components/McpServersCard';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { SidebarButton } from '@/components/SidebarButton';
 import { TextField } from '@/components/TextField';
@@ -418,6 +419,10 @@ export default function SettingsScreen() {
             rehte hain.
           </Text>
         </View>
+
+        <Text style={styles.sectionLabel}>MCP TOOLS</Text>
+
+        <McpServersCard onNotice={setNotice} onError={setError} />
 
         <Text style={styles.sectionLabel}>REMINDERS</Text>
 

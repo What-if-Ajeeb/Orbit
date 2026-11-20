@@ -1,5 +1,6 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
+import { ensureMcpTools } from '../mcp/registry';
 import { runLocalAgent } from './local-agent';
 import { buildSystemPrompt } from './prompt';
 import { requestCompletion } from './providers';
@@ -51,6 +52,10 @@ export async function runAgent(input: AgentInput): Promise<AgentResult> {
       .slice(-20)
       .map((item) => ({ role: item.role, content: item.content }) as LlmMessage),
   ];
+
+  // Refresh MCP tools at most every five minutes; a failing server cannot
+  // block the chat because ensureMcpTools never throws.
+  await ensureMcpTools();
 
   const toolDefinitions = listAgentTools();
   const traces: string[] = [];
