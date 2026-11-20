@@ -39,3 +39,16 @@ Docs: https://docs.expo.dev/eas/index.md
 - If `ios/` and `android/` directories do not exist, they are generated (Continuous Native Generation). Never create or edit them by hand — configure native behavior in `app.json` and config plugins.
 - Expo Go only includes its bundled native modules. After adding a library with native code, the app needs a development build: `npx expo run:ios|android` locally, or `eas build --profile development`.
 - Prefer recommended Expo modules over third-party libraries, and check your available skills before adding dependencies. Docs: https://docs.expo.dev/versions/latest/index.md
+
+## Multi-File Edits, Bugs & Refactors
+
+Before making changes across multiple files, fixing bugs, or running refactors/migrations, read **docs/OPERATIONS.md**. It defines the verification loop:
+
+1. **Edit** — Make targeted changes across one or more files.
+2. **Typecheck** — Run `npx tsc --noEmit`.
+3. **Lint** — Run `npx expo lint`.
+4. **Export** — Run `npx expo export --platform android --no-bytecode`.
+5. **Commit** — Commit only when all checks pass.
+6. **Push** — Push to `main`.
+
+If any step fails, fix the error and restart from step 2. Do not skip checks.
