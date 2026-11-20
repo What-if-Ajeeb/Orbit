@@ -1,0 +1,13 @@
+{
+  "name": "@orbit/dsh-headless",
+  "version": "0.1.0",
+  "description": "Orbit headless profile (stub) — composes the app bundle, like dsh-headless.",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "dsh": {
+    "profile": {
+      "bundles": ["@orbit/dsh-app"]
+    }
+  }
+}

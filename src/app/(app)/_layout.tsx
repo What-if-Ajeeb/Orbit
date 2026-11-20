@@ -3,10 +3,12 @@ import { BlurView } from 'expo-blur';
 import { Tabs, router, type Href } from 'expo-router';
 import { useEffect } from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
+import { useSQLiteContext } from 'expo-sqlite';
 
 import { AppSidebar } from '@/components/AppSidebar';
 import { SidebarProvider } from '@/context/sidebar';
 import { useAppTheme, useStyles, type AppTheme } from '@/context/theme';
+import { setOrbitDb } from '@/lib/harness/plugins/orbit-session';
 
 function NotificationRedirect() {
   useEffect(() => {
@@ -60,6 +62,11 @@ function NotificationRedirect() {
 export default function AppLayout() {
   const { colors, glass } = useAppTheme();
   const styles = useStyles(makeStyles);
+  const db = useSQLiteContext();
+
+  useEffect(() => {
+    setOrbitDb(db);
+  }, [db]);
 
   return (
     <SidebarProvider>

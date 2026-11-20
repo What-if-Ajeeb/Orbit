@@ -6,6 +6,7 @@ import { useEffect } from 'react';
 import { SessionProvider, useSession } from '@/context/auth';
 import { ThemeProvider, useAppTheme } from '@/context/theme';
 import { DATABASE_NAME, migrateDbIfNeeded } from '@/lib/db';
+import { HarnessProvider } from '@/lib/harness/spine/boot';
 import { configureNotifications } from '@/lib/notifications';
 
 void SplashScreen.preventAutoHideAsync();
@@ -17,7 +18,9 @@ export default function RootLayout() {
         <SessionProvider>
           <NotificationSetup />
           <SplashController />
-          <RootNavigator />
+          <HarnessProvider>
+            <RootNavigator />
+          </HarnessProvider>
           <StatusBarController />
         </SessionProvider>
       </ThemeProvider>

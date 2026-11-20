@@ -1,0 +1,13 @@
+{
+  "name": "@orbit/dsh-sdk",
+  "version": "0.1.0",
+  "description": "Orbit SDK profile (stub) — composes the app bundle.",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "dsh": {
+    "profile": {
+      "bundles": ["@orbit/dsh-app"]
+    }
+  }
+}

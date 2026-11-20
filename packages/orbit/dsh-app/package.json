@@ -1,0 +1,13 @@
+{
+  "name": "@orbit/dsh-app",
+  "version": "0.1.0",
+  "description": "Orbit main app bundle for the DeepSeek Harness plugin tree (Phase 3 stub).",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}

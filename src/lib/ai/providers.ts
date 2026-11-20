@@ -419,22 +419,17 @@ async function geminiCompletion(
   };
 }
 
-const openAiAdapter: AiProviderAdapter = {
+export const openAiAdapter: AiProviderAdapter = {
   id: 'openai-compatible',
   label: 'OpenAI-compatible',
   complete: ({ settings, messages, tools }) => openAiCompletion(settings, messages, tools),
 };
 
-const geminiAdapter: AiProviderAdapter = {
+export const geminiAdapter: AiProviderAdapter = {
   id: 'gemini',
   label: 'Google Gemini',
   complete: ({ settings, messages, tools }) => geminiCompletion(settings, messages, tools),
 };
-
-// Built-in adapters. Add-ons can register another protocol at startup with
-// aiProviderRegistry.register(...) and point a preset's adapterId at it.
-aiProviderRegistry.register(openAiAdapter, { replace: true });
-aiProviderRegistry.register(geminiAdapter, { replace: true });
 
 export async function requestCompletion(
   settings: AiSettings,

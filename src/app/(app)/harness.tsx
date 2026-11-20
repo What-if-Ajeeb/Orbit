@@ -1,5 +1,6 @@
 import { useAppTheme, useStyles, type AppTheme } from '@/context/theme';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { getAppContext, type AppContextResult } from '@/lib/harness/spine/context';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import {
@@ -35,6 +36,94 @@ const KIND_ICONS: Record<HarnessPluginKind, keyof typeof Ionicons.glyphMap> = {
   storage: 'server-outline',
   mcp: 'extension-puzzle-outline',
 };
+
+type NativePluginRow = {
+  name: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  summary: string;
+  color: string;
+};
+
+type NativePluginSection = {
+  title: string;
+  rows: NativePluginRow[];
+};
+
+function collectNativeSections(
+  app: AppContextResult,
+  colors: AppTheme['colors']
+): NativePluginSection[] {
+  return [
+    {
+      title: 'TOOLS (ctx.tools)',
+      rows: app.ctx.tools.definitions().map((definition) => ({
+        name: definition.name,
+        icon: 'construct-outline' as keyof typeof Ionicons.glyphMap,
+        summary: definition.description,
+        color: colors.accentSoft,
+      })),
+    },
+    {
+      title: 'LLM (ctx.llm)',
+      rows: app.ctx.llm.list().map((adapter) => ({
+        name: adapter.label,
+        icon: 'sparkles-outline' as keyof typeof Ionicons.glyphMap,
+        summary: adapter.label,
+        color: colors.success,
+      })),
+    },
+    {
+      title: 'MCP (ctx.mcp)',
+      rows: app.ctx.mcp.statuses.map((status) => ({
+        name: status.serverName,
+        icon: 'extension-puzzle-outline' as keyof typeof Ionicons.glyphMap,
+        summary: status.ok ? `${status.toolCount} tools` : (status.error ?? 'Not synced'),
+        color: !status.ok ? colors.danger : status.toolCount > 0 ? colors.success : colors.textFaint,
+      })),
+    },
+    {
+      title: 'AGENT (ctx.agent)',
+      rows: [
+        {
+          name: 'orbit-agent',
+          icon: 'terminal-outline' as keyof typeof Ionicons.glyphMap,
+          summary: 'Agent marker plugin',
+          color: colors.accent,
+        },
+      ],
+    },
+  ];
+}
+
+function NativePluginRowItem({ row }: { row: NativePluginRow }) {
+  const { colors } = useAppTheme();
+  const styles = useStyles(makeStyles);
+
+  return (
+    <View style={styles.nativeRow}>
+      <View style={[styles.pluginIcon, { backgroundColor: row.color }]}>
+        <Ionicons name={row.icon} size={16} color={colors.white} />
+      </View>
+
+      <View style={styles.pluginText}>
+        <View style={styles.pluginNameRow}>
+          <Text numberOfLines={1} style={styles.pluginName}>
+            {row.name}
+          </Text>
+          <Text style={[styles.pluginState, { color: row.color }]}>
+            {row.icon.startsWith('terminal') ? 'READY' : 'ACTIVE'}
+          </Text>
+        </View>
+
+        <Text numberOfLines={1} style={styles.pluginSummary}>
+          {row.summary}
+        </Text>
+      </View>
+
+      <Ionicons name="chevron-forward" size={15} color={colors.textFaint} />
+    </View>
+  );
+}
 
 function stateMeta(
   colors: AppColors
@@ -169,6 +258,7 @@ export default function HarnessScreen() {
   const insets = useSafeAreaInsets();
   const { open: openSidebar } = useSidebar();
   const [snapshot, setSnapshot] = useState<HarnessSnapshot | null>(null);
+  const [nativeSections, setNativeSections] = useState<NativePluginSection[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -188,7 +278,10 @@ export default function HarnessScreen() {
   useFocusEffect(
     useCallback(() => {
       void load();
-    }, [load])
+
+      const app = getAppContext();
+      setNativeSections(app ? collectNativeSections(app, colors) : []);
+    }, [colors, load])
   );
 
   async function syncMcp() {
@@ -434,6 +527,31 @@ export default function HarnessScreen() {
               )}
             </GlassView>
 
+            {nativeSections.map((section) => (
+              <View key={section.title} style={styles.nativeSection}>
+                <SectionTitle label={section.title} count={String(section.rows.length)} />
+
+                <GlassView style={styles.card}>
+                  {section.rows.map((row) => (
+                    <NativePluginRowItem key={row.name} row={row} />
+                  ))}
+                  {section.rows.length === 0 ? (
+                    <View style={styles.empty}>
+                      <Ionicons name="terminal-outline" size={22} color={colors.textFaint} />
+                      <Text style={styles.emptyTitle}>
+                        {section.title === 'MCP (ctx.mcp)'
+                          ? 'Koi MCP server connected nahi'
+                          : 'Koi plugins nahi'}
+                      </Text>
+                      <Text style={styles.emptyText}>
+                        Settings → MCP TOOLS me add karo, ya Sync MCP tap karo.
+                      </Text>
+                    </View>
+                  ) : null}
+                </GlassView>
+              </View>
+            ))}
+
             <Text style={styles.footer}>
               {snapshot.plugins.length} plugins · snapshot {formatTime(snapshot.checkedAt)}
             </Text>
@@ -641,6 +759,17 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
     gap: spacing.sm + 2,
     paddingVertical: spacing.sm + 2,
     paddingHorizontal: spacing.md,
+  },
+  nativeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm + 2,
+    paddingVertical: spacing.sm + 2,
+    paddingHorizontal: spacing.md,
+  },
+  nativeSection: {
+    gap: spacing.xs,
+    marginTop: spacing.md,
   },
   pluginRowBorder: {
     borderTopWidth: 1,

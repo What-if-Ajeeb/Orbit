@@ -1,0 +1,12 @@
+# Orbit app bundle: one patch row per Orbit spine plugin.
+- insert:
+    - id: orbit-session
+      name: '@orbit/dsh-app'
+    - id: orbit-tools
+      name: '@orbit/dsh-app'
+    - id: orbit-llm
+      name: '@orbit/dsh-app'
+    - id: orbit-mcp
+      name: '@orbit/dsh-app'
+    - id: orbit-agent
+      name: '@orbit/dsh-app'

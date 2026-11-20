@@ -5,7 +5,35 @@ that can vary is a plugin with the same lifecycle: register, describe, run.
 
 The **Orbit Harness** is not a framework or a runtime dependency. It is the set of
 explicit registries Orbit already uses, plus a read-only snapshot that powers the
-**Harness** screen. There is no Cordis runtime and no harness package — just seams.
+**Harness** screen.
+
+> **Cordis spine (Phase 1 in progress):** Orbit now mounts the vendored **Cordis**
+> plugin tree (`cordis` package, see `vendor/README.md` and
+> `src/lib/harness/spine/`). The five Orbit plugins below are available on the
+> context: `session`, `tools`, `llm`, `mcp`, `agent`. Static APIs are unchanged
+> while onboarding.
+
+DeepSeek Harness's larger plan is in
+[`docs/deepseek-harness-phase1.md`](../.agents/deepseek-harness-phase1.md)
+(`docs/` -> `.agents/deepseek-harness-phase1.md`).
+
+**Phase 2 — Event surfaces.** Orbit now emits typed Cordis-side events from its
+services: `orbit/tools/register`, `orbit/tools/unregister`, `orbit/tools/change`
+(on every registry mutation), and `orbit/agent/status`, `orbit/agent/created`,
+`orbit/agent/step`, `orbit/agent/request`, `orbit/agent/turn-stopping` (agent
+lifecycle markers). The legacy `session/created`, `session/deleted` still emit
+from `OrbitSession`. The Harness screen reads live state directly from
+`ctx.tools.definitions()`, `ctx.llm.list()`, `ctx.mcp.statuses`, and the
+`orbit-agent` marker — future consumers can intercept via Cordis waterfall
+events instead of the legacy snapshot API.
+
+**Phase 3 — Layers/profiles stubs.** `packages/orbit/dsh-app` (app bundle,
+`dsh.bundle.patch` → `cordis.patch.yml` mounting Orbit's five spine plugins),
+plus profile stubs `packages/orbit/dsh-web`, `packages/orbit/dsh-headless`,
+`packages/orbit/dsh-sdk` (`dsh.profile.bundles: ["@orbit/dsh-app"]`). Root
+`package.json` gained `"workspaces": ["packages/**/*"]`; `npm install` linked
+them. `OrbitApp` (`dsh-app/src/index.ts`) is the standalone plugin factory that
+mounts the five plugins; the in-app boot still mounts them directly today.
 
 ## What is a plugin?
 
