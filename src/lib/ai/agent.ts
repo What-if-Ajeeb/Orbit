@@ -3,6 +3,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 import { ensureMcpTools } from '../mcp/registry';
 import { EventStore } from '../events';
 import { TelemetryStore } from '../telemetry';
+import { policyEngine } from '../policy';
 import { runLocalAgent } from './local-agent';
 import { buildSystemPrompt } from './prompt';
 import { requestCompletion } from './providers';
@@ -22,6 +23,14 @@ export type AgentInput = {
   history: AgentHistoryItem[];
   settings: AiSettings;
   conversationId: number;
+  /**
+   * Asks the user whether a tool call that requires approval may run.
+   * Return false to block the call; return true to execute it.
+   */
+  onToolApproval?: (
+    toolName: string,
+    args: Record<string, unknown>
+  ) => Promise<boolean>;
 };
 
 export type AgentResult = {
@@ -44,7 +53,15 @@ const estimateTokens = (text: string): number =>
   Math.max(1, Math.ceil(text.length / 4));
 
 export async function runAgent(input: AgentInput): Promise<AgentResult> {
-  const { db, userId, userName, history, settings, conversationId } = input;
+  const {
+    db,
+    userId,
+    userName,
+    history,
+    settings,
+    conversationId,
+    onToolApproval,
+  } = input;
 
   const eventStore = new EventStore(db);
   const telemetry = new TelemetryStore(db);
@@ -123,14 +140,91 @@ export async function runAgent(input: AgentInput): Promise<AgentResult> {
       });
 
       for (const call of turn.toolCalls) {
-        await emit('tool_call', { toolName: call.name, args: call.arguments });
+        await emit('tool_call', { toolName: call.name, rawArguments: call.arguments });
 
-        const start = Date.now();
+        const policy = policyEngine.evaluate(
+          call.name,
+          JSON.parse(call.arguments || '{}')
+        );
         let content: string;
         let trace = '';
         let success = true;
         let error: string | undefined;
 
+        if (policy.decision === 'deny') {
+          success = false;
+          error = `Blocked by policy: ${policy.reason ?? policy.ruleName ?? 'policy'}`;
+          content = JSON.stringify({ ok: false, error });
+          trace = `BLOCKED ${call.name}`;
+          await telemetry.recordToolCall(
+            userId,
+            conversationId,
+            call.name,
+            0,
+            null,
+            null,
+            null,
+            false,
+            policy.decision,
+            error
+          );
+          await emit('tool_result', {
+            toolName: call.name,
+            durationMs: 0,
+            success: false,
+            error,
+            resultLength: content.length,
+            policy: policy.decision,
+            rule: policy.ruleName,
+          });
+          messages.push({
+            role: 'tool',
+            toolCallId: call.id,
+            name: call.name,
+            content,
+          });
+          continue;
+        }
+
+        if (policy.decision === 'ask') {
+          const approved = await onToolApproval?.(call.name, JSON.parse(call.arguments || '{}'));
+          if (!approved) {
+            success = false;
+            error = 'User denied tool execution';
+            content = JSON.stringify({ ok: false, error });
+            trace = `DENIED ${call.name}`;
+            await telemetry.recordToolCall(
+              userId,
+              conversationId,
+              call.name,
+              0,
+              null,
+              null,
+              null,
+              false,
+              policy.decision,
+              error
+            );
+            await emit('tool_result', {
+              toolName: call.name,
+              durationMs: 0,
+              success: false,
+              error,
+              resultLength: content.length,
+              policy: policy.decision,
+              rule: policy.ruleName,
+            });
+            messages.push({
+              role: 'tool',
+              toolCallId: call.id,
+              name: call.name,
+              content,
+            });
+            continue;
+          }
+        }
+
+        const start = Date.now();
         try {
           const execution = await executeTool(db, userId, call.name, call.arguments);
           content = execution.content;
@@ -159,16 +253,17 @@ export async function runAgent(input: AgentInput): Promise<AgentResult> {
           null,
           null,
           success,
+          policy.decision,
           error
         );
-
         await emit('tool_result', {
           toolName: call.name,
           durationMs,
           success,
           error,
           resultLength: content.length,
-          trace,
+          policy: policy.decision,
+          rule: policy.ruleName,
         });
 
         messages.push({

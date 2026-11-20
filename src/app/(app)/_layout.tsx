@@ -181,6 +181,19 @@ export default function AppLayout() {
               ),
             }}
           />
+          <Tabs.Screen
+            name="policy"
+            options={{
+              title: 'Policy',
+              tabBarIcon: ({ color, size, focused }) => (
+                <Ionicons
+                  name={focused ? 'shield-checkmark' : 'shield-checkmark-outline'}
+                  size={size}
+                  color={typeof color === 'string' ? color : colors.textMuted}
+                />
+              ),
+            }}
+          />
         </Tabs>
         <AppSidebar />
       </View>

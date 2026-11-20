@@ -25,6 +25,7 @@ and **expo-notifications**.
 - **Orbit Harness** registry for providers, tools, storage, and MCP servers
 - Harness screen with live plugin status, MCP tool counts, manual sync, and the Cordis plugin tree (bhutu-app, bhutu-tools, bhutu-llm, bhutu-mcp, bhutu-agent)
 - Observability: event-sourced session logs (fork/resume/replay) and granular telemetry (tool durations, token usage, cache hit rates)
+- Policy checks: configurable approval gates (`allow`/`deny`/`ask`) and sandboxing rules for every tool call, with per-user approval UI
 - AI settings screen with provider presets, connection test, and secure key storage
 - MCP server connections (HTTP endpoints + optional bearer token) with per-server sync status
 - Offline **local mode** for basic commands when no API key is configured

@@ -77,6 +77,13 @@ const NAV_ITEMS: NavItem[] = [
     activeIcon: 'analytics',
   },
   {
+    label: 'Policy',
+    caption: 'Approval gates aur sandbox',
+    href: '/policy',
+    icon: 'shield-checkmark-outline',
+    activeIcon: 'shield-checkmark',
+  },
+  {
     label: 'Settings',
     caption: 'AI key aur account',
     href: '/settings',

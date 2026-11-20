@@ -1,4 +1,5 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
+import type { PolicyDecision } from './policy';
 
 export type ToolTelemetry = {
   toolName: string;
@@ -8,6 +9,7 @@ export type ToolTelemetry = {
   cacheHit: boolean | null;
   success: boolean;
   error?: string;
+  policyDecision: PolicyDecision;
 };
 
 type ToolAggregate = {
@@ -51,6 +53,7 @@ export class TelemetryStore {
     tokensOut: number | null,
     cacheHit: boolean | null,
     success: boolean,
+    policyDecision: PolicyDecision,
     error?: string
   ): Promise<void> {
     await this.db.runAsync(
@@ -69,6 +72,7 @@ export class TelemetryStore {
         cacheHit,
         success,
         error,
+        policyDecision,
       }),
       userId,
       conversationId,
@@ -153,6 +157,7 @@ export class TelemetryStore {
           cacheHit: payload.cacheHit ?? null,
           success: payload.success,
           error: payload.error,
+          policyDecision: payload.policyDecision ?? 'allow',
         });
       }
     }
