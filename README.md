@@ -23,7 +23,8 @@ and **expo-notifications**.
 - Dark / Light appearance toggle (light palette: Cream, Charcoal, iOS-style accents)
 - Multi-conversation chat history with per-chat delete and a slide-in history panel
 - **Orbit Harness** registry for providers, tools, storage, and MCP servers
-- Harness screen with live plugin status, MCP tool counts, manual sync, and the Cordis plugin tree (orbit-session, orbit-tools, orbit-llm, orbit-mcp, orbit-agent)
+- Harness screen with live plugin status, MCP tool counts, manual sync, and the Cordis plugin tree (bhutu-app, bhutu-tools, bhutu-llm, bhutu-mcp, bhutu-agent)
+- Observability: event-sourced session logs (fork/resume/replay) and granular telemetry (tool durations, token usage, cache hit rates)
 - AI settings screen with provider presets, connection test, and secure key storage
 - MCP server connections (HTTP endpoints + optional bearer token) with per-server sync status
 - Offline **local mode** for basic commands when no API key is configured

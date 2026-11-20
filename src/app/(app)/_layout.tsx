@@ -155,6 +155,32 @@ export default function AppLayout() {
             }}
           />
           <Tabs.Screen name="harness" options={{ href: null }} />
+          <Tabs.Screen
+            name="events"
+            options={{
+              title: 'Events',
+              tabBarIcon: ({ color, size, focused }) => (
+                <Ionicons
+                  name={focused ? 'receipt' : 'receipt-outline'}
+                  size={size}
+                  color={typeof color === 'string' ? color : colors.textMuted}
+                />
+              ),
+            }}
+          />
+          <Tabs.Screen
+            name="telemetry"
+            options={{
+              title: 'Telemetry',
+              tabBarIcon: ({ color, size, focused }) => (
+                <Ionicons
+                  name={focused ? 'analytics' : 'analytics-outline'}
+                  size={size}
+                  color={typeof color === 'string' ? color : colors.textMuted}
+                />
+              ),
+            }}
+          />
         </Tabs>
         <AppSidebar />
       </View>

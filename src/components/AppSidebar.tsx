@@ -63,6 +63,20 @@ const NAV_ITEMS: NavItem[] = [
     activeIcon: 'git-network',
   },
   {
+    label: 'Events',
+    caption: 'Event log aur replay',
+    href: '/events',
+    icon: 'receipt-outline',
+    activeIcon: 'receipt',
+  },
+  {
+    label: 'Telemetry',
+    caption: 'Tool duration aur tokens',
+    href: '/telemetry',
+    icon: 'analytics-outline',
+    activeIcon: 'analytics',
+  },
+  {
     label: 'Settings',
     caption: 'AI key aur account',
     href: '/settings',

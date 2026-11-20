@@ -175,6 +175,7 @@ export default function ChatScreen() {
         userName: activeUser.name,
         history,
         settings,
+        conversationId: activeIdRef.current!,
       });
 
       const assistantMessage = await store.addMessage(
