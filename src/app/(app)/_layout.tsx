@@ -6,7 +6,7 @@ import { Platform, StyleSheet, View } from 'react-native';
 
 import { AppSidebar } from '@/components/AppSidebar';
 import { SidebarProvider } from '@/context/sidebar';
-import { colors, glass } from '@/theme';
+import { useAppTheme, useStyles, type AppTheme } from '@/context/theme';
 
 function NotificationRedirect() {
   useEffect(() => {
@@ -58,6 +58,9 @@ function NotificationRedirect() {
 }
 
 export default function AppLayout() {
+  const { colors, glass } = useAppTheme();
+  const styles = useStyles(makeStyles);
+
   return (
     <SidebarProvider>
       <View style={styles.root}>
@@ -152,9 +155,10 @@ export default function AppLayout() {
   );
 }
 
-const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-});
+const makeStyles = ({ colors }: AppTheme) =>
+  StyleSheet.create({
+    root: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+  });

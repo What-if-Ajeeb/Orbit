@@ -2,11 +2,11 @@
   "expo": {
     "name": "Orbit",
     "slug": "orbit",
-    "version": "1.4.0",
+    "version": "1.5.0",
     "orientation": "portrait",
     "scheme": "orbit",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "dark",
+    "userInterfaceStyle": "light",
     "backgroundColor": "#070B14",
     "ios": {
       "supportsTablet": true,

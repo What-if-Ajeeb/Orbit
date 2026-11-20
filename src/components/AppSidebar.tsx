@@ -1,3 +1,4 @@
+import { useAppTheme, useStyles, type AppTheme } from '@/context/theme';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { BlurView } from 'expo-blur';
 import Constants from 'expo-constants';
@@ -21,7 +22,8 @@ import { Brand } from '@/components/Brand';
 import { useSession } from '@/context/auth';
 import { useSidebar } from '@/context/sidebar';
 import { isAiConfigured, loadAiSettings } from '@/lib/ai/settings';
-import { colors, glass, radius, spacing } from '@/theme';
+import { radius, spacing } from '@/theme';
+
 
 type NavItem = {
   label: string;
@@ -80,6 +82,8 @@ function getInitials(name: string): string {
 }
 
 export function AppSidebar() {
+  const { colors, glass } = useAppTheme();
+  const styles = useStyles(makeStyles);
   const { isOpen, close } = useSidebar();
   const { user, signOut } = useSession();
   const insets = useSafeAreaInsets();
@@ -328,7 +332,7 @@ export function AppSidebar() {
           </Pressable>
 
           <Text style={styles.version}>
-            Orbit v{Constants.expoConfig?.version ?? '1.4.0'} · Android
+            Orbit v{Constants.expoConfig?.version ?? '1.5.0'} · Android
           </Text>
         </View>
       </Animated.View>
@@ -336,7 +340,8 @@ export function AppSidebar() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = ({ colors, glass }: AppTheme) =>
+  StyleSheet.create({
   overlay: {
     position: 'absolute',
     top: 0,
@@ -576,4 +581,4 @@ const styles = StyleSheet.create({
   pressed: {
     opacity: 0.78,
   },
-});
+  });

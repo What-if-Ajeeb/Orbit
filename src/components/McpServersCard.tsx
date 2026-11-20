@@ -1,3 +1,4 @@
+import { useAppTheme, useStyles, type AppTheme } from '@/context/theme';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
@@ -27,7 +28,8 @@ import {
   saveMcpServers,
   type McpServerConfig,
 } from '@/lib/mcp/settings';
-import { colors, glass, radius, spacing } from '@/theme';
+import { radius, spacing } from '@/theme';
+
 
 type McpServersCardProps = {
   onNotice: (message: string) => void;
@@ -55,6 +57,8 @@ function toolLabel(count: number): string {
 }
 
 export function McpServersCard({ onNotice, onError }: McpServersCardProps) {
+  const { colors } = useAppTheme();
+  const styles = useStyles(makeStyles);
   const [servers, setServers] = useState<McpServerConfig[]>([]);
   const [statuses, setStatuses] = useState<McpServerSyncStatus[]>([]);
   const [toolCount, setToolCount] = useState(0);
@@ -508,7 +512,8 @@ export function McpServersCard({ onNotice, onError }: McpServersCardProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = ({ colors, glass }: AppTheme) =>
+  StyleSheet.create({
   card: {
     padding: spacing.md + 2,
     marginTop: spacing.sm,
@@ -714,4 +719,4 @@ const styles = StyleSheet.create({
     borderTopColor: glass.border,
     paddingTop: spacing.sm,
   },
-});
+  });

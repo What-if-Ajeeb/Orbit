@@ -8,7 +8,8 @@ import {
   type ViewStyle,
 } from 'react-native';
 
-import { glass, glassShadow, radius } from '@/theme';
+import { useAppTheme, useStyles, type AppTheme } from '@/context/theme';
+import { radius } from '@/theme';
 
 type GlassVariant = 'card' | 'panel' | 'pill' | 'bar';
 
@@ -23,24 +24,6 @@ type GlassViewProps = PropsWithChildren<{
   accessibilityLabel?: string;
 }>;
 
-const variantStyle: Record<GlassVariant, ViewStyle> = {
-  card: {
-    borderRadius: radius.lg,
-    backgroundColor: glass.fill,
-  },
-  panel: {
-    borderRadius: radius.xl,
-    backgroundColor: glass.fillStrong,
-  },
-  pill: {
-    borderRadius: radius.pill,
-    backgroundColor: glass.fillSoft,
-  },
-  bar: {
-    backgroundColor: glass.fillStrong,
-  },
-};
-
 /**
  * Frosted surface used for large UI blocks. Children sit above the blur, so
  * existing padding, gaps, and layout styles keep working unchanged.
@@ -49,17 +32,20 @@ export function GlassView({
   children,
   style,
   variant = 'card',
-  intensity = glass.intensity,
+  intensity,
   bordered = true,
   highlight = true,
   onPress,
   disabled = false,
   accessibilityLabel,
 }: GlassViewProps) {
+  const { glass } = useAppTheme();
+  const styles = useStyles(makeStyles);
+
   const layers = (
     <>
       <BlurView
-        intensity={intensity}
+        intensity={intensity ?? glass.intensity}
         tint={glass.tint}
         blurMethod={glass.blurMethod}
         blurReductionFactor={glass.blurReductionFactor}
@@ -73,7 +59,7 @@ export function GlassView({
 
   const surfaceStyle = [
     styles.base,
-    variantStyle[variant],
+    styles[variant],
     bordered && styles.bordered,
     style,
   ];
@@ -96,25 +82,41 @@ export function GlassView({
   return <View style={surfaceStyle}>{layers}</View>;
 }
 
-const styles = StyleSheet.create({
-  base: {
-    ...glassShadow,
-    overflow: 'hidden',
-  },
-  bordered: {
-    borderWidth: 1,
-    borderColor: glass.border,
-    borderTopColor: glass.borderBright,
-  },
-  highlight: {
-    position: 'absolute',
-    top: 0,
-    left: '12%',
-    right: '12%',
-    height: 1,
-    backgroundColor: glass.highlight,
-  },
-  pressed: {
-    opacity: 0.82,
-  },
-});
+const makeStyles = ({ glass, glassShadow }: AppTheme) =>
+  StyleSheet.create({
+    base: {
+      ...glassShadow,
+      overflow: 'hidden',
+    },
+    card: {
+      borderRadius: radius.lg,
+      backgroundColor: glass.fill,
+    },
+    panel: {
+      borderRadius: radius.xl,
+      backgroundColor: glass.fillStrong,
+    },
+    pill: {
+      borderRadius: radius.pill,
+      backgroundColor: glass.fillSoft,
+    },
+    bar: {
+      backgroundColor: glass.fillStrong,
+    },
+    bordered: {
+      borderWidth: 1,
+      borderColor: glass.border,
+      borderTopColor: glass.borderBright,
+    },
+    highlight: {
+      position: 'absolute',
+      top: 0,
+      left: '12%',
+      right: '12%',
+      height: 1,
+      backgroundColor: glass.highlight,
+    },
+    pressed: {
+      opacity: 0.82,
+    },
+  });

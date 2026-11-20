@@ -20,6 +20,7 @@ and **expo-notifications**.
 - Task list with quick-add (`pay bill tomorrow 5pm`), filters, and long-press delete
 - App-wide navigation drawer with profile, AI status, and sign out
 - Glassmorphism UI: frosted panels, ambient glows, and translucent surfaces
+- Dark / Light appearance toggle (light palette: Cream, Charcoal, iOS-style accents)
 - Multi-conversation chat history with per-chat delete and a slide-in history panel
 - **Orbit Harness** registry for providers, tools, storage, and MCP servers
 - Harness screen with live plugin status, MCP tool counts, and manual sync
@@ -147,8 +148,8 @@ the GitHub Release. Download it on your phone and install it (allow "Install
 unknown apps" for your browser/file manager).
 
 ```sh
-git tag v1.4.0
-git push origin v1.4.0
+git tag v1.5.0
+git push origin v1.5.0
 ```
 
 Releases page:

@@ -1,3 +1,4 @@
+import { useAppTheme, useStyles, type AppTheme } from '@/context/theme';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import Constants from 'expo-constants';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -15,7 +16,8 @@ import { useSession } from '@/context/auth';
 import { useSidebar } from '@/context/sidebar';
 import { isAiConfigured, loadAiSettings } from '@/lib/ai/settings';
 import { completeTask, getTaskStats, listTasks, reopenTask, type Task, type TaskStats } from '@/lib/tasks';
-import { colors, radius, spacing } from '@/theme';
+import { radius, spacing } from '@/theme';
+
 
 function getGreeting(): string {
   const hour = new Date().getHours();
@@ -42,6 +44,7 @@ function getInitials(name: string): string {
 }
 
 function StatCard({ value, label, tone }: { value: number; label: string; tone: string }) {
+  const styles = useStyles(makeStyles);
   return (
     <GlassView style={styles.statCard}>
       <Text style={[styles.statValue, { color: tone }]}>{value}</Text>
@@ -51,6 +54,8 @@ function StatCard({ value, label, tone }: { value: number; label: string; tone: 
 }
 
 export default function HomeScreen() {
+  const { colors } = useAppTheme();
+  const styles = useStyles(makeStyles);
   const db = useSQLiteContext();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -216,14 +221,15 @@ export default function HomeScreen() {
         </View>
 
         <Text style={styles.footer}>
-          Orbit v{Constants.expoConfig?.version ?? '1.4.0'} · local-first · Android
+          Orbit v{Constants.expoConfig?.version ?? '1.5.0'} · local-first · Android
         </Text>
       </ScrollView>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = ({ colors }: AppTheme) =>
+  StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: colors.background,
@@ -427,4 +433,4 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: spacing.xl,
   },
-});
+  });

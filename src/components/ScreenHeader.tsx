@@ -1,7 +1,9 @@
+import { useStyles, type AppTheme } from '@/context/theme';
 import type { ReactNode } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { colors, spacing } from '@/theme';
+import { spacing } from '@/theme';
+
 
 type ScreenHeaderProps = {
   eyebrow?: string;
@@ -12,6 +14,7 @@ type ScreenHeaderProps = {
 };
 
 export function ScreenHeader({ eyebrow, title, subtitle, left, right }: ScreenHeaderProps) {
+  const styles = useStyles(makeStyles);
   return (
     <View style={styles.row}>
       {left ? <View style={styles.left}>{left}</View> : null}
@@ -25,7 +28,8 @@ export function ScreenHeader({ eyebrow, title, subtitle, left, right }: ScreenHe
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = ({ colors }: AppTheme) =>
+  StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -57,4 +61,4 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     marginTop: 4,
   },
-});
+  });

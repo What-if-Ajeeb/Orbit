@@ -1,3 +1,4 @@
+import { useStyles, type AppTheme } from '@/context/theme';
 import type { PropsWithChildren } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -5,7 +6,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GlassBackdrop } from './GlassBackdrop';
 import { GlassView } from './GlassView';
 import { Brand } from './Brand';
-import { colors, spacing } from '@/theme';
+import { spacing } from '@/theme';
+
 
 type AuthShellProps = PropsWithChildren<{
   title: string;
@@ -13,6 +15,7 @@ type AuthShellProps = PropsWithChildren<{
 }>;
 
 export function AuthShell({ title, subtitle, children }: AuthShellProps) {
+  const styles = useStyles(makeStyles);
   const insets = useSafeAreaInsets();
 
   return (
@@ -47,7 +50,8 @@ export function AuthShell({ title, subtitle, children }: AuthShellProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = ({ colors }: AppTheme) =>
+  StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: colors.background,
@@ -85,4 +89,4 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     gap: spacing.md,
   },
-});
+  });

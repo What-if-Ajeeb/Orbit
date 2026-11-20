@@ -1,3 +1,4 @@
+import { useAppTheme, useStyles, type AppTheme } from '@/context/theme';
 import { useState } from 'react';
 import {
   Pressable,
@@ -8,7 +9,8 @@ import {
   type TextInputProps,
 } from 'react-native';
 
-import { colors, glass, radius, spacing } from '@/theme';
+import { radius, spacing } from '@/theme';
+
 
 type TextFieldProps = Omit<TextInputProps, 'style'> & {
   label: string;
@@ -16,6 +18,8 @@ type TextFieldProps = Omit<TextInputProps, 'style'> & {
 };
 
 export function TextField({ label, hint, secureTextEntry, onFocus, onBlur, ...props }: TextFieldProps) {
+  const { colors } = useAppTheme();
+  const styles = useStyles(makeStyles);
   const [isFocused, setIsFocused] = useState(false);
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const isPassword = Boolean(secureTextEntry);
@@ -55,7 +59,8 @@ export function TextField({ label, hint, secureTextEntry, onFocus, onBlur, ...pr
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = ({ colors, glass }: AppTheme) =>
+  StyleSheet.create({
   field: {
     gap: spacing.xs + 2,
   },
@@ -99,4 +104,4 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 17,
   },
-});
+  });

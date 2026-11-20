@@ -1,9 +1,11 @@
+import { useAppTheme, useStyles, type AppTheme } from '@/context/theme';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { formatDue, isPast } from '@/lib/dates';
 import type { Task } from '@/lib/tasks';
-import { colors, glass, radius, spacing } from '@/theme';
+import { radius, spacing } from '@/theme';
+
 
 type TaskItemProps = {
   task: Task;
@@ -12,6 +14,8 @@ type TaskItemProps = {
 };
 
 export function TaskItem({ task, onToggle, onLongPress }: TaskItemProps) {
+  const { colors } = useAppTheme();
+  const styles = useStyles(makeStyles);
   const isDone = task.status === 'done';
   const when = task.remindAt ?? task.dueAt;
   const isOverdue = !isDone && isPast(when);
@@ -69,7 +73,8 @@ export function TaskItem({ task, onToggle, onLongPress }: TaskItemProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = ({ colors, glass }: AppTheme) =>
+  StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -152,4 +157,4 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     backgroundColor: colors.danger,
   },
-});
+  });

@@ -1,3 +1,4 @@
+import { useStyles, type AppTheme } from '@/context/theme';
 import { Link, router } from 'expo-router';
 import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
@@ -7,9 +8,11 @@ import { Button } from '@/components/Button';
 import { FormError } from '@/components/FormError';
 import { TextField } from '@/components/TextField';
 import { useSession } from '@/context/auth';
-import { colors, spacing } from '@/theme';
+import { spacing } from '@/theme';
+
 
 export default function SignInScreen() {
+  const styles = useStyles(makeStyles);
   const { signIn } = useSession();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -85,7 +88,8 @@ export default function SignInScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = ({ colors }: AppTheme) =>
+  StyleSheet.create({
   footer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -109,4 +113,4 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: spacing.sm,
   },
-});
+  });

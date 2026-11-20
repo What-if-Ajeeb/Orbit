@@ -1,3 +1,4 @@
+import { useAppTheme, useStyles, type AppTheme } from '@/context/theme';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import Constants from 'expo-constants';
 import { useFocusEffect } from 'expo-router';
@@ -43,7 +44,8 @@ import {
   sendTestReminder,
   type NotificationPermissionState,
 } from '@/lib/notifications';
-import { colors, glass, radius, spacing } from '@/theme';
+import { radius, spacing } from '@/theme';
+
 
 function permissionLabel(state: NotificationPermissionState): string {
   if (state === 'granted') {
@@ -58,6 +60,8 @@ function permissionLabel(state: NotificationPermissionState): string {
 }
 
 export default function SettingsScreen() {
+  const { colors, mode, setMode } = useAppTheme();
+  const styles = useStyles(makeStyles);
   const db = useSQLiteContext();
   const insets = useSafeAreaInsets();
   const { user, signOut } = useSession();
@@ -297,6 +301,48 @@ export default function SettingsScreen() {
           </View>
         ) : null}
 
+        <Text style={styles.sectionLabel}>APPEARANCE</Text>
+
+        <GlassView style={styles.card}>
+          <View style={styles.cardTitleRow}>
+            <View style={styles.cardTitleText}>
+              <Text style={styles.cardTitle}>Theme</Text>
+              <Text style={styles.cardCaption}>
+                Dark glass ya light Cream glass — choice aapki.
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.providerRow}>
+            {(['dark', 'light'] as const).map((option) => {
+              const active = mode === option;
+
+              return (
+                <Pressable
+                  key={option}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
+                  onPress={() => setMode(option)}
+                  style={[
+                    styles.providerChip,
+                    styles.themeChip,
+                    active && styles.providerChipActive,
+                  ]}
+                >
+                  <Ionicons
+                    name={option === 'dark' ? 'moon-outline' : 'sunny-outline'}
+                    size={14}
+                    color={active ? colors.accent : colors.textMuted}
+                  />
+                  <Text style={[styles.providerText, active && styles.providerTextActive]}>
+                    {option === 'dark' ? 'Dark' : 'Light'}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </GlassView>
+
         <Text style={styles.sectionLabel}>AI BRAIN</Text>
 
         <GlassView style={styles.card}>
@@ -504,14 +550,15 @@ export default function SettingsScreen() {
         </GlassView>
 
         <Text style={styles.footer}>
-          Orbit v{Constants.expoConfig?.version ?? '1.4.0'} · local-first · Android
+          Orbit v{Constants.expoConfig?.version ?? '1.5.0'} · local-first · Android
         </Text>
       </ScrollView>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = ({ colors, glass }: AppTheme) =>
+  StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: colors.background,
@@ -600,6 +647,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: spacing.xs,
+  },
+  themeChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    minWidth: 96,
+    justifyContent: 'center',
   },
   providerChip: {
     borderRadius: radius.pill,
@@ -722,4 +776,4 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: spacing.xl,
   },
-});
+  });

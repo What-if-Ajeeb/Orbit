@@ -1,3 +1,4 @@
+import { useAppTheme, useStyles, type AppTheme } from '@/context/theme';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { BlurTargetView, BlurView } from 'expo-blur';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -33,7 +34,8 @@ import {
   type ChatMessage,
   type Conversation,
 } from '@/lib/chat';
-import { colors, glass, radius, spacing } from '@/theme';
+import { radius, spacing } from '@/theme';
+
 
 const SUGGESTIONS = [
   'Remind me to drink water at 6pm',
@@ -42,6 +44,8 @@ const SUGGESTIONS = [
 ];
 
 export default function ChatScreen() {
+  const { colors } = useAppTheme();
+  const styles = useStyles(makeStyles);
   const db = useSQLiteContext();
   const store = getChatStore(db);
   const router = useRouter();
@@ -475,7 +479,8 @@ export default function ChatScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = ({ colors, glass }: AppTheme) =>
+  StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: colors.background,
@@ -688,4 +693,4 @@ const styles = StyleSheet.create({
   pressed: {
     opacity: 0.8,
   },
-});
+  });

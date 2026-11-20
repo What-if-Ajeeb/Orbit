@@ -1,14 +1,18 @@
+import { useAppTheme, useStyles, type AppTheme } from '@/context/theme';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { StyleSheet, Text, View } from 'react-native';
 
 import type { ChatMessage } from '@/lib/chat';
-import { colors, glass, radius, spacing } from '@/theme';
+import { radius, spacing } from '@/theme';
+
 
 type ChatBubbleProps = {
   message: ChatMessage;
 };
 
 export function ChatBubble({ message }: ChatBubbleProps) {
+  const { colors } = useAppTheme();
+  const styles = useStyles(makeStyles);
   const isUser = message.role === 'user';
 
   return (
@@ -38,7 +42,8 @@ export function ChatBubble({ message }: ChatBubbleProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = ({ colors, glass }: AppTheme) =>
+  StyleSheet.create({
   wrap: {
     maxWidth: '86%',
     gap: 5,
@@ -106,4 +111,4 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontSize: 12,
   },
-});
+  });

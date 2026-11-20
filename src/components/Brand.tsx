@@ -1,6 +1,6 @@
 import { View } from 'react-native';
 
-import { colors } from '@/theme';
+import { useAppTheme } from '@/context/theme';
 
 type BrandProps = {
   size?: number;
@@ -11,6 +11,8 @@ type BrandProps = {
  * size without extra icon/font assets.
  */
 export function Brand({ size = 56 }: BrandProps) {
+  const { colors } = useAppTheme();
+
   return (
     <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
       <View

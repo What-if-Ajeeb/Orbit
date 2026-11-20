@@ -4,23 +4,31 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 
 import { SessionProvider, useSession } from '@/context/auth';
+import { ThemeProvider, useAppTheme } from '@/context/theme';
 import { DATABASE_NAME, migrateDbIfNeeded } from '@/lib/db';
 import { configureNotifications } from '@/lib/notifications';
-import { colors } from '@/theme';
 
 void SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
   return (
     <SQLiteProvider databaseName={DATABASE_NAME} onInit={migrateDbIfNeeded}>
-      <SessionProvider>
-        <NotificationSetup />
-        <SplashController />
-        <RootNavigator />
-        <StatusBar style="light" />
-      </SessionProvider>
+      <ThemeProvider>
+        <SessionProvider>
+          <NotificationSetup />
+          <SplashController />
+          <RootNavigator />
+          <StatusBarController />
+        </SessionProvider>
+      </ThemeProvider>
     </SQLiteProvider>
   );
+}
+
+function StatusBarController() {
+  const { isLight } = useAppTheme();
+
+  return <StatusBar style={isLight ? 'dark' : 'light'} />;
 }
 
 function NotificationSetup() {
@@ -45,6 +53,7 @@ function SplashController() {
 
 function RootNavigator() {
   const { user } = useSession();
+  const { colors } = useAppTheme();
 
   return (
     <Stack

@@ -1,3 +1,4 @@
+import { useAppTheme, useStyles, type AppTheme } from '@/context/theme';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
@@ -25,7 +26,8 @@ import {
   type HarnessPluginState,
   type HarnessSnapshot,
 } from '@/lib/harness';
-import { colors, glass, radius, spacing } from '@/theme';
+import { radius, spacing, type AppColors } from '@/theme';
+
 
 const KIND_ICONS: Record<HarnessPluginKind, keyof typeof Ionicons.glyphMap> = {
   provider: 'sparkles-outline',
@@ -34,36 +36,37 @@ const KIND_ICONS: Record<HarnessPluginKind, keyof typeof Ionicons.glyphMap> = {
   mcp: 'extension-puzzle-outline',
 };
 
-const STATE_META: Record<
-  HarnessPluginState,
-  { label: string; color: string; background: string }
-> = {
-  active: {
-    label: 'ACTIVE',
-    color: colors.success,
-    background: colors.successSoft,
-  },
-  ready: {
-    label: 'READY',
-    color: colors.accent,
-    background: colors.accentSoft,
-  },
-  configured: {
-    label: 'SETUP',
-    color: colors.textMuted,
-    background: colors.surfaceAlt,
-  },
-  disabled: {
-    label: 'OFF',
-    color: colors.textFaint,
-    background: colors.surfaceAlt,
-  },
-  error: {
-    label: 'ERROR',
-    color: colors.danger,
-    background: colors.dangerSoft,
-  },
-};
+function stateMeta(
+  colors: AppColors
+): Record<HarnessPluginState, { label: string; color: string; background: string }> {
+  return {
+    active: {
+      label: 'ACTIVE',
+      color: colors.success,
+      background: colors.successSoft,
+    },
+    ready: {
+      label: 'READY',
+      color: colors.accent,
+      background: colors.accentSoft,
+    },
+    configured: {
+      label: 'SETUP',
+      color: colors.textMuted,
+      background: colors.surfaceAlt,
+    },
+    disabled: {
+      label: 'OFF',
+      color: colors.textFaint,
+      background: colors.surfaceAlt,
+    },
+    error: {
+      label: 'ERROR',
+      color: colors.danger,
+      background: colors.dangerSoft,
+    },
+  };
+}
 
 function formatTime(timestamp: number): string {
   const date = new Date(timestamp);
@@ -83,7 +86,9 @@ function PluginRow({
   first: boolean;
   onPress?: () => void;
 }) {
-  const meta = STATE_META[plugin.state];
+  const { colors } = useAppTheme();
+  const styles = useStyles(makeStyles);
+  const meta = stateMeta(colors)[plugin.state];
 
   const body = (
     <View style={[styles.pluginRow, !first && styles.pluginRowBorder]}>
@@ -138,6 +143,7 @@ function PluginRow({
 }
 
 function Stat({ value, label }: { value: number; label: string }) {
+  const styles = useStyles(makeStyles);
   return (
     <View style={styles.stat}>
       <Text style={styles.statValue}>{value}</Text>
@@ -147,6 +153,7 @@ function Stat({ value, label }: { value: number; label: string }) {
 }
 
 function SectionTitle({ label, count }: { label: string; count: string }) {
+  const styles = useStyles(makeStyles);
   return (
     <View style={styles.sectionRow}>
       <Text style={styles.sectionLabel}>{label}</Text>
@@ -156,6 +163,8 @@ function SectionTitle({ label, count }: { label: string; count: string }) {
 }
 
 export default function HarnessScreen() {
+  const { colors } = useAppTheme();
+  const styles = useStyles(makeStyles);
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { open: openSidebar } = useSidebar();
@@ -435,7 +444,8 @@ export default function HarnessScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = ({ colors, glass }: AppTheme) =>
+  StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: colors.background,
@@ -713,4 +723,4 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: spacing.xl,
   },
-});
+  });

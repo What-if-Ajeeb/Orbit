@@ -1,3 +1,4 @@
+import { useAppTheme, useStyles, type AppTheme } from '@/context/theme';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useFocusEffect } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
@@ -31,7 +32,8 @@ import {
   type Task,
   type TaskStatus,
 } from '@/lib/tasks';
-import { colors, glass, radius, spacing } from '@/theme';
+import { radius, spacing } from '@/theme';
+
 
 type Filter = TaskStatus | 'all';
 
@@ -42,6 +44,8 @@ const FILTERS: { id: Filter; label: string }[] = [
 ];
 
 export default function TasksScreen() {
+  const { colors } = useAppTheme();
+  const styles = useStyles(makeStyles);
   const db = useSQLiteContext();
   const insets = useSafeAreaInsets();
   const { user } = useSession();
@@ -273,7 +277,8 @@ export default function TasksScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = ({ colors, glass }: AppTheme) =>
+  StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: colors.background,
@@ -393,4 +398,4 @@ const styles = StyleSheet.create({
   pressed: {
     opacity: 0.8,
   },
-});
+  });

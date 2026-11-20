@@ -1,9 +1,11 @@
+import { useStyles, type AppTheme } from '@/context/theme';
 import { StyleSheet, View } from 'react-native';
 
-import { colors } from '@/theme';
+
 
 /** Ambient color blobs that give the frosted surfaces something to refract. */
 export function GlassBackdrop() {
+  const styles = useStyles(makeStyles);
   return (
     <View pointerEvents="none" style={StyleSheet.absoluteFill}>
       <View style={[styles.blob, styles.topRight]} />
@@ -13,7 +15,8 @@ export function GlassBackdrop() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = ({ colors }: AppTheme) =>
+  StyleSheet.create({
   blob: {
     position: 'absolute',
     borderRadius: 999,
@@ -39,4 +42,4 @@ const styles = StyleSheet.create({
     height: 280,
     backgroundColor: 'rgba(109, 139, 255, 0.06)',
   },
-});
+  });

@@ -1,3 +1,4 @@
+import { useAppTheme, useStyles, type AppTheme } from '@/context/theme';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { BlurView } from 'expo-blur';
 import { useEffect, useState } from 'react';
@@ -16,7 +17,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { Conversation } from '@/lib/chat';
 import { formatRelative } from '@/lib/dates';
-import { colors, glass, radius, spacing } from '@/theme';
+import { radius, spacing } from '@/theme';
+
 
 type ChatHistoryPanelProps = {
   visible: boolean;
@@ -40,6 +42,8 @@ function ConversationRow({
   onSelect: () => void;
   onDelete: () => void;
 }) {
+  const { colors } = useAppTheme();
+  const styles = useStyles(makeStyles);
   const countLabel = `${conversation.messageCount} ${
     conversation.messageCount === 1 ? 'message' : 'messages'
   }`;
@@ -96,6 +100,8 @@ export function ChatHistoryPanel({
   onNew,
   onDelete,
 }: ChatHistoryPanelProps) {
+  const { colors, glass } = useAppTheme();
+  const styles = useStyles(makeStyles);
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const [progress] = useState(() => new Animated.Value(0));
@@ -244,7 +250,8 @@ export function ChatHistoryPanel({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = ({ colors, glass }: AppTheme) =>
+  StyleSheet.create({
   overlay: {
     position: 'absolute',
     top: 0,
@@ -434,4 +441,4 @@ const styles = StyleSheet.create({
   pressed: {
     opacity: 0.78,
   },
-});
+  });

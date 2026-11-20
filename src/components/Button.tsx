@@ -1,6 +1,7 @@
 import { ActivityIndicator, Pressable, StyleSheet, Text, type ViewStyle } from 'react-native';
 
-import { colors, glass, glassShadow, radius, spacing } from '@/theme';
+import { useAppTheme, useStyles, type AppTheme } from '@/context/theme';
+import { radius, spacing } from '@/theme';
 
 type ButtonVariant = 'primary' | 'secondary' | 'danger' | 'ghost';
 
@@ -13,27 +14,6 @@ type ButtonProps = {
   style?: ViewStyle;
 };
 
-const backgroundByVariant: Record<ButtonVariant, string> = {
-  primary: colors.accentStrong,
-  secondary: glass.fill,
-  danger: 'rgba(255, 107, 122, 0.14)',
-  ghost: 'transparent',
-};
-
-const borderByVariant: Record<ButtonVariant, string> = {
-  primary: 'transparent',
-  secondary: glass.border,
-  danger: 'rgba(255, 107, 122, 0.32)',
-  ghost: 'transparent',
-};
-
-const labelByVariant: Record<ButtonVariant, string> = {
-  primary: colors.white,
-  secondary: colors.text,
-  danger: colors.danger,
-  ghost: colors.textMuted,
-};
-
 export function Button({
   label,
   onPress,
@@ -42,7 +22,30 @@ export function Button({
   disabled = false,
   style,
 }: ButtonProps) {
+  const { colors, glass } = useAppTheme();
+  const styles = useStyles(makeStyles);
   const isDisabled = disabled || loading;
+
+  const backgroundByVariant: Record<ButtonVariant, string> = {
+    primary: colors.accentStrong,
+    secondary: glass.fill,
+    danger: colors.dangerSoft,
+    ghost: 'transparent',
+  };
+
+  const borderByVariant: Record<ButtonVariant, string> = {
+    primary: 'transparent',
+    secondary: glass.border,
+    danger: colors.dangerSoft,
+    ghost: 'transparent',
+  };
+
+  const labelByVariant: Record<ButtonVariant, string> = {
+    primary: colors.white,
+    secondary: colors.text,
+    danger: colors.danger,
+    ghost: colors.textMuted,
+  };
 
   return (
     <Pressable
@@ -70,27 +73,28 @@ export function Button({
   );
 }
 
-const styles = StyleSheet.create({
-  base: {
-    ...glassShadow,
-    minHeight: 54,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderTopColor: glass.borderBright,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: spacing.lg,
-  },
-  pressed: {
-    opacity: 0.85,
-    transform: [{ scale: 0.995 }],
-  },
-  disabled: {
-    opacity: 0.55,
-  },
-  label: {
-    fontSize: 16,
-    fontWeight: '600',
-    letterSpacing: 0.2,
-  },
-});
+const makeStyles = ({ glass, glassShadow }: AppTheme) =>
+  StyleSheet.create({
+    base: {
+      ...glassShadow,
+      minHeight: 54,
+      borderRadius: radius.md,
+      borderWidth: 1,
+      borderTopColor: glass.borderBright,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: spacing.lg,
+    },
+    pressed: {
+      opacity: 0.85,
+      transform: [{ scale: 0.995 }],
+    },
+    disabled: {
+      opacity: 0.55,
+    },
+    label: {
+      fontSize: 16,
+      fontWeight: '600',
+      letterSpacing: 0.2,
+    },
+  });

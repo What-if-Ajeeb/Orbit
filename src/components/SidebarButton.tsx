@@ -1,7 +1,8 @@
+import { useAppTheme, useStyles, type AppTheme } from '@/context/theme';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Pressable, StyleSheet, type ViewStyle } from 'react-native';
 
-import { colors, glass } from '@/theme';
+
 
 type SidebarButtonProps = {
   onPress: () => void;
@@ -9,6 +10,8 @@ type SidebarButtonProps = {
 };
 
 export function SidebarButton({ onPress, style }: SidebarButtonProps) {
+  const { colors } = useAppTheme();
+  const styles = useStyles(makeStyles);
   return (
     <Pressable
       accessibilityRole="button"
@@ -22,7 +25,8 @@ export function SidebarButton({ onPress, style }: SidebarButtonProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = ({ glass }: AppTheme) =>
+  StyleSheet.create({
   button: {
     width: 40,
     height: 40,
@@ -37,4 +41,4 @@ const styles = StyleSheet.create({
   pressed: {
     opacity: 0.75,
   },
-});
+  });
