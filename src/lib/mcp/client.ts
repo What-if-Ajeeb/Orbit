@@ -4,7 +4,7 @@ import type { JsonSchema } from '../ai/types';
 import type { McpServerConfig } from './settings';
 
 const CLIENT_NAME = 'Orbit';
-const CLIENT_VERSION = '1.3.0';
+const CLIENT_VERSION = '1.4.0';
 
 /** Latest per-request-metadata revision (no initialize handshake). */
 const MODERN_PROTOCOL_VERSION = '2026-07-28';

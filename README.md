@@ -147,8 +147,8 @@ the GitHub Release. Download it on your phone and install it (allow "Install
 unknown apps" for your browser/file manager).
 
 ```sh
-git tag v1.3.0
-git push origin v1.3.0
+git tag v1.4.0
+git push origin v1.4.0
 ```
 
 Releases page:
