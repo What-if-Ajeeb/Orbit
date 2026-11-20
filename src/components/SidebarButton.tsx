@@ -1,7 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Pressable, StyleSheet, type ViewStyle } from 'react-native';
 
-import { colors } from '@/theme';
+import { colors, glass } from '@/theme';
 
 type SidebarButtonProps = {
   onPress: () => void;
@@ -27,9 +27,10 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 13,
-    backgroundColor: 'rgba(16, 26, 44, 0.68)',
+    backgroundColor: glass.fillStrong,
     borderWidth: 1,
-    borderColor: 'rgba(148, 177, 255, 0.18)',
+    borderColor: glass.border,
+    borderTopColor: glass.borderBright,
     alignItems: 'center',
     justifyContent: 'center',
   },

@@ -2,7 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { StyleSheet, Text, View } from 'react-native';
 
 import type { ChatMessage } from '@/lib/chat';
-import { colors, radius, spacing } from '@/theme';
+import { colors, glass, radius, spacing } from '@/theme';
 
 type ChatBubbleProps = {
   message: ChatMessage;
@@ -75,9 +75,14 @@ const styles = StyleSheet.create({
     borderBottomRightRadius: 6,
   },
   assistantBubble: {
-    backgroundColor: 'rgba(16, 26, 44, 0.72)',
-    borderColor: 'rgba(148, 177, 255, 0.16)',
-    borderTopColor: 'rgba(255, 255, 255, 0.14)',
+    shadowColor: glass.shadow,
+    shadowOpacity: 0.22,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
+    backgroundColor: glass.fill,
+    borderColor: glass.border,
+    borderTopColor: glass.borderBright,
     borderBottomLeftRadius: 6,
   },
   text: {

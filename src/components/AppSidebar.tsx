@@ -1,4 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { BlurView } from 'expo-blur';
 import Constants from 'expo-constants';
 import { router, usePathname, type Href } from 'expo-router';
 import { useEffect, useState } from 'react';
@@ -20,7 +21,7 @@ import { Brand } from '@/components/Brand';
 import { useSession } from '@/context/auth';
 import { useSidebar } from '@/context/sidebar';
 import { isAiConfigured, loadAiSettings } from '@/lib/ai/settings';
-import { colors, radius, spacing } from '@/theme';
+import { colors, glass, radius, spacing } from '@/theme';
 
 type NavItem = {
   label: string;
@@ -184,6 +185,14 @@ export function AppSidebar() {
       accessibilityViewIsModal={isOpen}
     >
       <Animated.View style={[styles.backdrop, { opacity: backdropOpacity }]}>
+        <BlurView
+          intensity={22}
+          tint={glass.tint}
+          blurMethod={glass.blurMethod}
+          blurReductionFactor={glass.blurReductionFactor}
+          pointerEvents="none"
+          style={StyleSheet.absoluteFill}
+        />
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Close menu"
@@ -203,6 +212,14 @@ export function AppSidebar() {
           },
         ]}
       >
+        <BlurView
+          intensity={82}
+          tint={glass.tint}
+          blurMethod={glass.blurMethod}
+          blurReductionFactor={glass.blurReductionFactor}
+          pointerEvents="none"
+          style={StyleSheet.absoluteFill}
+        />
         <View pointerEvents="none" style={styles.glow} />
 
         <View style={styles.brandRow}>
@@ -335,7 +352,7 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     left: 0,
-    backgroundColor: 'rgba(3, 6, 12, 0.62)',
+    backgroundColor: 'rgba(3, 6, 12, 0.42)',
   },
   backdropPress: {
     flex: 1,
@@ -345,11 +362,11 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: 0,
     left: 0,
-    backgroundColor: '#0A111E',
+    backgroundColor: 'rgba(9, 15, 27, 0.62)',
     borderTopRightRadius: radius.xl,
     borderBottomRightRadius: radius.xl,
     borderRightWidth: 1,
-    borderRightColor: 'rgba(148, 177, 255, 0.2)',
+    borderRightColor: glass.borderBright,
     paddingHorizontal: spacing.md,
     shadowColor: '#000000',
     shadowOpacity: 0.5,
@@ -391,9 +408,9 @@ const styles = StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: 12,
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    backgroundColor: glass.fillSoft,
     borderWidth: 1,
-    borderColor: 'rgba(148, 177, 255, 0.16)',
+    borderColor: glass.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -402,9 +419,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.sm + 2,
     marginTop: spacing.lg,
-    backgroundColor: 'rgba(16, 26, 44, 0.72)',
+    backgroundColor: glass.fill,
     borderWidth: 1,
-    borderColor: 'rgba(148, 177, 255, 0.14)',
+    borderColor: glass.border,
+    borderTopColor: glass.borderBright,
     borderRadius: radius.lg,
     padding: spacing.sm + 2,
   },
@@ -451,8 +469,8 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(62, 224, 161, 0.22)',
   },
   aiBadgeOff: {
-    backgroundColor: colors.surfaceAlt,
-    borderColor: colors.border,
+    backgroundColor: glass.fillSoft,
+    borderColor: glass.border,
   },
   aiText: {
     flex: 1,
@@ -501,7 +519,7 @@ const styles = StyleSheet.create({
     width: 38,
     height: 38,
     borderRadius: 12,
-    backgroundColor: 'rgba(255, 255, 255, 0.045)',
+    backgroundColor: glass.fillSoft,
     alignItems: 'center',
     justifyContent: 'center',
   },

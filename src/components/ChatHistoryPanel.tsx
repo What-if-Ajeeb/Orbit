@@ -1,4 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { BlurView } from 'expo-blur';
 import { useEffect, useState } from 'react';
 import {
   Animated,
@@ -15,7 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { Conversation } from '@/lib/chat';
 import { formatRelative } from '@/lib/dates';
-import { colors, radius, spacing } from '@/theme';
+import { colors, glass, radius, spacing } from '@/theme';
 
 type ChatHistoryPanelProps = {
   visible: boolean;
@@ -139,6 +140,14 @@ export function ChatHistoryPanel({
       accessibilityViewIsModal={visible}
     >
       <Animated.View style={[styles.backdrop, { opacity: backdropOpacity }]}>
+        <BlurView
+          intensity={22}
+          tint={glass.tint}
+          blurMethod={glass.blurMethod}
+          blurReductionFactor={glass.blurReductionFactor}
+          pointerEvents="none"
+          style={StyleSheet.absoluteFill}
+        />
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Close chat history"
@@ -158,6 +167,14 @@ export function ChatHistoryPanel({
           },
         ]}
       >
+        <BlurView
+          intensity={82}
+          tint={glass.tint}
+          blurMethod={glass.blurMethod}
+          blurReductionFactor={glass.blurReductionFactor}
+          pointerEvents="none"
+          style={StyleSheet.absoluteFill}
+        />
         <View pointerEvents="none" style={styles.glow} />
 
         <View style={styles.header}>
@@ -243,7 +260,7 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     left: 0,
-    backgroundColor: 'rgba(3, 6, 12, 0.56)',
+    backgroundColor: 'rgba(3, 6, 12, 0.42)',
   },
   backdropPress: {
     flex: 1,
@@ -253,11 +270,11 @@ const styles = StyleSheet.create({
     top: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: '#0A111E',
+    backgroundColor: 'rgba(9, 15, 27, 0.62)',
     borderTopLeftRadius: radius.xl,
     borderBottomLeftRadius: radius.xl,
     borderLeftWidth: 1,
-    borderLeftColor: 'rgba(148, 177, 255, 0.2)',
+    borderLeftColor: glass.borderBright,
     paddingHorizontal: spacing.md,
     shadowColor: '#000000',
     shadowOpacity: 0.5,
@@ -304,9 +321,9 @@ const styles = StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: 12,
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    backgroundColor: glass.fillSoft,
     borderWidth: 1,
-    borderColor: 'rgba(148, 177, 255, 0.16)',
+    borderColor: glass.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -345,8 +362,9 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: 'transparent',
-    backgroundColor: 'rgba(255, 255, 255, 0.025)',
+    borderColor: glass.border,
+    borderTopColor: glass.borderBright,
+    backgroundColor: glass.fillSoft,
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.sm,
   },
@@ -358,7 +376,7 @@ const styles = StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: 11,
-    backgroundColor: 'rgba(255, 255, 255, 0.045)',
+    backgroundColor: glass.fillSoft,
     alignItems: 'center',
     justifyContent: 'center',
   },

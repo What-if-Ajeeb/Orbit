@@ -19,6 +19,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Brand } from '@/components/Brand';
 import { ChatBubble } from '@/components/ChatBubble';
+import { GlassBackdrop } from '@/components/GlassBackdrop';
 import { ChatHistoryPanel } from '@/components/ChatHistoryPanel';
 import { FormError } from '@/components/FormError';
 import { ScreenHeader } from '@/components/ScreenHeader';
@@ -32,7 +33,7 @@ import {
   type ChatMessage,
   type Conversation,
 } from '@/lib/chat';
-import { colors, radius, spacing } from '@/theme';
+import { colors, glass, radius, spacing } from '@/theme';
 
 const SUGGESTIONS = [
   'Remind me to drink water at 6pm',
@@ -291,7 +292,7 @@ export default function ChatScreen() {
 
   return (
     <KeyboardAvoidingView style={styles.root} behavior="padding">
-      <View pointerEvents="none" style={styles.glow} />
+      <GlassBackdrop />
 
       <BlurTargetView ref={blurTargetRef} style={styles.flex}>
         <View style={[styles.header, { paddingTop: insets.top + spacing.md }]}>
@@ -482,15 +483,6 @@ const styles = StyleSheet.create({
   flex: {
     flex: 1,
   },
-  glow: {
-    position: 'absolute',
-    top: -160,
-    right: -110,
-    width: 300,
-    height: 300,
-    borderRadius: 150,
-    backgroundColor: colors.accentSoft,
-  },
   header: {
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.sm,
@@ -508,9 +500,10 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: 'rgba(16, 26, 44, 0.68)',
+    backgroundColor: glass.fillStrong,
     borderWidth: 1,
-    borderColor: 'rgba(148, 177, 255, 0.18)',
+    borderColor: glass.border,
+    borderTopColor: glass.borderBright,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -537,9 +530,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    backgroundColor: colors.accentSoft,
+    backgroundColor: 'rgba(109, 139, 255, 0.10)',
     borderWidth: 1,
-    borderColor: 'rgba(109, 139, 255, 0.25)',
+    borderColor: 'rgba(109, 139, 255, 0.28)',
+    borderTopColor: glass.borderBright,
     borderRadius: radius.md,
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
@@ -586,9 +580,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: spacing.md,
-    backgroundColor: 'rgba(16, 26, 44, 0.72)',
+    backgroundColor: glass.fill,
     borderWidth: 1,
-    borderColor: 'rgba(148, 177, 255, 0.16)',
+    borderColor: glass.border,
+    borderTopColor: glass.borderBright,
     borderRadius: radius.md,
     paddingVertical: spacing.sm + 3,
     paddingHorizontal: spacing.md,
@@ -615,8 +610,8 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: radius.lg,
     borderTopRightRadius: radius.lg,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(148, 177, 255, 0.22)',
-    backgroundColor: 'rgba(7, 11, 20, 0.55)',
+    borderTopColor: glass.borderBright,
+    backgroundColor: 'rgba(7, 11, 20, 0.48)',
     shadowColor: '#000000',
     shadowOpacity: 0.35,
     shadowRadius: 18,
@@ -660,9 +655,10 @@ const styles = StyleSheet.create({
     lineHeight: 21,
     maxHeight: 120,
     minHeight: 48,
-    backgroundColor: 'rgba(255, 255, 255, 0.055)',
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
     borderWidth: 1,
-    borderColor: 'rgba(159, 184, 255, 0.22)',
+    borderColor: glass.border,
+    borderTopColor: glass.borderBright,
     borderRadius: radius.lg,
     paddingHorizontal: spacing.md,
     paddingTop: 13,

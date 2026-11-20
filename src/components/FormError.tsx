@@ -1,6 +1,6 @@
 import { StyleSheet, Text, View } from 'react-native';
 
-import { colors, radius, spacing } from '@/theme';
+import { colors, glass, radius, spacing } from '@/theme';
 
 type FormMessageProps = {
   message: string | null;
@@ -24,9 +24,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: spacing.sm,
-    backgroundColor: colors.dangerSoft,
+    backgroundColor: 'rgba(255, 107, 122, 0.10)',
     borderWidth: 1,
-    borderColor: 'rgba(255, 107, 122, 0.25)',
+    borderColor: 'rgba(255, 107, 122, 0.28)',
+    borderTopColor: glass.borderBright,
     borderRadius: radius.md,
     paddingVertical: spacing.sm + 2,
     paddingHorizontal: spacing.md,

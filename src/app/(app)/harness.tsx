@@ -12,6 +12,8 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FormError } from '@/components/FormError';
+import { GlassBackdrop } from '@/components/GlassBackdrop';
+import { GlassView } from '@/components/GlassView';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { SidebarButton } from '@/components/SidebarButton';
 import { useSidebar } from '@/context/sidebar';
@@ -23,7 +25,7 @@ import {
   type HarnessPluginState,
   type HarnessSnapshot,
 } from '@/lib/harness';
-import { colors, radius, spacing } from '@/theme';
+import { colors, glass, radius, spacing } from '@/theme';
 
 const KIND_ICONS: Record<HarnessPluginKind, keyof typeof Ionicons.glyphMap> = {
   provider: 'sparkles-outline',
@@ -226,7 +228,7 @@ export default function HarnessScreen() {
 
   return (
     <View style={styles.root}>
-      <View pointerEvents="none" style={styles.glow} />
+      <GlassBackdrop />
 
       <ScrollView
         contentContainerStyle={[
@@ -255,7 +257,7 @@ export default function HarnessScreen() {
           </View>
         ) : null}
 
-        <View style={styles.hero}>
+        <GlassView style={styles.hero}>
           <View style={styles.heroTop}>
             <View style={styles.heroIcon}>
               <Ionicons name="git-network" size={20} color={colors.accent} />
@@ -340,7 +342,7 @@ export default function HarnessScreen() {
               <Text style={styles.secondaryText}>Settings</Text>
             </Pressable>
           </View>
-        </View>
+        </GlassView>
 
         {!snapshot ? (
           <View style={styles.loading}>
@@ -350,7 +352,7 @@ export default function HarnessScreen() {
           <>
             <SectionTitle label="AI PROVIDERS" count={`${providers.length}`} />
 
-            <View style={styles.card}>
+            <GlassView style={styles.card}>
               {providers.map((plugin, index) => (
                 <PluginRow
                   key={plugin.id}
@@ -359,23 +361,23 @@ export default function HarnessScreen() {
                   onPress={() => router.push('/settings')}
                 />
               ))}
-            </View>
+            </GlassView>
 
             <SectionTitle label="TOOLS" count={`${tools.length} built-in`} />
 
-            <View style={styles.card}>
+            <GlassView style={styles.card}>
               {tools.map((plugin, index) => (
                 <PluginRow key={plugin.id} plugin={plugin} first={index === 0} />
               ))}
-            </View>
+            </GlassView>
 
             <SectionTitle label="STORAGE" count={`${storages.length}`} />
 
-            <View style={styles.card}>
+            <GlassView style={styles.card}>
               {storages.map((plugin, index) => (
                 <PluginRow key={plugin.id} plugin={plugin} first={index === 0} />
               ))}
-            </View>
+            </GlassView>
 
             <SectionTitle
               label="MCP SERVERS"
@@ -386,7 +388,7 @@ export default function HarnessScreen() {
               }
             />
 
-            <View style={styles.card}>
+            <GlassView style={styles.card}>
               {mcpServers.length === 0 ? (
                 <View style={styles.empty}>
                   <Ionicons
@@ -421,7 +423,7 @@ export default function HarnessScreen() {
                   />
                 ))
               )}
-            </View>
+            </GlassView>
 
             <Text style={styles.footer}>
               {snapshot.plugins.length} plugins · snapshot {formatTime(snapshot.checkedAt)}
@@ -438,15 +440,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  glow: {
-    position: 'absolute',
-    top: -170,
-    right: -110,
-    width: 300,
-    height: 300,
-    borderRadius: 150,
-    backgroundColor: colors.accentSoft,
-  },
   content: {
     flexGrow: 1,
     paddingHorizontal: spacing.lg,
@@ -458,9 +451,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: spacing.sm,
-    backgroundColor: colors.successSoft,
+    backgroundColor: 'rgba(62, 224, 161, 0.10)',
     borderWidth: 1,
-    borderColor: 'rgba(62, 224, 161, 0.25)',
+    borderColor: 'rgba(62, 224, 161, 0.28)',
+    borderTopColor: glass.borderBright,
     borderRadius: radius.md,
     paddingVertical: spacing.sm + 2,
     paddingHorizontal: spacing.md,
@@ -473,10 +467,7 @@ const styles = StyleSheet.create({
     lineHeight: 19,
   },
   hero: {
-    backgroundColor: colors.backgroundElevated,
-    borderWidth: 1,
     borderColor: 'rgba(109, 139, 255, 0.3)',
-    borderRadius: radius.lg,
     padding: spacing.md + 2,
     marginTop: spacing.lg,
     gap: spacing.md,
@@ -542,9 +533,10 @@ const styles = StyleSheet.create({
   stat: {
     flex: 1,
     alignItems: 'center',
-    backgroundColor: colors.surface,
+    backgroundColor: glass.fillSoft,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: glass.border,
+    borderTopColor: glass.borderBright,
     borderRadius: radius.md,
     paddingVertical: spacing.sm,
     gap: 1,
@@ -574,8 +566,9 @@ const styles = StyleSheet.create({
     minHeight: 44,
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: 'rgba(109, 139, 255, 0.32)',
-    backgroundColor: colors.accentSoft,
+    borderColor: colors.borderFocus,
+    backgroundColor: 'rgba(109, 139, 255, 0.14)',
+    borderTopColor: glass.borderBright,
   },
   actionText: {
     color: colors.accent,
@@ -591,8 +584,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surfaceAlt,
+    borderColor: glass.border,
+    borderTopColor: glass.borderBright,
+    backgroundColor: glass.fill,
   },
   secondaryText: {
     color: colors.textMuted,
@@ -628,10 +622,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   card: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.lg,
     marginTop: spacing.xs,
     overflow: 'hidden',
   },

@@ -1,6 +1,6 @@
 import { ActivityIndicator, Pressable, StyleSheet, Text, type ViewStyle } from 'react-native';
 
-import { colors, radius, spacing } from '@/theme';
+import { colors, glass, glassShadow, radius, spacing } from '@/theme';
 
 type ButtonVariant = 'primary' | 'secondary' | 'danger' | 'ghost';
 
@@ -15,14 +15,14 @@ type ButtonProps = {
 
 const backgroundByVariant: Record<ButtonVariant, string> = {
   primary: colors.accentStrong,
-  secondary: colors.surfaceAlt,
-  danger: colors.dangerSoft,
+  secondary: glass.fill,
+  danger: 'rgba(255, 107, 122, 0.14)',
   ghost: 'transparent',
 };
 
 const borderByVariant: Record<ButtonVariant, string> = {
   primary: 'transparent',
-  secondary: colors.border,
+  secondary: glass.border,
   danger: 'rgba(255, 107, 122, 0.32)',
   ghost: 'transparent',
 };
@@ -72,9 +72,11 @@ export function Button({
 
 const styles = StyleSheet.create({
   base: {
+    ...glassShadow,
     minHeight: 54,
     borderRadius: radius.md,
     borderWidth: 1,
+    borderTopColor: glass.borderBright,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: spacing.lg,

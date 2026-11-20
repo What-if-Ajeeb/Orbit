@@ -1,11 +1,12 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { BlurView } from 'expo-blur';
 import { Tabs, router, type Href } from 'expo-router';
 import { useEffect } from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
 
 import { AppSidebar } from '@/components/AppSidebar';
 import { SidebarProvider } from '@/context/sidebar';
-import { colors } from '@/theme';
+import { colors, glass } from '@/theme';
 
 function NotificationRedirect() {
   useEffect(() => {
@@ -67,9 +68,18 @@ export default function AppLayout() {
             tabBarActiveTintColor: colors.accent,
             tabBarInactiveTintColor: colors.textFaint,
             tabBarHideOnKeyboard: true,
+            tabBarBackground: () => (
+              <BlurView
+                intensity={78}
+                tint={glass.tint}
+                blurMethod={glass.blurMethod}
+                blurReductionFactor={glass.blurReductionFactor}
+                style={StyleSheet.absoluteFill}
+              />
+            ),
             tabBarStyle: {
-              backgroundColor: colors.backgroundElevated,
-              borderTopColor: colors.border,
+              backgroundColor: 'transparent',
+              borderTopColor: glass.borderBright,
               borderTopWidth: 1,
               paddingTop: 5,
             },

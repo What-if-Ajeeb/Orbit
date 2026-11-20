@@ -2,6 +2,8 @@ import type { PropsWithChildren } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { GlassBackdrop } from './GlassBackdrop';
+import { GlassView } from './GlassView';
 import { Brand } from './Brand';
 import { colors, spacing } from '@/theme';
 
@@ -15,8 +17,7 @@ export function AuthShell({ title, subtitle, children }: AuthShellProps) {
 
   return (
     <View style={styles.root}>
-      <View pointerEvents="none" style={styles.glowTop} />
-      <View pointerEvents="none" style={styles.glowBottom} />
+      <GlassBackdrop />
 
       <KeyboardAvoidingView
         style={styles.flex}
@@ -38,7 +39,7 @@ export function AuthShell({ title, subtitle, children }: AuthShellProps) {
             <Text style={styles.title}>{title}</Text>
             <Text style={styles.subtitle}>{subtitle}</Text>
 
-            <View style={styles.form}>{children}</View>
+            <GlassView style={styles.form}>{children}</GlassView>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -81,25 +82,7 @@ const styles = StyleSheet.create({
   },
   form: {
     marginTop: spacing.xl,
+    padding: spacing.lg,
     gap: spacing.md,
-  },
-  glowTop: {
-    position: 'absolute',
-    top: -140,
-    right: -110,
-    width: 300,
-    height: 300,
-    borderRadius: 150,
-    backgroundColor: colors.accentSoft,
-    opacity: 0.9,
-  },
-  glowBottom: {
-    position: 'absolute',
-    bottom: -160,
-    left: -120,
-    width: 320,
-    height: 320,
-    borderRadius: 160,
-    backgroundColor: 'rgba(62, 224, 161, 0.05)',
   },
 });

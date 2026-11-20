@@ -33,3 +33,29 @@ export const spacing = {
   lg: 24,
   xl: 32,
 } as const;
+
+/**
+ * Shared glassmorphism tokens. Blur is applied only to large surfaces; small
+ * rows and chips use the translucent fills to keep scrolling smooth.
+ */
+export const glass = {
+  blurMethod: 'dimezisBlurViewSdk31Plus' as const,
+  blurReductionFactor: 5,
+  intensity: 64,
+  tint: 'dark' as const,
+  fill: 'rgba(16, 26, 44, 0.56)',
+  fillStrong: 'rgba(9, 15, 27, 0.76)',
+  fillSoft: 'rgba(255, 255, 255, 0.05)',
+  border: 'rgba(148, 177, 255, 0.18)',
+  borderBright: 'rgba(255, 255, 255, 0.14)',
+  highlight: 'rgba(255, 255, 255, 0.18)',
+  shadow: '#030712',
+} as const;
+
+export const glassShadow = {
+  shadowColor: glass.shadow,
+  shadowOpacity: 0.4,
+  shadowRadius: 18,
+  shadowOffset: { width: 0, height: 8 },
+  elevation: 12,
+} as const;

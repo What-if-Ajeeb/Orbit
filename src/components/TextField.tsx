@@ -8,7 +8,7 @@ import {
   type TextInputProps,
 } from 'react-native';
 
-import { colors, radius, spacing } from '@/theme';
+import { colors, glass, radius, spacing } from '@/theme';
 
 type TextFieldProps = Omit<TextInputProps, 'style'> & {
   label: string;
@@ -70,16 +70,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    backgroundColor: colors.surface,
+    backgroundColor: glass.fill,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: glass.border,
+    borderTopColor: glass.borderBright,
     borderRadius: radius.md,
     paddingHorizontal: spacing.md,
     minHeight: 54,
   },
   inputWrapFocused: {
     borderColor: colors.borderFocus,
-    backgroundColor: colors.backgroundElevated,
+    borderTopColor: colors.borderFocus,
+    backgroundColor: glass.fillStrong,
   },
   input: {
     flex: 1,

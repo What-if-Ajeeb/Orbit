@@ -17,6 +17,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Button } from '@/components/Button';
 import { FormError } from '@/components/FormError';
+import { GlassBackdrop } from '@/components/GlassBackdrop';
+import { GlassView } from '@/components/GlassView';
 import { McpServersCard } from '@/components/McpServersCard';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { SidebarButton } from '@/components/SidebarButton';
@@ -41,7 +43,7 @@ import {
   sendTestReminder,
   type NotificationPermissionState,
 } from '@/lib/notifications';
-import { colors, radius, spacing } from '@/theme';
+import { colors, glass, radius, spacing } from '@/theme';
 
 function permissionLabel(state: NotificationPermissionState): string {
   if (state === 'granted') {
@@ -265,7 +267,7 @@ export default function SettingsScreen() {
 
   return (
     <View style={styles.root}>
-      <View pointerEvents="none" style={styles.glow} />
+      <GlassBackdrop />
 
       <ScrollView
         contentContainerStyle={[
@@ -297,7 +299,7 @@ export default function SettingsScreen() {
 
         <Text style={styles.sectionLabel}>AI BRAIN</Text>
 
-        <View style={styles.card}>
+        <GlassView style={styles.card}>
           <View style={styles.cardTitleRow}>
             <View style={styles.cardTitleText}>
               <Text style={styles.cardTitle}>Cloud AI</Text>
@@ -418,7 +420,7 @@ export default function SettingsScreen() {
             Chat messages aapke AI provider ko jaate hain. Tasks, account aur key is phone par
             rehte hain.
           </Text>
-        </View>
+        </GlassView>
 
         <Text style={styles.sectionLabel}>MCP TOOLS</Text>
 
@@ -426,7 +428,7 @@ export default function SettingsScreen() {
 
         <Text style={styles.sectionLabel}>REMINDERS</Text>
 
-        <View style={styles.card}>
+        <GlassView style={styles.card}>
           <View style={styles.statusRow}>
             <View
               style={[
@@ -461,11 +463,11 @@ export default function SettingsScreen() {
               />
             ) : null}
           </View>
-        </View>
+        </GlassView>
 
         <Text style={styles.sectionLabel}>ACCOUNT</Text>
 
-        <View style={styles.card}>
+        <GlassView style={styles.card}>
           <View style={styles.profileRow}>
             <View style={styles.profileAvatar}>
               <Ionicons name="person" size={18} color={colors.accent} />
@@ -483,11 +485,11 @@ export default function SettingsScreen() {
             loading={isSigningOut}
             style={styles.signOut}
           />
-        </View>
+        </GlassView>
 
         <Text style={styles.sectionLabel}>DATA</Text>
 
-        <View style={styles.card}>
+        <GlassView style={styles.card}>
           <Text style={styles.cardTitle}>Chat history</Text>
           <Text style={styles.cardCaption}>
             Agent conversation clear karo. Tasks aur reminders untouched rehte hain.
@@ -499,7 +501,7 @@ export default function SettingsScreen() {
             onPress={confirmClearChat}
             style={styles.clearButton}
           />
-        </View>
+        </GlassView>
 
         <Text style={styles.footer}>
           Orbit v{Constants.expoConfig?.version ?? '1.3.0'} · local-first · Android
@@ -524,15 +526,6 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     paddingHorizontal: spacing.lg,
   },
-  glow: {
-    position: 'absolute',
-    top: -170,
-    right: -110,
-    width: 300,
-    height: 300,
-    borderRadius: 150,
-    backgroundColor: colors.accentSoft,
-  },
   bannerWrap: {
     marginTop: spacing.lg,
   },
@@ -540,9 +533,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: spacing.sm,
-    backgroundColor: colors.successSoft,
+    backgroundColor: 'rgba(62, 224, 161, 0.10)',
     borderWidth: 1,
-    borderColor: 'rgba(62, 224, 161, 0.25)',
+    borderColor: 'rgba(62, 224, 161, 0.28)',
+    borderTopColor: glass.borderBright,
     borderRadius: radius.md,
     paddingVertical: spacing.sm + 2,
     paddingHorizontal: spacing.md,
@@ -563,10 +557,6 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xs,
   },
   card: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.lg,
     padding: spacing.md + 2,
     marginTop: spacing.sm,
     gap: spacing.md,
@@ -614,8 +604,9 @@ const styles = StyleSheet.create({
   providerChip: {
     borderRadius: radius.pill,
     borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surfaceAlt,
+    borderColor: glass.border,
+    borderTopColor: glass.borderBright,
+    backgroundColor: glass.fillSoft,
     paddingHorizontal: spacing.sm + 4,
     paddingVertical: 7,
   },

@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { formatDue, isPast } from '@/lib/dates';
 import type { Task } from '@/lib/tasks';
-import { colors, radius, spacing } from '@/theme';
+import { colors, glass, radius, spacing } from '@/theme';
 
 type TaskItemProps = {
   task: Task;
@@ -74,9 +74,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-    backgroundColor: colors.surface,
+    backgroundColor: glass.fillSoft,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: glass.border,
+    borderTopColor: glass.borderBright,
     borderRadius: radius.md,
     paddingVertical: spacing.sm + 4,
     paddingHorizontal: spacing.md,

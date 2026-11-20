@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { GlassBackdrop } from '@/components/GlassBackdrop';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { SidebarButton } from '@/components/SidebarButton';
 import { TaskItem } from '@/components/TaskItem';
@@ -30,7 +31,7 @@ import {
   type Task,
   type TaskStatus,
 } from '@/lib/tasks';
-import { colors, radius, spacing } from '@/theme';
+import { colors, glass, radius, spacing } from '@/theme';
 
 type Filter = TaskStatus | 'all';
 
@@ -160,7 +161,7 @@ export default function TasksScreen() {
 
   return (
     <View style={styles.root}>
-      <View pointerEvents="none" style={styles.glow} />
+      <GlassBackdrop />
 
       <View style={[styles.header, { paddingTop: insets.top + spacing.md }]}>
         <ScreenHeader
@@ -277,15 +278,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  glow: {
-    position: 'absolute',
-    top: -170,
-    left: -110,
-    width: 300,
-    height: 300,
-    borderRadius: 150,
-    backgroundColor: colors.accentSoft,
-  },
   header: {
     paddingHorizontal: spacing.lg,
   },
@@ -299,9 +291,10 @@ const styles = StyleSheet.create({
     minHeight: 50,
     color: colors.text,
     fontSize: 14,
-    backgroundColor: colors.surface,
+    backgroundColor: glass.fillSoft,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: glass.border,
+    borderTopColor: glass.borderBright,
     borderRadius: radius.md,
     paddingHorizontal: spacing.md,
   },
@@ -320,9 +313,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    backgroundColor: colors.dangerSoft,
+    backgroundColor: 'rgba(255, 107, 122, 0.10)',
     borderWidth: 1,
-    borderColor: 'rgba(255, 107, 122, 0.25)',
+    borderColor: 'rgba(255, 107, 122, 0.28)',
+    borderTopColor: glass.borderBright,
     borderRadius: radius.md,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
@@ -337,7 +331,9 @@ const styles = StyleSheet.create({
   filters: {
     flexDirection: 'row',
     gap: spacing.xs,
-    backgroundColor: colors.surfaceAlt,
+    backgroundColor: glass.fillStrong,
+    borderWidth: 1,
+    borderColor: glass.border,
     borderRadius: radius.pill,
     padding: 4,
     marginTop: spacing.md,

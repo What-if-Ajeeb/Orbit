@@ -13,6 +13,7 @@ import {
 
 import { Button } from '@/components/Button';
 import { FormError } from '@/components/FormError';
+import { GlassView } from '@/components/GlassView';
 import { TextField } from '@/components/TextField';
 import {
   getMcpStatuses,
@@ -26,7 +27,7 @@ import {
   saveMcpServers,
   type McpServerConfig,
 } from '@/lib/mcp/settings';
-import { colors, radius, spacing } from '@/theme';
+import { colors, glass, radius, spacing } from '@/theme';
 
 type McpServersCardProps = {
   onNotice: (message: string) => void;
@@ -266,7 +267,7 @@ export function McpServersCard({ onNotice, onError }: McpServersCardProps) {
   }
 
   return (
-    <View style={styles.card}>
+    <GlassView style={styles.card}>
       <View style={styles.headerRow}>
         <View style={styles.headerText}>
           <Text style={styles.title}>MCP servers</Text>
@@ -363,7 +364,7 @@ export function McpServersCard({ onNotice, onError }: McpServersCardProps) {
       )}
 
       {draft ? (
-        <View style={styles.editor}>
+        <GlassView style={styles.editor}>
           <Text style={styles.editorTitle}>
             {draft.id ? 'Edit server' : 'Add server'}
           </Text>
@@ -453,7 +454,7 @@ export function McpServersCard({ onNotice, onError }: McpServersCardProps) {
               <Text style={styles.removeText}>Remove server</Text>
             </Pressable>
           ) : null}
-        </View>
+        </GlassView>
       ) : (
         <View style={styles.footerRow}>
           <Pressable
@@ -503,16 +504,12 @@ export function McpServersCard({ onNotice, onError }: McpServersCardProps) {
         MCP tools cloud AI mode me available hote hain. Server results untrusted data
         ki tarah treat hote hain.
       </Text>
-    </View>
+    </GlassView>
   );
 }
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.lg,
     padding: spacing.md + 2,
     marginTop: spacing.sm,
     gap: spacing.md,
@@ -556,10 +553,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    backgroundColor: colors.backgroundElevated,
+    backgroundColor: glass.fillSoft,
     borderWidth: 1,
     borderStyle: 'dashed',
-    borderColor: colors.border,
+    borderColor: glass.border,
+    borderTopColor: glass.borderBright,
     borderRadius: radius.md,
     padding: spacing.md,
   },
@@ -576,9 +574,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    backgroundColor: colors.backgroundElevated,
+    backgroundColor: glass.fillSoft,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: glass.border,
+    borderTopColor: glass.borderBright,
     borderRadius: radius.md,
     paddingVertical: spacing.sm,
     paddingLeft: spacing.md,
@@ -613,9 +612,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   editor: {
-    backgroundColor: colors.backgroundElevated,
-    borderWidth: 1,
-    borderColor: 'rgba(109, 139, 255, 0.28)',
+    borderColor: 'rgba(109, 139, 255, 0.35)',
     borderRadius: radius.md,
     padding: spacing.md,
     gap: spacing.md,
@@ -677,8 +674,9 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     borderWidth: 1,
     borderStyle: 'dashed',
-    borderColor: 'rgba(109, 139, 255, 0.35)',
-    backgroundColor: colors.accentSoft,
+    borderColor: colors.borderFocus,
+    backgroundColor: 'rgba(109, 139, 255, 0.14)',
+    borderTopColor: glass.borderBright,
   },
   addText: {
     color: colors.accent,
@@ -694,8 +692,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surfaceAlt,
+    borderColor: glass.border,
+    borderTopColor: glass.borderBright,
+    backgroundColor: glass.fill,
   },
   syncText: {
     fontSize: 13,
@@ -712,7 +711,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     lineHeight: 16,
     borderTopWidth: 1,
-    borderTopColor: colors.border,
+    borderTopColor: glass.border,
     paddingTop: spacing.sm,
   },
 });

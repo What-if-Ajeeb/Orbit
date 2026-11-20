@@ -7,6 +7,8 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Brand } from '@/components/Brand';
+import { GlassBackdrop } from '@/components/GlassBackdrop';
+import { GlassView } from '@/components/GlassView';
 import { SidebarButton } from '@/components/SidebarButton';
 import { TaskItem } from '@/components/TaskItem';
 import { useSession } from '@/context/auth';
@@ -41,10 +43,10 @@ function getInitials(name: string): string {
 
 function StatCard({ value, label, tone }: { value: number; label: string; tone: string }) {
   return (
-    <View style={styles.statCard}>
+    <GlassView style={styles.statCard}>
       <Text style={[styles.statValue, { color: tone }]}>{value}</Text>
       <Text style={styles.statLabel}>{label}</Text>
-    </View>
+    </GlassView>
   );
 }
 
@@ -111,7 +113,7 @@ export default function HomeScreen() {
 
   return (
     <View style={styles.root}>
-      <View pointerEvents="none" style={styles.glow} />
+      <GlassBackdrop />
 
       <ScrollView
         contentContainerStyle={[
@@ -142,7 +144,7 @@ export default function HomeScreen() {
         </Text>
         <Text style={styles.subGreeting}>Aaj kya karna hai?</Text>
 
-        <View style={styles.hero}>
+        <GlassView style={styles.hero}>
           <View style={styles.heroTop}>
             <View style={styles.heroIcon}>
               <Ionicons name="sparkles" size={18} color={colors.accent} />
@@ -180,7 +182,7 @@ export default function HomeScreen() {
               <Text style={styles.heroHintText}>AI key add karo for full chat</Text>
             </Pressable>
           ) : null}
-        </View>
+        </GlassView>
 
         <View style={styles.statsRow}>
           <StatCard value={stats?.openCount ?? 0} label="Open" tone={colors.text} />
@@ -201,7 +203,7 @@ export default function HomeScreen() {
               <TaskItem key={task.id} task={task} onToggle={toggleTask} />
             ))
           ) : (
-            <View style={styles.emptyCard}>
+            <GlassView style={styles.emptyCard}>
               <Ionicons name="checkmark-done-circle-outline" size={26} color={colors.success} />
               <View style={styles.emptyText}>
                 <Text style={styles.emptyTitle}>All clear</Text>
@@ -209,7 +211,7 @@ export default function HomeScreen() {
                   Koi open task nahi hai. Agent se naya task add karwao.
                 </Text>
               </View>
-            </View>
+            </GlassView>
           )}
         </View>
 
@@ -229,15 +231,6 @@ const styles = StyleSheet.create({
   content: {
     flexGrow: 1,
     paddingHorizontal: spacing.lg,
-  },
-  glow: {
-    position: 'absolute',
-    top: -180,
-    right: -120,
-    width: 340,
-    height: 340,
-    borderRadius: 170,
-    backgroundColor: colors.accentSoft,
   },
   topBar: {
     flexDirection: 'row',
@@ -283,10 +276,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
   },
   hero: {
-    backgroundColor: colors.backgroundElevated,
-    borderWidth: 1,
     borderColor: 'rgba(109, 139, 255, 0.3)',
-    borderRadius: radius.lg,
     padding: spacing.md + 2,
     marginTop: spacing.lg,
     gap: spacing.sm,
@@ -374,10 +364,6 @@ const styles = StyleSheet.create({
   },
   statCard: {
     flex: 1,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.md,
     paddingVertical: spacing.md,
     alignItems: 'center',
   },
@@ -419,10 +405,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.md,
     padding: spacing.md,
   },
   emptyText: {
