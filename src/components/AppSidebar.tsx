@@ -353,7 +353,7 @@ export function AppSidebar() {
           </Pressable>
 
           <Text style={styles.version}>
-            Orbit v{Constants.expoConfig?.version ?? '1.5.0'} · Android
+            Orbit v{Constants.expoConfig?.version ?? '1.6.0'} · Android
           </Text>
         </View>
       </Animated.View>

@@ -550,7 +550,7 @@ export default function SettingsScreen() {
         </GlassView>
 
         <Text style={styles.footer}>
-          Orbit v{Constants.expoConfig?.version ?? '1.5.0'} · local-first · Android
+          Orbit v{Constants.expoConfig?.version ?? '1.6.0'} · local-first · Android
         </Text>
       </ScrollView>
     </View>
