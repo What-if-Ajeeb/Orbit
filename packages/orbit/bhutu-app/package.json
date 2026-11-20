@@ -1,5 +1,5 @@
 {
-  "name": "@orbit/dsh-app",
+  "name": "@orbit/bhutu-app",
   "version": "0.1.0",
   "description": "Orbit main app bundle for the DeepSeek Harness plugin tree (Phase 3 stub).",
   "private": true,

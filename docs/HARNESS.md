@@ -29,10 +29,10 @@ events instead of the legacy snapshot API.
 
 **Phase 3 — Layers/profiles stubs.** `packages/orbit/dsh-app` (app bundle,
 `dsh.bundle.patch` → `cordis.patch.yml` mounting Orbit's five spine plugins),
-plus profile stubs `packages/orbit/dsh-web-app`, `packages/orbit/dsh-headless`,
-`packages/orbit/dsh-sdk-app` (`dsh.profile.bundles: ["@orbit/dsh-app"]`). Root
+plus profile stubs `packages/orbit/bhutu-web-app`, `packages/orbit/bhutu-headless`,
+`packages/orbit/bhutu-sdk-app` (`dsh.profile.bundles: ["@orbit/bhutu-app"]`). Root
 `package.json` gained `"workspaces": ["packages/**/*"]`; `npm install` linked
-them. `OrbitApp` (`dsh-app/src/index.ts`) is the standalone plugin factory that
+them. `OrbitApp` (`bhutu-app/src/index.ts`) is the standalone plugin factory that
 mounts the five plugins; the in-app boot still mounts them directly today.
 
 ## What is a plugin?

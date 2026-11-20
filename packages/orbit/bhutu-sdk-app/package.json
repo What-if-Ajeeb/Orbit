@@ -1,5 +1,5 @@
 {
-  "name": "@orbit/dsh-sdk-app",
+  "name": "@orbit/bhutu-sdk-app",
   "version": "0.1.0",
   "description": "Orbit SDK profile (stub) — composes the app bundle.",
   "private": true,
@@ -7,7 +7,7 @@
   "main": "src/index.ts",
   "dsh": {
     "profile": {
-      "bundles": ["@orbit/dsh-app"]
+      "bundles": ["@orbit/bhutu-app"]
     }
   }
 }

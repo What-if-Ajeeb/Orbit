@@ -1,5 +1,5 @@
 {
-  "name": "@orbit/dsh-headless",
+  "name": "@orbit/bhutu-headless",
   "version": "0.1.0",
   "description": "Orbit headless profile (stub) — composes the app bundle, like dsh-headless.",
   "private": true,
@@ -7,7 +7,7 @@
   "main": "src/index.ts",
   "dsh": {
     "profile": {
-      "bundles": ["@orbit/dsh-app"]
+      "bundles": ["@orbit/bhutu-app"]
     }
   }
 }
