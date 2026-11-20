@@ -155,8 +155,8 @@ the GitHub Release. Download it on your phone and install it (allow "Install
 unknown apps" for your browser/file manager).
 
 ```sh
-git tag v1.5.0
-git push origin v1.5.0
+git tag v1.6.0
+git push origin v1.6.0
 ```
 
 Releases page:
@@ -221,7 +221,7 @@ src/
     auth.ts               # hashing, sessions, account queries
     chat-store.ts         # ChatStore interface + SQLite implementation
     chat.ts               # chat store plugin registry (SQLite default)
-    db.ts                 # SQLite schema + migrations (v3)
+    db.ts                 # SQLite schema + migrations (v5)
     dates.ts              # formatting + natural-language date parsing
     notifications.ts      # local notification scheduling
     tasks.ts              # task CRUD + reminder sync
