@@ -4,11 +4,12 @@ import { ensureMcpTools } from '../mcp/registry';
 import { EventStore } from '../events';
 import { TelemetryStore } from '../telemetry';
 import { policyEngine } from '../policy';
+import { buildCordisTools } from '../cordis-tools';
 import { runLocalAgent } from './local-agent';
 import { buildSystemPrompt } from './prompt';
 import { requestCompletion } from './providers';
 import { isAiConfigured, type AiSettings } from './settings';
-import { executeTool, listAgentTools } from './tools';
+import { executeTool, listAgentTools, agentToolRegistry } from './tools';
 import type { LlmMessage } from './types';
 
 export type AgentHistoryItem = {
@@ -31,6 +32,11 @@ export type AgentInput = {
     toolName: string,
     args: Record<string, unknown>
   ) => Promise<boolean>;
+  /**
+   * Creator mode: enables cordis_* self-extension tools so the agent can
+   * write, install, and mount new plugins or UI overlays live.
+   */
+  creatorMode?: boolean;
 };
 
 export type AgentResult = {
@@ -61,6 +67,7 @@ export async function runAgent(input: AgentInput): Promise<AgentResult> {
     settings,
     conversationId,
     onToolApproval,
+    creatorMode,
   } = input;
 
   const eventStore = new EventStore(db);
@@ -103,6 +110,17 @@ export async function runAgent(input: AgentInput): Promise<AgentResult> {
   // Refresh MCP tools at most every five minutes; a failing server cannot
   // block the chat because ensureMcpTools never throws.
   await ensureMcpTools();
+
+  if (creatorMode) {
+    const cordisTools = buildCordisTools(db);
+    for (const tool of cordisTools) {
+      agentToolRegistry.register(tool, { replace: true });
+    }
+    await emit('turn_started', {
+      creatorMode: true,
+      cordisTools: cordisTools.map((t) => t.definition.name),
+    });
+  }
 
   const toolDefinitions = listAgentTools();
   const traces: string[] = [];

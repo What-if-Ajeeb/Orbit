@@ -7,7 +7,7 @@ export const DATABASE_NAME = 'orbit.db';
  * tasks and the agent conversation) lives in SQLite on the device.
  */
 export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
-  const DATABASE_VERSION = 4;
+  const DATABASE_VERSION = 5;
 
   const result = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
   let currentDbVersion = result?.user_version ?? 0;
@@ -160,6 +160,38 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
     `);
 
     currentDbVersion = 4;
+  }
+
+  if (currentDbVersion === 4) {
+    await db.execAsync(`
+      CREATE TABLE IF NOT EXISTS plugins (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        type TEXT NOT NULL,
+        code TEXT NOT NULL,
+        config TEXT,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_plugins_type_enabled
+        ON plugins (type, enabled);
+
+      CREATE TABLE IF NOT EXISTS overlays (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        slot TEXT NOT NULL,
+        name TEXT NOT NULL,
+        code TEXT NOT NULL,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        created_at INTEGER NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_overlays_slot_enabled
+        ON overlays (slot, enabled);
+    `);
+
+    currentDbVersion = 5;
   }
 
   await db.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);

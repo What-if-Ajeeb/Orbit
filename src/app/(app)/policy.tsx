@@ -1,4 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import {
   Alert,
@@ -41,6 +42,12 @@ export default function PolicyScreen() {
       setLoading(false);
     }
   }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      void load();
+    }, [load])
+  );
 
   const toggleRule = async (id: string, enabled: boolean) => {
     setNotice(null);

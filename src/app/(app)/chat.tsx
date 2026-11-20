@@ -64,6 +64,7 @@ export default function ChatScreen() {
   const [error, setError] = useState<string | null>(null);
   const [composerHeight, setComposerHeight] = useState(0);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [creatorMode, setCreatorMode] = useState(false);
 
   const load = useCallback(async () => {
     if (!user) {
@@ -176,6 +177,7 @@ export default function ChatScreen() {
         history,
         settings,
         conversationId: activeIdRef.current!,
+        creatorMode,
         onToolApproval: async (toolName, args) => {
           return new Promise<boolean>((resolve) => {
             Alert.alert(
@@ -344,6 +346,22 @@ export default function ChatScreen() {
                 >
                   <Ionicons name="settings-outline" size={19} color={colors.textMuted} />
                 </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={creatorMode ? 'Disable creator mode' : 'Enable creator mode'}
+                  onPress={() => setCreatorMode((prev) => !prev)}
+                  style={({ pressed }) => [
+                    styles.iconButton,
+                    creatorMode && { backgroundColor: colors.accentSoft },
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <Ionicons
+                    name={creatorMode ? 'construct' : 'construct-outline'}
+                    size={19}
+                    color={creatorMode ? colors.accent : colors.textMuted}
+                  />
+                </Pressable>
               </View>
             }
           />
@@ -359,6 +377,17 @@ export default function ChatScreen() {
                 Local mode — basic commands. Full AI chat ke liye key add karo.
               </Text>
               <Ionicons name="chevron-forward" size={14} color={colors.textFaint} />
+            </Pressable>
+          ) : null}
+          {creatorMode ? (
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => setCreatorMode(false)}
+              style={({ pressed }) => [styles.modeBanner, pressed && styles.pressed]}
+            >
+              <Ionicons name="construct" size={15} color={colors.accent} />
+              <Text style={styles.modeBannerText}>Creator mode — cordis tools active</Text>
+              <Ionicons name="chevron-back" size={14} color={colors.textFaint} />
             </Pressable>
           ) : null}
         </View>
