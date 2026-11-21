@@ -7,7 +7,7 @@ export const DATABASE_NAME = 'orbit.db';
  * tasks and the agent conversation) lives in SQLite on the device.
  */
 export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
-  const DATABASE_VERSION = 7;
+  const DATABASE_VERSION = 8;
 
   const result = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
   let currentDbVersion = result?.user_version ?? 0;
@@ -390,6 +390,71 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
     `);
 
     currentDbVersion = 7;
+  }
+
+  if (currentDbVersion === 7) {
+    // Phase 1: Buddy System tables
+    await db.execAsync(`
+      -- User's owned buddies + progression
+      CREATE TABLE IF NOT EXISTS user_buddies (
+        id TEXT PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        species_id TEXT NOT NULL,          -- e.g. 'fox', 'raven'
+        nickname TEXT,                   -- optional custom name (default = species name)
+        current_form_id TEXT NOT NULL,   -- e.g. 'fox_base', 'fox_aether'
+        level INTEGER NOT NULL DEFAULT 1,
+        xp INTEGER NOT NULL DEFAULT 0,
+        bond INTEGER NOT NULL DEFAULT 0,  -- 0-100
+        is_active INTEGER NOT NULL DEFAULT 0, -- only one active at a time
+        unlocked_forms TEXT NOT NULL DEFAULT '[]', -- JSON array of form_ids
+        stats_override TEXT,             -- optional JSON for custom stats
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        last_interacted_at INTEGER,
+        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_user_buddies_user
+        ON user_buddies (user_id);
+      CREATE INDEX IF NOT EXISTS idx_user_buddies_active
+        ON user_buddies (user_id, is_active);
+      CREATE INDEX IF NOT EXISTS idx_user_buddies_species
+        ON user_buddies (user_id, species_id);
+
+      -- Evolution history / log
+      CREATE TABLE IF NOT EXISTS buddy_evolution_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        user_buddy_id TEXT NOT NULL,
+        from_form_id TEXT NOT NULL,
+        to_form_id TEXT NOT NULL,
+        level_at INTEGER NOT NULL,
+        bond_at INTEGER NOT NULL,
+        method TEXT NOT NULL,              -- 'level', 'item', 'bond', 'event', 'branch'
+        created_at INTEGER NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+        FOREIGN KEY (user_buddy_id) REFERENCES user_buddies (id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_buddy_evolution_log_user
+        ON buddy_evolution_log (user_id, created_at DESC);
+
+      -- Simple inventory for evolution items (Core, Orb, etc.)
+      CREATE TABLE IF NOT EXISTS buddy_inventory (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        item_id TEXT NOT NULL,             -- 'evolution_core', 'spirit_orb', 'mythic_shard'...
+        quantity INTEGER NOT NULL DEFAULT 0,
+        updated_at INTEGER NOT NULL,
+        UNIQUE(user_id, item_id),
+        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_buddy_inventory_user
+        ON buddy_inventory (user_id);
+    `);
+
+    currentDbVersion = 8;
   }
 
   await db.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);
