@@ -1,9 +1,10 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -19,6 +20,8 @@ import { useSession } from '@/context/auth';
 import { useSidebar } from '@/context/sidebar';
 import { useAppTheme, useStyles, type AppTheme } from '@/context/theme';
 import {
+  addBond,
+  addXp,
   ensureStarterBuddy,
   getForm,
   getSpecies,
@@ -65,6 +68,9 @@ export default function BuddyScreen() {
   const [buddy, setBuddy] = useState<UserBuddy | null>(null);
   const [collectionCount, setCollectionCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [interacting, setInteracting] = useState(false);
+  const [banner, setBanner] = useState<string | null>(null);
+  const prevLevelRef = useRef<number | null>(null);
 
   const load = useCallback(async () => {
     if (!user) return;
@@ -75,6 +81,12 @@ export default function BuddyScreen() {
       const all = await listUserBuddies(db, user.id);
       setBuddy(active);
       setCollectionCount(all.length);
+
+      if (prevLevelRef.current !== null && active.level > prevLevelRef.current) {
+        setBanner(`Level up! ${prevLevelRef.current} → ${active.level}`);
+        setTimeout(() => setBanner(null), 3500);
+      }
+      prevLevelRef.current = active.level;
     } catch (err) {
       console.warn('Failed to load buddy', err);
     } finally {
@@ -87,6 +99,23 @@ export default function BuddyScreen() {
       void load();
     }, [load])
   );
+
+  async function handleInteract() {
+    if (!buddy || interacting) return;
+    setInteracting(true);
+    try {
+      const before = buddy.level;
+      await addXp(db, buddy.id, 12);
+      await addBond(db, buddy.id, 2);
+      await load();
+      setBanner(before < (buddy.level + 1) ? 'Nice! +12 XP · +2 Bond' : '+12 XP · +2 Bond');
+      setTimeout(() => setBanner(null), 2500);
+    } catch {
+      Alert.alert('Oops', 'Could not train buddy right now.');
+    } finally {
+      setInteracting(false);
+    }
+  }
 
   if (!user) return null;
 
@@ -117,6 +146,17 @@ export default function BuddyScreen() {
       return true;
     });
 
+  const nearEvolve =
+    !canEvolve &&
+    form?.evolvesTo?.some((nextId) => {
+      const next = getForm(nextId);
+      if (!next?.requirements) return false;
+      const req = next.requirements;
+      const levelClose = req.level ? buddy.level >= req.level - 2 : true;
+      const bondClose = req.bond ? buddy.bond >= req.bond - 15 : true;
+      return levelClose && bondClose;
+    });
+
   return (
     <View style={styles.root}>
       <GlassBackdrop />
@@ -143,10 +183,22 @@ export default function BuddyScreen() {
           </Pressable>
         </View>
 
+        {banner ? (
+          <View style={styles.banner}>
+            <Ionicons name="sparkles" size={16} color={colors.accent} />
+            <Text style={styles.bannerText}>{banner}</Text>
+          </View>
+        ) : null}
+
         <GlassView style={styles.heroCard}>
           <View style={styles.heroHeader}>
             <View style={styles.avatarPlaceholder}>
               <Ionicons name="paw" size={48} color={colors.accent} />
+              {canEvolve ? (
+                <View style={styles.readyBadge}>
+                  <Ionicons name="flash" size={12} color={colors.white} />
+                </View>
+              ) : null}
             </View>
             <View style={styles.heroInfo}>
               <View style={styles.nameRow}>
@@ -158,9 +210,23 @@ export default function BuddyScreen() {
                 ) : null}
               </View>
               <Text style={styles.formName}>{form?.name ?? 'Base Form'}</Text>
-              <Text style={styles.levelText}>Lv. {buddy.level}</Text>
+              <View style={styles.levelRow}>
+                <Text style={styles.levelText}>Lv. {buddy.level}</Text>
+                {form?.rarity && form.rarity !== 'common' ? (
+                  <View style={styles.rarityChip}>
+                    <Text style={styles.rarityText}>{form.rarity}</Text>
+                  </View>
+                ) : null}
+              </View>
             </View>
           </View>
+
+          {nearEvolve ? (
+            <View style={styles.hintRow}>
+              <Ionicons name="information-circle-outline" size={16} color={colors.accent} />
+              <Text style={styles.hintText}>Almost ready to evolve — keep training!</Text>
+            </View>
+          ) : null}
 
           <View style={styles.xpSection}>
             <View style={styles.xpHeader}>
@@ -209,6 +275,20 @@ export default function BuddyScreen() {
             <Pressable
               style={({ pressed }) => [
                 styles.actionBtn,
+                styles.trainBtn,
+                interacting && styles.disabledBtn,
+                pressed && styles.pressed,
+              ]}
+              disabled={interacting}
+              onPress={handleInteract}
+            >
+              <Ionicons name="fitness-outline" size={18} color={colors.text} />
+              <Text style={styles.secondaryBtnText}>{interacting ? '...' : 'Train'}</Text>
+            </Pressable>
+
+            <Pressable
+              style={({ pressed }) => [
+                styles.actionBtn,
                 styles.primaryBtn,
                 !canEvolve && styles.disabledBtn,
                 pressed && styles.pressed,
@@ -220,7 +300,7 @@ export default function BuddyScreen() {
             >
               <Ionicons name="flash" size={18} color={colors.white} />
               <Text style={styles.primaryBtnText}>
-                {canEvolve ? 'Evolve' : 'Not ready'}
+                {canEvolve ? 'Evolve' : 'Locked'}
               </Text>
             </Pressable>
           </View>
@@ -254,6 +334,10 @@ export default function BuddyScreen() {
             <Text style={styles.descText}>{form.description}</Text>
           </GlassView>
         ) : null}
+
+        <Text style={styles.tip}>
+          Tip: Complete tasks & chat with the agent to earn XP and bond automatically.
+        </Text>
       </ScrollView>
     </View>
   );
@@ -268,7 +352,7 @@ const makeStyles = ({ colors }: AppTheme) =>
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      marginBottom: spacing.lg,
+      marginBottom: spacing.md,
     },
     brandRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
     wordmark: { color: colors.text, fontSize: 17, fontWeight: '700', letterSpacing: 0.5 },
@@ -282,6 +366,17 @@ const makeStyles = ({ colors }: AppTheme) =>
       borderRadius: radius.pill,
     },
     collectionChipText: { color: colors.accent, fontSize: 13, fontWeight: '700' },
+    banner: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      backgroundColor: colors.accentSoft,
+      borderRadius: radius.md,
+      paddingHorizontal: spacing.md,
+      paddingVertical: 10,
+      marginBottom: spacing.sm,
+    },
+    bannerText: { color: colors.accent, fontSize: 14, fontWeight: '600', flex: 1 },
     heroCard: { padding: spacing.lg, gap: spacing.md },
     heroHeader: { flexDirection: 'row', gap: spacing.md, alignItems: 'center' },
     avatarPlaceholder: {
@@ -294,6 +389,17 @@ const makeStyles = ({ colors }: AppTheme) =>
       borderWidth: 2,
       borderColor: colors.accent,
     },
+    readyBadge: {
+      position: 'absolute',
+      right: -2,
+      bottom: -2,
+      width: 24,
+      height: 24,
+      borderRadius: 12,
+      backgroundColor: colors.accentStrong,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
     heroInfo: { flex: 1, gap: 4 },
     nameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
     buddyName: { color: colors.text, fontSize: 22, fontWeight: '700' },
@@ -305,7 +411,25 @@ const makeStyles = ({ colors }: AppTheme) =>
     },
     mbtiText: { color: colors.textMuted, fontSize: 11, fontWeight: '700' },
     formName: { color: colors.textMuted, fontSize: 14 },
-    levelText: { color: colors.accent, fontSize: 15, fontWeight: '700', marginTop: 2 },
+    levelRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 2 },
+    levelText: { color: colors.accent, fontSize: 15, fontWeight: '700' },
+    rarityChip: {
+      backgroundColor: colors.surfaceAlt,
+      paddingHorizontal: 8,
+      paddingVertical: 2,
+      borderRadius: radius.sm,
+    },
+    rarityText: { color: colors.textMuted, fontSize: 11, fontWeight: '700', textTransform: 'capitalize' },
+    hintRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      backgroundColor: colors.accentSoft,
+      borderRadius: radius.sm,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+    },
+    hintText: { color: colors.accent, fontSize: 12, fontWeight: '500', flex: 1 },
     xpSection: { gap: 6 },
     xpHeader: { flexDirection: 'row', justifyContent: 'space-between' },
     xpLabel: { color: colors.textFaint, fontSize: 12, fontWeight: '600' },
@@ -346,8 +470,8 @@ const makeStyles = ({ colors }: AppTheme) =>
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
-      gap: 8,
-      minHeight: 48,
+      gap: 6,
+      minHeight: 46,
       borderRadius: radius.md,
     },
     primaryBtn: { backgroundColor: colors.accentStrong },
@@ -356,9 +480,14 @@ const makeStyles = ({ colors }: AppTheme) =>
       borderWidth: 1,
       borderColor: colors.border,
     },
+    trainBtn: {
+      backgroundColor: colors.surfaceAlt,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
     disabledBtn: { opacity: 0.5 },
-    primaryBtnText: { color: colors.white, fontSize: 15, fontWeight: '600' },
-    secondaryBtnText: { color: colors.text, fontSize: 15, fontWeight: '600' },
+    primaryBtnText: { color: colors.white, fontSize: 14, fontWeight: '600' },
+    secondaryBtnText: { color: colors.text, fontSize: 14, fontWeight: '600' },
     pressed: { opacity: 0.8 },
     quickRow: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md },
     quickCard: {
@@ -375,4 +504,11 @@ const makeStyles = ({ colors }: AppTheme) =>
     descCard: { marginTop: spacing.md, padding: spacing.md, gap: 6 },
     descTitle: { color: colors.text, fontSize: 15, fontWeight: '600' },
     descText: { color: colors.textMuted, fontSize: 14, lineHeight: 20 },
+    tip: {
+      color: colors.textFaint,
+      fontSize: 12,
+      textAlign: 'center',
+      marginTop: spacing.lg,
+      lineHeight: 18,
+    },
   });
