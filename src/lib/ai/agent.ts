@@ -11,6 +11,7 @@ import { MASTER_AGENT } from '../permissions/agents';
 import { secureExecuteTool } from '../permissions/executor';
 import { redactSecrets } from '../permissions/redact';
 import type { AgentIdentity } from '../permissions/types';
+import { getActiveBuddy } from '../buddy/store';
 import { runLocalAgent } from './local-agent';
 import { buildSystemPrompt } from './prompt';
 import { requestCompletion } from './providers';
@@ -123,8 +124,19 @@ export async function runAgent(input: AgentInput): Promise<AgentResult> {
     return { ...local, mode: 'local' };
   }
 
+  // Phase 4: load active buddy so the system prompt can include personality + state
+  let buddyCtx: { buddy: NonNullable<Awaited<ReturnType<typeof getActiveBuddy>>> } | undefined;
+  try {
+    const activeBuddy = await getActiveBuddy(db, userId);
+    if (activeBuddy) {
+      buddyCtx = { buddy: activeBuddy };
+    }
+  } catch (err) {
+    console.warn('Could not load active buddy for prompt', err);
+  }
+
   const messages: LlmMessage[] = [
-    { role: 'system', content: buildSystemPrompt(userName, agent.name) },
+    { role: 'system', content: buildSystemPrompt(userName, agent.name, Date.now(), buddyCtx) },
     ...history
       .filter((item) => item.content.trim().length > 0)
       .slice(-20)
@@ -187,6 +199,7 @@ export async function runAgent(input: AgentInput): Promise<AgentResult> {
     agentId: agent.id,
     agentName: agent.name,
     projectId: activeProjectId,
+    hasBuddy: !!buddyCtx,
   });
 
   try {
