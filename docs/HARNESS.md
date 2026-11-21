@@ -40,7 +40,7 @@ mounts the five plugins; the in-app boot still mounts them directly today.
 | Kind | What it provides | Registration API | Built in |
 | --- | --- | --- | --- |
 | **AI provider** | One wire protocol (request + tool-call parsing) | `aiProviderRegistry.register` | `openai-compatible`, `gemini` |
-| **Tool** | A model-callable function | `agentToolRegistry.register` | `create_task`, `list_tasks`, `complete_task`, `update_task`, `delete_task` |
+| **Tool** | A model-callable function | `agentToolRegistry.register` | `create_task`, `list_tasks`, `complete_task`, `update_task`, `delete_task`, `computer_execute` |
 | **Chat store** | Conversation persistence | `registerChatStorePlugin` | `sqlite` |
 | **MCP server** | External tools over Streamable HTTP | `Settings → MCP TOOLS` | none — user configured |
 
@@ -60,9 +60,13 @@ chat.tsx
             ├─ requestCompletion()     src/lib/ai/providers.ts
             │    └─ provider adapter   aiProviderRegistry
             └─ tool loop (max 6)
-                 └─ executeTool()      agentToolRegistry
-                      ├─ task tools    src/lib/ai/task-tools.ts
-                      └─ mcp__ tools   src/lib/mcp/registry.ts
+                 └─ secureExecuteTool() src/lib/permissions/executor.ts
+                      ├─ classify + ask  permissionManager
+                      ├─ revalidate      grants / emergency stop
+                      └─ executeTool()  agentToolRegistry
+                           ├─ task tools src/lib/ai/task-tools.ts
+                           ├─ computer   permission/computer-tool.ts
+                           └─ mcp__ tools src/lib/mcp/registry.ts
 ```
 
 The chat store is resolved separately by the screens through `getChatStore(db)`, so
@@ -148,6 +152,28 @@ Built-in tools are registered from `src/lib/ai/tools.ts` when the module loads.
 MCP tools are registered dynamically in the same registry, which is why the agent
 needs no special case for them.
 
+## Permission boundary
+
+`agentToolRegistry` is a registry, not an approval system. The agent loop calls
+`secureExecuteTool()` from `src/lib/permissions/executor.ts` for every tool, and
+that boundary is the only path from the model to an implementation.
+
+```text
+tool call
+  → classifyToolAction()       category, risk, target, redacted preview
+  → permissionManager.request  existing grant, auto-approval, or dialog
+  → command/path checks        hard blocks apply even after approval
+  → permissionManager.begin    emergency stop, expiry, scope, use count
+  → executeTool()
+  → finishExecution()          completed / failed audit entry
+```
+
+The global `PermissionHost` in the authenticated app layout resolves pending
+requests. Grants are keyed by user, agent, tool, category, project, and scope key;
+a different agent never inherits them. High-risk requests cannot create persistent
+grants. One-time grants are consumed at `beginExecution()`; persistent grants expire
+after 30 days and can be revoked from **Agent Permissions**.
+
 ## Chat store plugins
 
 ```ts
@@ -222,11 +248,15 @@ These are product rules, not just implementation details:
 
 1. **No implicit task creation.** Only explicit task or reminder phrasing creates
    something; a pasted file name or email excerpt is not a task.
-2. **Local first.** Tasks, accounts, conversations, provider keys, and MCP tokens
-   stay on the device. Only chat traffic leaves for the chosen provider.
-3. **Failures are contained.** A provider error, MCP error, or tool error becomes a
+2. **No execution before consent.** Every protected tool call blocks on the
+   Permission Manager. A denial, cancellation, expiry, emergency stop, or scope
+   mismatch becomes a contained tool error — never a silent execution.
+3. **Local first.** Tasks, accounts, conversations, provider keys, permission
+   records, and MCP tokens stay on the device. Only chat traffic leaves for the
+   chosen provider.
+4. **Failures are contained.** A provider error, MCP error, or tool error becomes a
    trace/reply, never a crashed screen.
-4. **Every capability is replaceable.** If a feature cannot be registered as a
+5. **Every capability is replaceable.** If a feature cannot be registered as a
    plugin, it does not belong in the harness.
 
 ## File map
@@ -242,9 +272,17 @@ src/lib/ai/
   task-tools.ts       built-in task tools
   tools.ts            registers built-ins, agent-facing helpers
 src/lib/chat.ts       chat store registry + SQLite default
+src/lib/permissions/
+  manager.ts          consent state, grants, emergency stop
+  executor.ts         mandatory secure tool boundary
+  classifier.ts       risk + action preview mapping
+  store.ts            SQLite requests, grants, audit, devices
+  devices.ts          Desktop Companion pairing + execution
+  computer-tool.ts    computer_execute tool
 src/lib/mcp/
   client.ts           Streamable HTTP client
   registry.ts         mirrors MCP tools, TTLs, statuses
   settings.ts         server config in SecureStore
 src/app/(app)/harness.tsx   plugin dashboard
+src/app/(app)/permissions.tsx  agent consent control room
 ```

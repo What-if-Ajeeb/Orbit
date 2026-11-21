@@ -84,6 +84,13 @@ const NAV_ITEMS: NavItem[] = [
     activeIcon: 'shield-checkmark',
   },
   {
+    label: 'Permissions',
+    caption: 'Agents, grants aur devices',
+    href: '/permissions' as Href,
+    icon: 'finger-print-outline',
+    activeIcon: 'finger-print',
+  },
+  {
     label: 'Settings',
     caption: 'AI key aur account',
     href: '/settings',

@@ -25,7 +25,10 @@ and **expo-notifications**.
 - **Orbit Harness** registry for providers, tools, storage, and MCP servers
 - Harness screen with live plugin status, MCP tool counts, manual sync, and the Cordis plugin tree (bhutu-app, bhutu-tools, bhutu-llm, bhutu-mcp, bhutu-agent)
 - Observability: event-sourced session logs (fork/resume/replay) and granular telemetry (tool durations, token usage, cache hit rates)
-- Policy checks: configurable approval gates (`allow`/`deny`/`ask`) and sandboxing rules for every tool call, with per-user approval UI
+- Policy checks: configurable approval gates (`allow`/`deny`/`ask`) and sandboxing rules for every tool call, with a per-agent consent layer
+- **Agent permissions**: a risk-aware approval dialog with Allow once / Always allow / Deny, scoped SQLite grants, emergency stop, and a Control Room dashboard
+- **ORBIT Desktop Companion**: explicit computer pairing over HTTPS, encrypted session tokens in SecureStore, and approved remote command execution
+- Android runtime permissions for camera, microphone, location, and contacts, requested only after Orbit's own approval
 - AI settings screen with provider presets, connection test, and secure key storage
 - MCP server connections (HTTP endpoints + optional bearer token) with per-server sync status
 - Runtime extension layer: skill registry, agent lifecycle hooks, and delegated subagent tasks
@@ -75,6 +78,48 @@ Orbit connects immediately and shows how many tools the server exposes.
 Servers whose names start with `mcp__` appear in the agent's tool list on the next
 message (the list refreshes at most every five minutes, or immediately after a
 manual sync).
+
+## Agent permissions and the Desktop Companion
+
+Every agent tool call passes through one execution boundary. Orbit classifies the
+action, shows the user what will happen, and only then asks the Permission Manager
+for a scoped authorization. Nothing protected executes before the decision.
+
+- **Risk levels.** Low-risk on-device task tools can run automatically. Medium-risk
+  actions ask and may be saved. High-risk actions ask on every single run; the
+  “Always allow” option is locked and can never be persisted for them.
+- **Three decisions.** Allow once, Always allow (when the request permits it), and
+  Deny. Closing the dialog cancels the request instead of silently approving it.
+- **Exact scope.** Grants match the agent id, tool, project, category, and scope
+  key. A grant for Master Agent never applies to a specialist or dynamic agent.
+- **Revalidation.** The Permission Manager checks emergency stop, grant status,
+  expiry, use count, and agent/tool/category scope immediately before execution.
+  One-time approvals are consumed at that point.
+- **Emergency stop.** Stops all agents, cancels pending approvals, invalidates
+  issued authorizations, and persists across app restarts until resumed.
+- **Audit trail.** Requests, decisions, grant use, revocations, blocked commands,
+  Android permission failures, and paired devices are recorded in SQLite after
+  redaction. Session tokens and secrets never enter chat or audit text.
+
+Open **Settings → Agent Permissions** (also in the drawer) to see connected
+computers, every registered agent, active and past grants, denials, emergency-stop
+state, and the audit history. Grants can be revoked individually or per agent.
+
+### Pairing a computer
+
+Computer access is available only through **ORBIT Desktop Companion**:
+
+1. Start the companion on the computer and open its pairing screen.
+2. In Orbit, open **Agent Permissions → Connected computers → Pair**.
+3. Enter a name, the HTTPS companion URL, and the short-lived pairing code.
+4. The companion exchanges the code for a device session token. Orbit stores that
+   token in Android Keystore-backed SecureStore and keeps only a fingerprint in
+   SQLite.
+
+The companion exposes `POST /orbit/pair` and `POST /orbit/execute`. Execution
+requests use the paired bearer token and are subject to command blocklists,
+workspace path restrictions, timeouts, and a separate high-risk approval for every
+run. Loopback HTTP is allowed only for local development.
 
 ## Orbit Harness: Everything is a Plugin and MCP
 
@@ -156,8 +201,8 @@ the GitHub Release. Download it on your phone and install it (allow "Install
 unknown apps" for your browser/file manager).
 
 ```sh
-git tag v1.6.0
-git push origin v1.6.0
+git tag v1.7.0
+git push origin v1.7.0
 ```
 
 Releases page:
@@ -195,9 +240,12 @@ src/
       index.tsx           # Today dashboard
       chat.tsx            # agent conversation + chat history panel
       tasks.tsx           # task list + quick add
-      settings.tsx        # AI, MCP, reminders, account, data
+      settings.tsx        # AI, MCP, reminders, permissions, account, data
       harness.tsx         # plugin dashboard (drawer entry)
+      policy.tsx          # tool approval policy rules
+      permissions.tsx     # agent consent control room + companion pairing
   components/             # Brand, Button, TaskItem, ChatBubble, AppSidebar, ...
+    permissions/          # global approval dialog, host, pairing modal
   context/
     auth.tsx              # session state + sign in/up/out
     sidebar.tsx           # app-wide drawer state
@@ -212,6 +260,16 @@ src/
       prompt.ts           # system prompt with local date/time
       local-agent.ts      # offline fallback parser
       settings.ts         # provider presets + SecureStore config
+    permissions/
+      manager.ts          # request, grant, revalidation, emergency stop
+      store.ts            # SQLite requests, grants, audit, devices, state
+      executor.ts         # mandatory secure tool boundary
+      classifier.ts       # tool → category, risk, target, command preview
+      command-policy.ts   # blocked commands + path restrictions
+      devices.ts          # companion pairing, token storage, execution
+      android.ts          # runtime camera/mic/location/contacts requests
+      computer-tool.ts    # computer_execute agent tool
+      agents.ts           # master/specialist/dynamic identities
     harness/
       index.ts            # plugin facade + live snapshot builder
       types.ts            # HarnessPlugin + HarnessSnapshot types
@@ -222,7 +280,7 @@ src/
     auth.ts               # hashing, sessions, account queries
     chat-store.ts         # ChatStore interface + SQLite implementation
     chat.ts               # chat store plugin registry (SQLite default)
-    db.ts                 # SQLite schema + migrations (v6)
+    db.ts                 # SQLite schema + migrations (v7)
     dates.ts              # formatting + natural-language date parsing
     hooks.ts              # agent lifecycle hooks + execution engine
     notifications.ts      # local notification scheduling
@@ -243,8 +301,10 @@ Architecture and plugin guide: [`docs/HARNESS.md`](docs/HARNESS.md).
 - `conversations` — one row per chat, ordered by last update
 - `messages` — persisted agent messages linked to a conversation, with tool traces
 - `skills`, `hooks`, `subagents`, `subagent_tasks` — runtime extension stores (v6)
+- `permission_requests`, `permission_grants`, `permission_audit`, `permission_agents`, `paired_devices`, `permission_state` — agent consent, grants, audit, companion sessions, and emergency-stop state (v7)
 
-Chats, messages, and tasks cascade-delete when their user is removed.
+Chats, messages, and tasks cascade-delete when their user is removed. Permission
+records cascade with the user; paired-device tokens live separately in SecureStore.
 
 ## Notes
 
@@ -254,6 +314,10 @@ Chats, messages, and tasks cascade-delete when their user is removed.
   optimizations can delay them slightly.
 - Passwords are never stored in plain text. Signing out deletes the session row and
   the stored token.
+- Permission approvals are enforced in code, not only in the UI. A denied or
+  expired request cannot be retried by the model without a fresh dialog.
+- Emergency stop is device-wide and persisted in SQLite. It cancels pending
+  requests and invalidates approvals issued before the stop.
 - Clear app storage (or reinstall) to reset all local accounts.
 - Real email verification / password reset needs an email provider and network
   access; add that later if the app needs account recovery.

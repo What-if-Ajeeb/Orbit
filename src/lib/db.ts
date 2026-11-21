@@ -7,7 +7,7 @@ export const DATABASE_NAME = 'orbit.db';
  * tasks and the agent conversation) lives in SQLite on the device.
  */
 export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
-  const DATABASE_VERSION = 6;
+  const DATABASE_VERSION = 7;
 
   const result = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
   let currentDbVersion = result?.user_version ?? 0;
@@ -257,6 +257,139 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
     `);
 
     currentDbVersion = 6;
+  }
+
+  if (currentDbVersion === 6) {
+    await db.execAsync(`
+      CREATE TABLE IF NOT EXISTS permission_agents (
+        id TEXT PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        role TEXT NOT NULL,
+        description TEXT NOT NULL,
+        icon TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_permission_agents_user
+        ON permission_agents (user_id);
+
+      CREATE TABLE IF NOT EXISTS permission_requests (
+        id TEXT PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        agent_id TEXT NOT NULL,
+        agent_name TEXT NOT NULL,
+        agent_role TEXT NOT NULL,
+        category TEXT NOT NULL,
+        risk TEXT NOT NULL,
+        tool_name TEXT NOT NULL,
+        project_id TEXT NOT NULL,
+        project_label TEXT NOT NULL,
+        conversation_id INTEGER,
+        title TEXT NOT NULL,
+        summary TEXT NOT NULL,
+        actions TEXT NOT NULL,
+        target TEXT NOT NULL,
+        reason TEXT NOT NULL,
+        command_preview TEXT,
+        scope_key TEXT NOT NULL,
+        allow_always INTEGER NOT NULL DEFAULT 0,
+        status TEXT NOT NULL,
+        resolution TEXT,
+        created_at INTEGER NOT NULL,
+        expires_at INTEGER NOT NULL,
+        resolved_at INTEGER,
+        metadata TEXT NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+        FOREIGN KEY (conversation_id) REFERENCES conversations (id) ON DELETE SET NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_permission_requests_user_created
+        ON permission_requests (user_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_permission_requests_status
+        ON permission_requests (status);
+      CREATE INDEX IF NOT EXISTS idx_permission_requests_agent
+        ON permission_requests (agent_id);
+
+      CREATE TABLE IF NOT EXISTS permission_grants (
+        id TEXT PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        request_id TEXT,
+        agent_id TEXT NOT NULL,
+        agent_name TEXT NOT NULL,
+        tool_name TEXT NOT NULL,
+        category TEXT NOT NULL,
+        scope_key TEXT NOT NULL,
+        project_id TEXT NOT NULL,
+        project_label TEXT NOT NULL,
+        scope TEXT NOT NULL,
+        risk TEXT NOT NULL,
+        title TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        expires_at INTEGER,
+        last_used_at INTEGER,
+        use_count INTEGER NOT NULL DEFAULT 0,
+        max_uses INTEGER,
+        revoked_at INTEGER,
+        status TEXT NOT NULL DEFAULT 'active',
+        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_permission_grants_user_status
+        ON permission_grants (user_id, status);
+      CREATE INDEX IF NOT EXISTS idx_permission_grants_scope
+        ON permission_grants (
+          user_id, agent_id, tool_name, category, project_id, scope_key, status
+        );
+
+      CREATE TABLE IF NOT EXISTS permission_audit (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        request_id TEXT,
+        grant_id TEXT,
+        agent_id TEXT,
+        event TEXT NOT NULL,
+        category TEXT,
+        risk TEXT,
+        tool_name TEXT,
+        project_id TEXT,
+        detail TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_permission_audit_user_created
+        ON permission_audit (user_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_permission_audit_request
+        ON permission_audit (request_id);
+
+      CREATE TABLE IF NOT EXISTS paired_devices (
+        id TEXT PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        platform TEXT NOT NULL,
+        endpoint TEXT NOT NULL,
+        fingerprint TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'paired',
+        capabilities TEXT NOT NULL,
+        paired_at INTEGER NOT NULL,
+        last_seen_at INTEGER,
+        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_paired_devices_user_status
+        ON paired_devices (user_id, status);
+
+      CREATE TABLE IF NOT EXISTS permission_state (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+    `);
+
+    currentDbVersion = 7;
   }
 
   await db.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);

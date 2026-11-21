@@ -34,6 +34,7 @@ import {
   type ChatMessage,
   type Conversation,
 } from '@/lib/chat';
+import { MASTER_AGENT } from '@/lib/permissions';
 import { radius, spacing } from '@/theme';
 
 
@@ -178,18 +179,9 @@ export default function ChatScreen() {
         settings,
         conversationId: activeIdRef.current!,
         creatorMode,
-        onToolApproval: async (toolName, args) => {
-          return new Promise<boolean>((resolve) => {
-            Alert.alert(
-              `Run tool: ${toolName}`,
-              `Approve tool execution?\n${JSON.stringify(args, null, 2).slice(0, 400)}`,
-              [
-                { text: 'Deny', style: 'cancel', onPress: () => resolve(false) },
-                { text: 'Allow', onPress: () => resolve(true) },
-              ]
-            );
-          });
-        },
+        agent: MASTER_AGENT,
+        projectId: 'orbit-workspace',
+        projectLabel: 'Orbit workspace',
       });
 
       const assistantMessage = await store.addMessage(

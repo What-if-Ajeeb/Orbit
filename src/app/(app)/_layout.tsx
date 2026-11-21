@@ -6,9 +6,11 @@ import { Platform, StyleSheet, View } from 'react-native';
 import { useSQLiteContext } from 'expo-sqlite';
 
 import { AppSidebar } from '@/components/AppSidebar';
+import { PermissionHost } from '@/components/permissions/PermissionHost';
 import { SidebarProvider } from '@/context/sidebar';
 import { useAppTheme, useStyles, type AppTheme } from '@/context/theme';
 import { setOrbitDb } from '@/lib/harness/plugins/orbit-session';
+import { permissionManager } from '@/lib/permissions';
 
 function NotificationRedirect() {
   useEffect(() => {
@@ -66,6 +68,7 @@ export default function AppLayout() {
 
   useEffect(() => {
     setOrbitDb(db);
+    permissionManager.attach(db);
   }, [db]);
 
   return (
@@ -155,6 +158,7 @@ export default function AppLayout() {
             }}
           />
           <Tabs.Screen name="harness" options={{ href: null }} />
+          <Tabs.Screen name="permissions" options={{ href: null }} />
           <Tabs.Screen
             name="events"
             options={{
@@ -196,6 +200,7 @@ export default function AppLayout() {
           />
         </Tabs>
         <AppSidebar />
+        <PermissionHost />
       </View>
     </SidebarProvider>
   );

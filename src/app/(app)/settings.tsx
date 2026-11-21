@@ -1,7 +1,7 @@
 import { useAppTheme, useStyles, type AppTheme } from '@/context/theme';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import Constants from 'expo-constants';
-import { useFocusEffect } from 'expo-router';
+import { router, useFocusEffect, type Href } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useState } from 'react';
 import {
@@ -472,6 +472,27 @@ export default function SettingsScreen() {
 
         <McpServersCard onNotice={setNotice} onError={setError} />
 
+        <Text style={styles.sectionLabel}>AGENT PERMISSIONS</Text>
+
+        <GlassView
+          style={styles.card}
+          accessibilityLabel="Open agent permissions"
+          onPress={() => router.push('/permissions' as Href)}
+        >
+          <View style={styles.linkRow}>
+            <View style={styles.linkIcon}>
+              <Ionicons name="finger-print" size={20} color={colors.accent} />
+            </View>
+            <View style={styles.linkText}>
+              <Text style={styles.cardTitle}>Control room</Text>
+              <Text style={styles.cardCaption}>
+                Approvals, saved grants, paired computers, emergency stop, and audit history.
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={17} color={colors.textFaint} />
+          </View>
+        </GlassView>
+
         <Text style={styles.sectionLabel}>REMINDERS</Text>
 
         <GlassView style={styles.card}>
@@ -626,6 +647,23 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
     color: colors.textMuted,
     fontSize: 13,
     lineHeight: 19,
+  },
+  linkRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  linkIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: colors.accentSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  linkText: {
+    flex: 1,
+    gap: 3,
   },
   badge: {
     borderRadius: radius.pill,

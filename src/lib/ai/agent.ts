@@ -7,6 +7,10 @@ import { policyEngine } from '../policy';
 import { buildCordisTools } from '../cordis-tools';
 import { HookEngine } from '../hooks';
 import { SkillStore, SkillExecutor } from '../skills';
+import { MASTER_AGENT } from '../permissions/agents';
+import { secureExecuteTool } from '../permissions/executor';
+import { redactSecrets } from '../permissions/redact';
+import type { AgentIdentity } from '../permissions/types';
 import { runLocalAgent } from './local-agent';
 import { buildSystemPrompt } from './prompt';
 import { requestCompletion } from './providers';
@@ -26,14 +30,11 @@ export type AgentInput = {
   history: AgentHistoryItem[];
   settings: AiSettings;
   conversationId: number;
-  /**
-   * Asks the user whether a tool call that requires approval may run.
-   * Return false to block the call; return true to execute it.
-   */
-  onToolApproval?: (
-    toolName: string,
-    args: Record<string, unknown>
-  ) => Promise<boolean>;
+  /** The agent identity that owns every permission request made this turn. */
+  agent?: AgentIdentity;
+  /** Permission scope: the agent + project + tool + category are all required. */
+  projectId?: string;
+  projectLabel?: string;
   /**
    * Creator mode: enables cordis_* self-extension tools so the agent can
    * write, install, and mount new plugins or UI overlays live.
@@ -60,6 +61,18 @@ function fallbackReply(traces: string[]): string {
 const estimateTokens = (text: string): number =>
   Math.max(1, Math.ceil(text.length / 4));
 
+function parseToolArguments(raw: string): Record<string, unknown> {
+  try {
+    const parsed = JSON.parse(raw || '{}') as unknown;
+
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : {};
+  } catch {
+    return {};
+  }
+}
+
 export async function runAgent(input: AgentInput): Promise<AgentResult> {
   const {
     db,
@@ -68,9 +81,15 @@ export async function runAgent(input: AgentInput): Promise<AgentResult> {
     history,
     settings,
     conversationId,
-    onToolApproval,
+    agent: requestedAgent,
+    projectId,
+    projectLabel,
     creatorMode,
   } = input;
+
+  const agent = requestedAgent ?? MASTER_AGENT;
+  const activeProjectId = projectId ?? 'orbit-workspace';
+  const activeProjectLabel = projectLabel ?? 'Orbit workspace';
 
   const eventStore = new EventStore(db);
   const telemetry = new TelemetryStore(db);
@@ -105,7 +124,7 @@ export async function runAgent(input: AgentInput): Promise<AgentResult> {
   }
 
   const messages: LlmMessage[] = [
-    { role: 'system', content: buildSystemPrompt(userName) },
+    { role: 'system', content: buildSystemPrompt(userName, agent.name) },
     ...history
       .filter((item) => item.content.trim().length > 0)
       .slice(-20)
@@ -162,7 +181,13 @@ export async function runAgent(input: AgentInput): Promise<AgentResult> {
   const toolDefinitions = listAgentTools();
   const traces: string[] = [];
 
-  await emit('turn_started', { model: settings.model, provider: settings.provider });
+  await emit('turn_started', {
+    model: settings.model,
+    provider: settings.provider,
+    agentId: agent.id,
+    agentName: agent.name,
+    projectId: activeProjectId,
+  });
 
   try {
     for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
@@ -201,105 +226,36 @@ export async function runAgent(input: AgentInput): Promise<AgentResult> {
       });
 
       for (const call of turn.toolCalls) {
-        await emit('tool_call', { toolName: call.name, rawArguments: call.arguments });
+        const toolArgs = parseToolArguments(call.arguments);
 
-        const policy = policyEngine.evaluate(
-          call.name,
-          JSON.parse(call.arguments || '{}')
-        );
-        let content: string;
-        let trace = '';
-        let success = true;
-        let error: string | undefined;
+        await emit('tool_call', {
+          toolName: call.name,
+          agentId: agent.id,
+          agentName: agent.name,
+          rawArguments: redactSecrets(call.arguments).slice(0, 2000),
+        });
 
-        if (policy.decision === 'deny') {
-          success = false;
-          error = `Blocked by policy: ${policy.reason ?? policy.ruleName ?? 'policy'}`;
-          content = JSON.stringify({ ok: false, error });
-          trace = `BLOCKED ${call.name}`;
-          await telemetry.recordToolCall(
-            userId,
-            conversationId,
-            call.name,
-            0,
-            null,
-            null,
-            null,
-            false,
-            policy.decision,
-            error
-          );
-          await emit('tool_result', {
-            toolName: call.name,
-            durationMs: 0,
-            success: false,
-            error,
-            resultLength: content.length,
-            policy: policy.decision,
-            rule: policy.ruleName,
-          });
-          messages.push({
-            role: 'tool',
-            toolCallId: call.id,
-            name: call.name,
-            content,
-          });
-          continue;
-        }
-
-        if (policy.decision === 'ask') {
-          const approved = await onToolApproval?.(call.name, JSON.parse(call.arguments || '{}'));
-          if (!approved) {
-            success = false;
-            error = 'User denied tool execution';
-            content = JSON.stringify({ ok: false, error });
-            trace = `DENIED ${call.name}`;
-            await telemetry.recordToolCall(
-              userId,
-              conversationId,
-              call.name,
-              0,
-              null,
-              null,
-              null,
-              false,
-              policy.decision,
-              error
-            );
-            await emit('tool_result', {
-              toolName: call.name,
-              durationMs: 0,
-              success: false,
-              error,
-              resultLength: content.length,
-              policy: policy.decision,
-              rule: policy.ruleName,
-            });
-            messages.push({
-              role: 'tool',
-              toolCallId: call.id,
-              name: call.name,
-              content,
-            });
-            continue;
-          }
-        }
-
-        const start = Date.now();
-        try {
-          const execution = await executeTool(db, userId, call.name, call.arguments);
-          content = execution.content;
-          trace = execution.trace;
-        } catch (toolError) {
-          success = false;
-          error = toolError instanceof Error ? toolError.message : 'Tool execution failed.';
-          content = JSON.stringify({
-            ok: false,
-            error,
-          });
-        }
-
-        const durationMs = Date.now() - start;
+        const policy = policyEngine.evaluate(call.name, toolArgs);
+        const secured = await secureExecuteTool({
+          db,
+          userId,
+          agent,
+          conversationId,
+          projectId: activeProjectId,
+          projectLabel: activeProjectLabel,
+          toolName: call.name,
+          rawArguments: call.arguments,
+          policy: {
+            decision: policy.decision,
+            ruleId: policy.ruleId,
+            reason: policy.reason,
+          },
+          execute: () => executeTool(db, userId, call.name, call.arguments),
+        });
+        const content = secured.content;
+        const trace = secured.trace;
+        const success = secured.success;
+        const error = secured.error;
 
         if (trace) {
           traces.push(trace);
@@ -309,7 +265,7 @@ export async function runAgent(input: AgentInput): Promise<AgentResult> {
           userId,
           conversationId,
           call.name,
-          durationMs,
+          secured.durationMs,
           null,
           null,
           null,
@@ -319,12 +275,13 @@ export async function runAgent(input: AgentInput): Promise<AgentResult> {
         );
         await emit('tool_result', {
           toolName: call.name,
-          durationMs,
+          durationMs: secured.durationMs,
           success,
           error,
           resultLength: content.length,
           policy: policy.decision,
           rule: policy.ruleName,
+          permission: secured.permission,
         });
 
         messages.push({
