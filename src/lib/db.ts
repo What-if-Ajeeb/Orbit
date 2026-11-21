@@ -7,7 +7,7 @@ export const DATABASE_NAME = 'orbit.db';
  * tasks and the agent conversation) lives in SQLite on the device.
  */
 export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
-  const DATABASE_VERSION = 5;
+  const DATABASE_VERSION = 6;
 
   const result = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
   let currentDbVersion = result?.user_version ?? 0;
@@ -192,6 +192,71 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
     `);
 
     currentDbVersion = 5;
+  }
+
+  if (currentDbVersion === 5) {
+    await db.execAsync(`
+      CREATE TABLE IF NOT EXISTS skills (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT NOT NULL,
+        version TEXT NOT NULL,
+        capabilities TEXT NOT NULL,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        auto_load INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS hooks (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT NOT NULL,
+        hook_type TEXT NOT NULL,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        code TEXT NOT NULL,
+        priority INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_hooks_type_enabled
+        ON hooks (hook_type, enabled);
+
+      CREATE TABLE IF NOT EXISTS subagents (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT NOT NULL,
+        version TEXT NOT NULL,
+        capabilities TEXT NOT NULL,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS subagent_tasks (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'idle',
+        input TEXT NOT NULL,
+        output TEXT,
+        error TEXT,
+        created_at INTEGER NOT NULL,
+        started_at INTEGER,
+        completed_at INTEGER,
+        parent_conversation_id INTEGER,
+        agent_id TEXT,
+        FOREIGN KEY (parent_conversation_id) REFERENCES conversations (id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_subagent_tasks_parent
+        ON subagent_tasks (parent_conversation_id);
+      CREATE INDEX IF NOT EXISTS idx_subagent_tasks_status
+        ON subagent_tasks (status);
+    `);
+
+    currentDbVersion = 6;
   }
 
   await db.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);

@@ -5,6 +5,8 @@ import { EventStore } from '../events';
 import { TelemetryStore } from '../telemetry';
 import { policyEngine } from '../policy';
 import { buildCordisTools } from '../cordis-tools';
+import { HookEngine } from '../hooks';
+import { SkillStore, SkillExecutor } from '../skills';
 import { runLocalAgent } from './local-agent';
 import { buildSystemPrompt } from './prompt';
 import { requestCompletion } from './providers';
@@ -72,6 +74,9 @@ export async function runAgent(input: AgentInput): Promise<AgentResult> {
 
   const eventStore = new EventStore(db);
   const telemetry = new TelemetryStore(db);
+  const hookEngine = new HookEngine(db);
+  const skillStore = new SkillStore(db);
+  const skillExecutor = new SkillExecutor(skillStore);
 
   const emit = async (
     type:
@@ -111,6 +116,38 @@ export async function runAgent(input: AgentInput): Promise<AgentResult> {
   // block the chat because ensureMcpTools never throws.
   await ensureMcpTools();
 
+  // Load skills and register skill tools as agent tools
+  const registeredSkills = await skillStore.listSkills();
+  for (const skill of registeredSkills) {
+    if (!skill.enabled) continue;
+    for (const cap of skill.capabilities) {
+      agentToolRegistry.register(
+        {
+          definition: {
+            name: `${skill.id}_${cap.name}`,
+            description: cap.description,
+            parameters: cap.inputSchema,
+          },
+          execute: async (_ctx, args) => {
+            const result = await skillExecutor.execute(skill.id, cap.name, args);
+            return {
+              content: JSON.stringify(result),
+              trace: `Skill ${skill.name} → ${cap.name}`,
+            };
+          },
+        },
+        { replace: true }
+      );
+    }
+  }
+
+  // Run before_agent_turn hooks
+  await hookEngine.executeHook('before_agent_turn', {
+    userId,
+    conversationId,
+    timestamp: Date.now(),
+  });
+
   if (creatorMode) {
     const cordisTools = buildCordisTools(db);
     for (const tool of cordisTools) {
@@ -144,6 +181,12 @@ export async function runAgent(input: AgentInput): Promise<AgentResult> {
       if (turn.toolCalls.length === 0) {
         await emit('step_ended', { round, toolCalls: 0 });
         await emit('turn_ended', { round, toolCalls: 0 });
+        await hookEngine.executeHook('after_agent_turn', {
+          userId,
+          conversationId,
+          timestamp: Date.now(),
+          success: true,
+        });
         return {
           reply: turn.text || fallbackReply(traces),
           traces,
@@ -296,11 +339,26 @@ export async function runAgent(input: AgentInput): Promise<AgentResult> {
     }
 
     await emit('turn_ended', { rounds: MAX_TOOL_ROUNDS, toolCalls: traces.length });
+    await hookEngine.executeHook('after_agent_turn', {
+      userId,
+      conversationId,
+      timestamp: Date.now(),
+      success: true,
+      rounds: MAX_TOOL_ROUNDS,
+      toolCalls: traces.length,
+    });
     return { reply: fallbackReply(traces), traces, mode: 'ai' };
   } catch (error) {
     if (traces.length > 0) {
       const reason = error instanceof Error ? error.message : 'Unknown error';
       await emit('turn_ended', { error: reason, partial: true });
+      await hookEngine.executeHook('after_agent_turn', {
+        userId,
+        conversationId,
+        timestamp: Date.now(),
+        success: false,
+        error: reason,
+      });
       return {
         reply: `Changes save ho gaye, lekin AI reply nahi de paya. (${reason})`,
         traces,
@@ -308,7 +366,22 @@ export async function runAgent(input: AgentInput): Promise<AgentResult> {
       };
     }
 
-    await emit('turn_ended', { error: error instanceof Error ? error.message : 'Unknown error', failed: true });
+    const errMsg = error instanceof Error ? error.message : 'Unknown error';
+    await emit('turn_ended', { error: errMsg, failed: true });
+    await hookEngine.executeHook('after_agent_turn', {
+      userId,
+      conversationId,
+      timestamp: Date.now(),
+      success: false,
+      error: errMsg,
+      failed: true,
+    });
+    await hookEngine.executeHook('on_error', {
+      userId,
+      conversationId,
+      timestamp: Date.now(),
+      error: errMsg,
+    });
     throw error;
   }
 }
