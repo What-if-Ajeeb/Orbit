@@ -1,5 +1,3 @@
-import Ionicons from '@expo/vector-icons/Ionicons';
-import { BlurView } from 'expo-blur';
 import { Tabs, router, type Href } from 'expo-router';
 import { useEffect } from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
@@ -62,7 +60,7 @@ function NotificationRedirect() {
 }
 
 export default function AppLayout() {
-  const { colors, glass } = useAppTheme();
+  const { colors } = useAppTheme();
   const styles = useStyles(makeStyles);
   const db = useSQLiteContext();
 
@@ -78,139 +76,25 @@ export default function AppLayout() {
         <Tabs
           screenOptions={{
             headerShown: false,
-            tabBarActiveTintColor: colors.accent,
-            tabBarInactiveTintColor: colors.textFaint,
-            tabBarHideOnKeyboard: true,
-            tabBarBackground: () => (
-              <BlurView
-                intensity={78}
-                tint={glass.tint}
-                blurMethod={glass.blurMethod}
-                blurReductionFactor={glass.blurReductionFactor}
-                style={StyleSheet.absoluteFill}
-              />
-            ),
-            tabBarStyle: {
-              backgroundColor: 'transparent',
-              borderTopColor: glass.borderBright,
-              borderTopWidth: 1,
-              paddingTop: 5,
-            },
-            tabBarLabelStyle: {
-              fontSize: 11,
-              fontWeight: '600',
-            },
+            // Navigation lives in the drawer (hamburger, top-left), like a chat app.
+            tabBarStyle: { display: 'none' },
             sceneStyle: {
               backgroundColor: colors.background,
             },
           }}
         >
-          <Tabs.Screen
-            name="index"
-            options={{
-              title: 'Today',
-              tabBarIcon: ({ color, size, focused }) => (
-                <Ionicons
-                  name={focused ? 'planet' : 'planet-outline'}
-                  size={size}
-                  color={typeof color === 'string' ? color : colors.textMuted}
-                />
-              ),
-            }}
-          />
-          <Tabs.Screen
-            name="chat"
-            options={{
-              title: 'Agent',
-              tabBarIcon: ({ color, size, focused }) => (
-                <Ionicons
-                  name={focused ? 'sparkles' : 'sparkles-outline'}
-                  size={size}
-                  color={typeof color === 'string' ? color : colors.textMuted}
-                />
-              ),
-            }}
-          />
-          <Tabs.Screen
-            name="buddy"
-            options={{
-              title: 'Buddy',
-              tabBarIcon: ({ color, size, focused }) => (
-                <Ionicons
-                  name={focused ? 'paw' : 'paw-outline'}
-                  size={size}
-                  color={typeof color === 'string' ? color : colors.textMuted}
-                />
-              ),
-            }}
-          />
-          <Tabs.Screen
-            name="tasks"
-            options={{
-              title: 'Tasks',
-              tabBarIcon: ({ color, size, focused }) => (
-                <Ionicons
-                  name={focused ? 'checkbox' : 'checkbox-outline'}
-                  size={size}
-                  color={typeof color === 'string' ? color : colors.textMuted}
-                />
-              ),
-            }}
-          />
-          <Tabs.Screen
-            name="settings"
-            options={{
-              title: 'Settings',
-              tabBarIcon: ({ color, size, focused }) => (
-                <Ionicons
-                  name={focused ? 'settings' : 'settings-outline'}
-                  size={size}
-                  color={typeof color === 'string' ? color : colors.textMuted}
-                />
-              ),
-            }}
-          />
+          <Tabs.Screen name="index" />
+          <Tabs.Screen name="chat" />
+          <Tabs.Screen name="buddy" />
+          <Tabs.Screen name="tasks" />
+          <Tabs.Screen name="workflows" />
+          <Tabs.Screen name="settings" />
+          {/* Advanced screens stay reachable from the sidebar; they are not tabs. */}
           <Tabs.Screen name="harness" options={{ href: null }} />
           <Tabs.Screen name="permissions" options={{ href: null }} />
-          <Tabs.Screen
-            name="events"
-            options={{
-              title: 'Events',
-              tabBarIcon: ({ color, size, focused }) => (
-                <Ionicons
-                  name={focused ? 'receipt' : 'receipt-outline'}
-                  size={size}
-                  color={typeof color === 'string' ? color : colors.textMuted}
-                />
-              ),
-            }}
-          />
-          <Tabs.Screen
-            name="telemetry"
-            options={{
-              title: 'Telemetry',
-              tabBarIcon: ({ color, size, focused }) => (
-                <Ionicons
-                  name={focused ? 'analytics' : 'analytics-outline'}
-                  size={size}
-                  color={typeof color === 'string' ? color : colors.textMuted}
-                />
-              ),
-            }}
-          />
-          <Tabs.Screen
-            name="policy"
-            options={{
-              title: 'Policy',
-              tabBarIcon: ({ color, size, focused }) => (
-                <Ionicons
-                  name={focused ? 'shield-checkmark' : 'shield-checkmark-outline'}
-                  size={size}
-                  color={typeof color === 'string' ? color : colors.textMuted}
-                />
-              ),
-            }}
-          />
+          <Tabs.Screen name="events" options={{ href: null }} />
+          <Tabs.Screen name="telemetry" options={{ href: null }} />
+          <Tabs.Screen name="policy" options={{ href: null }} />
         </Tabs>
         <AppSidebar />
         <PermissionHost />
