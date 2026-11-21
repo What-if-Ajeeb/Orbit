@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GlassBackdrop } from './GlassBackdrop';
 import { GlassView } from './GlassView';
 import { Brand } from './Brand';
-import { spacing } from '@/theme';
+import { fonts, spacing } from '@/theme';
 
 
 type AuthShellProps = PropsWithChildren<{
@@ -74,9 +74,10 @@ const makeStyles = ({ colors }: AppTheme) =>
   },
   title: {
     color: colors.text,
-    fontSize: 32,
-    fontWeight: '700',
-    letterSpacing: -0.6,
+    fontFamily: fonts.serif,
+    fontSize: 34,
+    fontWeight: '600',
+    letterSpacing: -0.4,
   },
   subtitle: {
     color: colors.textMuted,
