@@ -28,6 +28,7 @@ and **expo-notifications**.
 - Policy checks: configurable approval gates (`allow`/`deny`/`ask`) and sandboxing rules for every tool call, with per-user approval UI
 - AI settings screen with provider presets, connection test, and secure key storage
 - MCP server connections (HTTP endpoints + optional bearer token) with per-server sync status
+- Runtime extension layer: skill registry, agent lifecycle hooks, and delegated subagent tasks
 - Offline **local mode** for basic commands when no API key is configured
 
 ## Connect the AI brain
@@ -221,9 +222,12 @@ src/
     auth.ts               # hashing, sessions, account queries
     chat-store.ts         # ChatStore interface + SQLite implementation
     chat.ts               # chat store plugin registry (SQLite default)
-    db.ts                 # SQLite schema + migrations (v5)
+    db.ts                 # SQLite schema + migrations (v6)
     dates.ts              # formatting + natural-language date parsing
+    hooks.ts              # agent lifecycle hooks + execution engine
     notifications.ts      # local notification scheduling
+    skills.ts             # skill registry + capability executor
+    subagents.ts          # subagent registry + delegated task store
     tasks.ts              # task CRUD + reminder sync
     validation.ts
   theme.ts
@@ -238,6 +242,7 @@ Architecture and plugin guide: [`docs/HARNESS.md`](docs/HARNESS.md).
 - `tasks` — title, notes, due/remind timestamps, priority, status, notification id
 - `conversations` — one row per chat, ordered by last update
 - `messages` — persisted agent messages linked to a conversation, with tool traces
+- `skills`, `hooks`, `subagents`, `subagent_tasks` — runtime extension stores (v6)
 
 Chats, messages, and tasks cascade-delete when their user is removed.
 
