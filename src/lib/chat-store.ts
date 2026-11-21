@@ -1,5 +1,7 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
+import { rewardChatMessage } from './buddy/rewards';
+
 export type ChatRole = 'user' | 'assistant';
 
 export type ChatMessage = {
@@ -218,6 +220,15 @@ export function createSqliteChatStore(db: SQLiteDatabase): ChatStore {
         conversationId,
         userId
       );
+
+      // Phase 3: small XP + bond for every user message
+      if (role === 'user') {
+        try {
+          await rewardChatMessage(db, userId);
+        } catch (err) {
+          console.warn('Buddy chat reward failed', err);
+        }
+      }
 
       return {
         id: result.lastInsertRowId,
