@@ -1,7 +1,31 @@
 import type { ViewStyle } from 'react-native';
 
-/** Raw palette supplied for the light appearance. */
+/**
+ * ORBIT Design System
+ * Extracted from professional UI mock (Home / Loading / Empty / Error / Success).
+ */
 export const palette = {
+  // Dark system (primary)
+  background: '#080811',
+  surface: '#141329',
+  surfaceElevated: '#1A1830',
+  primary: '#8757FF',
+  primaryStrong: '#6B3FE0',
+  violet: '#B69AFF',
+  accent: '#00D9FF',
+  success: '#36D98A',
+  warning: '#FFB547',
+  error: '#FF4D69',
+
+  // Neutrals
+  white: '#FFFFFF',
+  textPrimary: '#F4F2FF',
+  textSecondary: '#9B97B8',
+  textFaint: '#6B6788',
+  border: 'rgba(135, 87, 255, 0.18)',
+  borderSubtle: 'rgba(255, 255, 255, 0.08)',
+
+  // Light (kept for toggle)
   cream: '#FDFCFC',
   charcoal: '#302C2C',
   bodyText: '#424245',
@@ -17,25 +41,28 @@ export const palette = {
 } as const;
 
 export const darkColors = {
-  background: '#070B14',
-  backgroundElevated: '#0B1220',
-  surface: '#101A2C',
-  surfaceAlt: '#152238',
-  border: '#223453',
-  borderFocus: '#5B7CFF',
-  text: '#F4F7FF',
-  textMuted: '#8C9AB8',
-  textFaint: '#5D6B88',
-  accent: '#6D8BFF',
-  accentStrong: '#4E6BFF',
-  accentSoft: 'rgba(109, 139, 255, 0.14)',
-  success: '#3EE0A1',
-  successSoft: 'rgba(62, 224, 161, 0.12)',
-  warning: '#FF9F0A',
-  warningSoft: 'rgba(255, 159, 10, 0.12)',
-  danger: '#FF6B7A',
-  dangerSoft: 'rgba(255, 107, 122, 0.12)',
-  white: '#FFFFFF',
+  background: palette.background,
+  backgroundElevated: palette.surface,
+  surface: palette.surface,
+  surfaceAlt: palette.surfaceElevated,
+  border: palette.border,
+  borderFocus: palette.primary,
+  text: palette.textPrimary,
+  textMuted: palette.textSecondary,
+  textFaint: palette.textFaint,
+  accent: palette.primary,
+  accentStrong: palette.primaryStrong,
+  accentSoft: 'rgba(135, 87, 255, 0.16)',
+  success: palette.success,
+  successSoft: 'rgba(54, 217, 138, 0.14)',
+  warning: palette.warning,
+  warningSoft: 'rgba(255, 181, 71, 0.14)',
+  danger: palette.error,
+  dangerSoft: 'rgba(255, 77, 105, 0.14)',
+  white: palette.white,
+  // Extra tokens used by new UI
+  cyan: palette.accent,
+  violet: palette.violet,
 } as const;
 
 export const lightColors = {
@@ -58,6 +85,8 @@ export const lightColors = {
   danger: palette.dangerRed,
   dangerSoft: 'rgba(255, 59, 48, 0.12)',
   white: '#FFFFFF',
+  cyan: '#00A3CC',
+  violet: '#7B5CFF',
 } as const;
 
 export type AppColors = { [K in keyof typeof darkColors]: string };
@@ -65,15 +94,15 @@ export type AppColors = { [K in keyof typeof darkColors]: string };
 export const darkGlass = {
   blurMethod: 'dimezisBlurViewSdk31Plus' as const,
   blurReductionFactor: 5,
-  intensity: 64,
+  intensity: 72,
   tint: 'dark' as const,
-  fill: 'rgba(16, 26, 44, 0.56)',
-  fillStrong: 'rgba(9, 15, 27, 0.76)',
-  fillSoft: 'rgba(255, 255, 255, 0.05)',
-  border: 'rgba(148, 177, 255, 0.18)',
-  borderBright: 'rgba(255, 255, 255, 0.14)',
-  highlight: 'rgba(255, 255, 255, 0.18)',
-  shadow: '#030712',
+  fill: 'rgba(20, 19, 41, 0.72)',
+  fillStrong: 'rgba(8, 8, 17, 0.88)',
+  fillSoft: 'rgba(255, 255, 255, 0.04)',
+  border: 'rgba(135, 87, 255, 0.22)',
+  borderBright: 'rgba(255, 255, 255, 0.10)',
+  highlight: 'rgba(182, 154, 255, 0.18)',
+  shadow: '#000000',
 };
 
 export const lightGlass = {
@@ -104,10 +133,10 @@ export type AppGlass = {
 
 export const darkGlassShadow: ViewStyle = {
   shadowColor: darkGlass.shadow,
-  shadowOpacity: 0.4,
-  shadowRadius: 18,
-  shadowOffset: { width: 0, height: 8 },
-  elevation: 12,
+  shadowOpacity: 0.45,
+  shadowRadius: 20,
+  shadowOffset: { width: 0, height: 10 },
+  elevation: 14,
 };
 
 export const lightGlassShadow: ViewStyle = {
@@ -120,8 +149,7 @@ export const lightGlassShadow: ViewStyle = {
 
 export type AppShadow = ViewStyle;
 
-// Backwards-compatible aliases. New code should read tokens from the theme
-// provider so it follows the selected appearance.
+// Backwards-compatible aliases
 export const colors = darkColors;
 export const glass = darkGlass;
 export const glassShadow = darkGlassShadow;
