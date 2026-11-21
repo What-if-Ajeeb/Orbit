@@ -132,6 +132,19 @@ export default function AppLayout() {
             }}
           />
           <Tabs.Screen
+            name="buddy"
+            options={{
+              title: 'Buddy',
+              tabBarIcon: ({ color, size, focused }) => (
+                <Ionicons
+                  name={focused ? 'paw' : 'paw-outline'}
+                  size={size}
+                  color={typeof color === 'string' ? color : colors.textMuted}
+                />
+              ),
+            }}
+          />
+          <Tabs.Screen
             name="tasks"
             options={{
               title: 'Tasks',
