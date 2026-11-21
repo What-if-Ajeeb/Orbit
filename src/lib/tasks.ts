@@ -1,5 +1,6 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
+import { rewardTaskComplete } from './buddy/rewards';
 import {
   cancelTaskReminder,
   requestNotificationPermission,
@@ -268,6 +269,15 @@ export async function updateTask(
 
   if (!updated) {
     throw new TaskError('Task not found.');
+  }
+
+  // Phase 3: reward active buddy when a task is newly completed
+  if (input.status === 'done' && existing.status !== 'done') {
+    try {
+      await rewardTaskComplete(db, userId, updated.priority);
+    } catch (err) {
+      console.warn('Buddy reward on task complete failed', err);
+    }
   }
 
   return syncReminder(db, updated);
