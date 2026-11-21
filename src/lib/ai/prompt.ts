@@ -1,16 +1,70 @@
 import { formatForModel, getTimeZone } from '../dates';
+import type { UserBuddy } from '../buddy/types';
+import { getForm, getSpecies } from '../buddy/species';
+
+export type BuddyPromptContext = {
+  buddy: UserBuddy;
+};
+
+function buildBuddySection(ctx?: BuddyPromptContext): string {
+  if (!ctx?.buddy) return '';
+
+  const { buddy } = ctx;
+  const species = getSpecies(buddy.speciesId);
+  const form = getForm(buddy.currentFormId);
+  const name = buddy.nickname || form?.name || species?.name || 'Buddy';
+  const mbti = species?.mbti ?? 'Unknown';
+  const element = form?.element ?? species?.element ?? 'normal';
+  const description = form?.description || species?.description || '';
+
+  const nextForms =
+    form?.evolvesTo
+      ?.map((id) => {
+        const f = getForm(id);
+        if (!f) return null;
+        const req = f.requirements;
+        const parts: string[] = [];
+        if (req?.level) parts.push(`level ${req.level}`);
+        if (req?.bond) parts.push(`bond ${req.bond}%`);
+        return `${f.name} (needs ${parts.join(' + ') || 'nothing special'})`;
+      })
+      .filter(Boolean) ?? [];
+
+  return `
+Active Buddy (ORBIT Companion):
+- Name: ${name}
+- Species: ${species?.name ?? buddy.speciesId}
+- Form: ${form?.name ?? buddy.currentFormId} (stage ${form?.stage ?? 1}, ${form?.rarity ?? 'common'})
+- MBTI: ${mbti}
+- Element: ${element}
+- Level: ${buddy.level}  |  XP progress toward next level
+- Bond: ${buddy.bond}%
+- Personality notes: ${description}
+${nextForms.length > 0 ? `- Possible next evolutions: ${nextForms.join('; ')}` : '- No further evolutions available from current form.'}
+
+Buddy guidelines:
+- You can talk about the buddy naturally when the user asks about it, or when it fits the conversation (motivation, celebration after tasks, evolution readiness).
+- Reflect the buddy's MBTI and personality lightly in tone when relevant (e.g. a playful ENTP fox vs a calm INFJ owl).
+- If the buddy is close to evolving (level/bond near requirements), you may gently mention it.
+- Never invent buddy stats. Only use the numbers above.
+- Do not force the buddy into every reply. Keep it optional and natural.
+`;
+}
 
 export function buildSystemPrompt(
   userName: string,
   agentName = 'Master Agent',
-  now: number = Date.now()
+  now: number = Date.now(),
+  buddyCtx?: BuddyPromptContext
 ): string {
+  const buddySection = buildBuddySection(buddyCtx);
+
   return `You are ${agentName}, part of Orbit, the user's private Android agent. All task data stays on the device.
 
 The user's name is ${userName}.
 Current local date/time: ${formatForModel(now)}
 Timezone: ${getTimeZone()}
-
+${buddySection}
 When to use task tools:
 - Only create, update, complete, or delete a task when the user explicitly asks you to do so — for example "add task…", "remind me…", "mark 3 done", "task banao", or "yaad dila do".
 - A statement, question, greeting, file name, pasted text, email excerpt, or document excerpt is NOT a request to save a task. Never turn it into a task on your own.
