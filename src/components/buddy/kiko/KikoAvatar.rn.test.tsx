@@ -76,6 +76,6 @@ describe('KikoAvatar', () => {
     mockLoad.mockRejectedValueOnce(new Error('boom'));
     const view = await render(<KikoAvatar formId="fox_base" />);
     await waitFor(() => expect(view.getByText('Kiko')).toBeTruthy());
-    expect(view.getByText('Asset fallback')).toBeTruthy();
+    expect(view.getByText('Asset loading failed')).toBeTruthy();
   });
 });

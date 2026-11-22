@@ -2,7 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Speech from 'expo-speech';
 
@@ -40,6 +40,7 @@ export default function BuddyScreen() {
   const db = useSQLiteContext();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
   const { user } = useSession();
   const { open } = useSidebar();
 
@@ -132,7 +133,7 @@ export default function BuddyScreen() {
           </View>
 
           <View style={styles.avatarWrap}>
-            <BuddyAvatar speciesId={buddy.speciesId} formId={buddy.currentFormId} size={240} state={anim} speaking={speaking} onStateChange={setAnim} />
+            <BuddyAvatar speciesId={buddy.speciesId} formId={buddy.currentFormId} size={Math.min(280, Math.max(190, Math.floor(width - 96)))} state={anim} speaking={speaking} onStateChange={setAnim} />
           </View>
 
           <View style={styles.moodRow}>

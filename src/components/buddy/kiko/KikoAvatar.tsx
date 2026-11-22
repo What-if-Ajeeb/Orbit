@@ -85,7 +85,7 @@ export function KikoAvatar({ formId = 'fox_base', size = 280, state = 'idle', sp
         if (mounted) setBatterySaver(!!low);
         powerSub = Battery.addLowPowerModeListener?.(({ lowPowerMode }: { lowPowerMode: boolean }) => setBatterySaver(!!lowPowerMode)) ?? null;
       } catch {
-        // expo-battery may be unavailable in this environment; fail safe to no battery saver.
+        // optional dependency behavior
       }
     })();
     return () => { mounted = false; powerSub?.remove?.(); };
@@ -93,11 +93,18 @@ export function KikoAvatar({ formId = 'fox_base', size = 280, state = 'idle', sp
 
   useEffect(() => {
     let active = true;
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset error state on form change
     setLoadError(null);
     loadKikoFormSvg(formId)
-      .then(({ xml: loaded }) => { if (active) setXml(loaded); })
-      .catch((e) => { console.warn('Kiko SVG load failed', e); if (active) { setXml(null); setLoadError('Could not load Kiko asset.'); } });
+      .then(({ xml: loaded, fallback, key }) => {
+        if (!active) return;
+        if (__DEV__ && fallback) console.warn('KikoAvatar using base fallback for form', formId, key);
+        setXml(loaded);
+      })
+      .catch((e) => {
+        console.error('Kiko SVG load failed', { formId, error: e });
+        if (active) { setXml(null); setLoadError('Kiko asset could not be loaded'); }
+      });
     return () => { active = false; };
   }, [formId]);
 
@@ -109,10 +116,9 @@ export function KikoAvatar({ formId = 'fox_base', size = 280, state = 'idle', sp
     });
   }, [onStateChange]);
 
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setLocal(state);
-  }, [state]);
+  // Sync controlled prop; guard prevents loops. Disable lint for intentional prop-sync.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { setLocal((prev) => (prev === state ? prev : state)); }, [state]);
 
   const stopLoops = useCallback(() => { loops.current.forEach((l) => l.stop()); loops.current = []; }, []);
   const animateAllowed = !paused && !reducedMotion && !batterySaver;
@@ -200,7 +206,7 @@ export function KikoAvatar({ formId = 'fox_base', size = 280, state = 'idle', sp
 
   const onPress = () => {
     if (!interactive) return;
-    if (Date.now() - lastLongPress.current < 450) return; // prevent long-press release tap
+    if (Date.now() - lastLongPress.current < 450) return;
     const now = Date.now();
     if (now - lastTap.current < 320) { setState('double-tapped'); lastTap.current = 0; return; }
     lastTap.current = now;
@@ -208,7 +214,13 @@ export function KikoAvatar({ formId = 'fox_base', size = 280, state = 'idle', sp
   };
 
   if (loadError || !parts || !bodyXml) {
-    return <View style={[styles.fallback, { width: size, height: size }]}><Text style={styles.fallbackText}>Kiko</Text><Text style={styles.fallbackSub}>{loadError ? 'Asset fallback' : 'Loading...'}</Text></View>;
+    return (
+      <View style={[styles.fallback, { width: size, height: size }]}>
+        <Text style={styles.fallbackText}>Kiko</Text>
+        <Text style={styles.fallbackSub}>{loadError ? 'Asset loading failed' : 'Loading character...'}</Text>
+        {__DEV__ && formId ? <Text style={styles.fallbackDebug}>{formId}</Text> : null}
+      </View>
+    );
   }
 
   return (
@@ -236,5 +248,6 @@ export function KikoAvatar({ formId = 'fox_base', size = 280, state = 'idle', sp
 const styles = StyleSheet.create({
   fallback: { alignItems: 'center', justifyContent: 'center', borderRadius: 999, backgroundColor: '#F4E7DD' },
   fallbackText: { color: '#B5502F', fontWeight: '700', fontSize: 20 },
-  fallbackSub: { color: '#6B6A65', fontSize: 12, marginTop: 4 },
+  fallbackSub: { color: '#6B6A65', fontSize: 12, marginTop: 4, textAlign: 'center' },
+  fallbackDebug: { color: '#8A8883', fontSize: 10, marginTop: 4 },
 });
