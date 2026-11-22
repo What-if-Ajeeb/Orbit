@@ -219,10 +219,10 @@ export default function WorkflowsScreen() {
     setIsRefreshing(false);
   }
 
-  function openRunChat(run: WorkflowRun) {
+  function openRunChat(run: WorkflowRun, openedAt: number) {
     if (run.conversationId === null) return;
 
-    router.navigate(`/chat?c=${run.conversationId}&t=${Date.now()}` as Href);
+    router.navigate(`/chat?c=${run.conversationId}&t=${openedAt}` as Href);
   }
 
   function statusColor(status: RunStatus): string {
@@ -336,7 +336,7 @@ export default function WorkflowsScreen() {
         {expanded && item.conversationId !== null ? (
           <Pressable
             accessibilityRole="button"
-            onPress={() => openRunChat(item)}
+            onPress={() => openRunChat(item, Date.now())}
             style={({ pressed }) => [styles.openChat, pressed && styles.pressed]}
           >
             <Text style={styles.openChatText}>Open full transcript</Text>
@@ -705,7 +705,7 @@ const makeStyles = ({ colors }: AppTheme) =>
       justifyContent: 'flex-end',
     },
     scrim: {
-      ...StyleSheet.absoluteFillObject,
+      ...StyleSheet.absoluteFill,
       backgroundColor: 'rgba(0, 0, 0, 0.55)',
     },
     sheet: {

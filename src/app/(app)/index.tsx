@@ -298,7 +298,7 @@ export default function HomeScreen() {
             <GlassView style={styles.emptyCard}>
               <Ionicons name="checkmark-done-circle-outline" size={28} color={colors.success} />
               <View style={styles.emptyText}>
-                <Text style={styles.emptyTitle}>You're all caught up</Text>
+                <Text style={styles.emptyTitle}>You&apos;re all caught up</Text>
                 <Text style={styles.emptySubtitle}>
                   No open tasks. Tap “Add task” above or ask the agent.
                 </Text>

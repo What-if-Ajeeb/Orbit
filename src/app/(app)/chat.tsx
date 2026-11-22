@@ -68,7 +68,25 @@ export default function ChatScreen() {
   const [isSending, setIsSending] = useState(false);
   const [aiReady, setAiReady] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyManualOpen, setHistoryManualOpen] = useState(false);
+  const [historyDismissedKey, setHistoryDismissedKey] = useState<string | null>(null);
+  // The drawer can deep-link here with ?h=1 — derive panel visibility from the
+  // param instead of setState-ing inside an effect (avoids cascading renders).
+  const historyNavKey = historyParam ? `${promptStamp ?? ''}|${historyParam}` : null;
+  const historyOpen =
+    historyManualOpen || (historyNavKey !== null && historyDismissedKey !== historyNavKey);
+
+  function openHistoryPanel() {
+    setHistoryManualOpen(true);
+  }
+
+  function closeHistoryPanel() {
+    setHistoryManualOpen(false);
+
+    if (historyNavKey !== null) {
+      setHistoryDismissedKey(historyNavKey);
+    }
+  }
   const [creatorMode, setCreatorMode] = useState(false);
 
   const load = useCallback(async () => {
@@ -140,7 +158,6 @@ export default function ChatScreen() {
     const userId = user.id;
 
     if (historyParam) {
-      setHistoryOpen(true);
       return;
     }
 
@@ -152,11 +169,12 @@ export default function ChatScreen() {
       }
 
       activeIdRef.current = id;
-      setActiveId(id);
 
       void (async () => {
         try {
-          setMessages(await store.listMessages(userId, id, 200));
+          const list = await store.listMessages(userId, id, 200);
+          setActiveId(id);
+          setMessages(list);
         } catch (openError) {
           console.warn('Could not open that chat.', openError);
         }
@@ -196,7 +214,7 @@ export default function ChatScreen() {
 
   function openHistory() {
     Keyboard.dismiss();
-    setHistoryOpen(true);
+    openHistoryPanel();
   }
 
   async function refreshConversations() {
@@ -286,7 +304,7 @@ export default function ChatScreen() {
       return;
     }
 
-    setHistoryOpen(false);
+    closeHistoryPanel();
     setError(null);
 
     const current = conversations.find((item) => item.id === activeIdRef.current);
@@ -310,7 +328,7 @@ export default function ChatScreen() {
   }
 
   async function selectConversation(conversation: Conversation) {
-    setHistoryOpen(false);
+    closeHistoryPanel();
 
     if (isSending || conversation.id === activeIdRef.current) {
       return;
@@ -571,7 +589,7 @@ export default function ChatScreen() {
         conversations={conversations}
         activeId={activeId}
         busy={isSending}
-        onClose={() => setHistoryOpen(false)}
+        onClose={closeHistoryPanel}
         onSelect={(conversation) => {
           void selectConversation(conversation);
         }}

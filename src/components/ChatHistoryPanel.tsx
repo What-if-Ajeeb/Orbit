@@ -99,7 +99,7 @@ export function ChatHistoryPanel({
   onNew,
   onDelete,
 }: ChatHistoryPanelProps) {
-  const { colors, glass } = useAppTheme();
+  const { colors } = useAppTheme();
   const styles = useStyles(makeStyles);
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();

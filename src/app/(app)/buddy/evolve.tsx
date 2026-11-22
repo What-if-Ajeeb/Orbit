@@ -66,7 +66,7 @@ export default function EvolveScreen() {
       } else {
         Alert.alert('Cannot evolve', result.message);
       }
-    } catch (e) {
+    } catch {
       Alert.alert('Error', 'Something went wrong');
     } finally {
       setEvolving(false);

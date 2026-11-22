@@ -35,7 +35,7 @@ export function CompanionPairingModal({
   onClose,
   onPaired,
 }: CompanionPairingModalProps) {
-  const { colors, glass } = useAppTheme();
+  const { colors } = useAppTheme();
   const styles = useStyles(makeStyles);
   const db = useSQLiteContext();
   const insets = useSafeAreaInsets();
