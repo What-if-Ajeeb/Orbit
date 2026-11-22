@@ -7,6 +7,7 @@ import { FatalErrorBoundary } from '@/components/FatalErrorBoundary';
 import { FatalErrorScreen } from '@/components/FatalErrorScreen';
 import { SessionProvider, useSession } from '@/context/auth';
 import { ThemeProvider, useAppTheme } from '@/context/theme';
+import { PaperThemeBridge } from '@/context/paper';
 import { DATABASE_NAME, migrateDbIfNeeded } from '@/lib/db';
 import {
   clearDiagnosticReport,
@@ -41,14 +42,16 @@ export default function RootLayout() {
     <FatalErrorBoundary>
       <SQLiteProvider databaseName={DATABASE_NAME} onInit={initializeDatabase}>
         <ThemeProvider>
-          <SessionProvider>
-            <NotificationSetup />
-            <SplashController />
-            <HarnessProvider>
-              <RootNavigator />
-            </HarnessProvider>
-            <StatusBarController />
-          </SessionProvider>
+          <PaperThemeBridge>
+            <SessionProvider>
+              <NotificationSetup />
+              <SplashController />
+              <HarnessProvider>
+                <RootNavigator />
+              </HarnessProvider>
+              <StatusBarController />
+            </SessionProvider>
+          </PaperThemeBridge>
         </ThemeProvider>
       </SQLiteProvider>
       <FatalErrorScreen />

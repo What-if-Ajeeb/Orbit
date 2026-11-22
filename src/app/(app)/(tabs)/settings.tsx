@@ -14,6 +14,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import { SegmentedButtons, Switch } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Button } from '@/components/Button';
@@ -47,7 +48,7 @@ import {
   sendTestReminder,
   type NotificationPermissionState,
 } from '@/lib/notifications';
-import { radius, spacing, palette } from '@/theme';
+import { radius, spacing } from '@/theme';
 
 
 const THEME_OPTIONS: { id: ThemeMode; label: string }[] = [
@@ -55,15 +56,6 @@ const THEME_OPTIONS: { id: ThemeMode; label: string }[] = [
   { id: 'dark', label: 'Dark' },
   { id: 'system', label: 'System' },
 ];
-
-const LIGHT_HALF = { bg: palette.ivory, line: 'rgba(20, 20, 19, 0.28)' };
-const DARK_HALF = { bg: palette.background, line: 'rgba(255, 255, 255, 0.32)' };
-
-const PREVIEW_HALVES: Record<ThemeMode, { bg: string; line: string }[]> = {
-  light: [LIGHT_HALF],
-  dark: [DARK_HALF],
-  system: [LIGHT_HALF, DARK_HALF],
-};
 
 export default function SettingsScreen() {
   const { colors, mode, setMode } = useAppTheme();
@@ -334,32 +326,21 @@ export default function SettingsScreen() {
               </View>
             </View>
 
-            <View accessibilityRole="radiogroup" style={styles.themeRow}>
-              {THEME_OPTIONS.map((option) => {
-                const active = mode === option.id;
-                return (
-                  <Pressable
-                    key={option.id}
-                    accessibilityRole="radio"
-                    accessibilityLabel={`${option.label} color mode`}
-                    accessibilityState={{ selected: active }}
-                    onPress={() => setMode(option.id)}
-                    style={({ pressed }) => [styles.themeTile, pressed && styles.pressed]}
-                  >
-                    <View style={[styles.themePreview, active && styles.themePreviewActive]}>
-                      {PREVIEW_HALVES[option.id].map((half, index) => (
-                        <View key={index} style={[styles.themeHalf, { backgroundColor: half.bg }]}>
-                          <View style={[styles.themeBar, { backgroundColor: half.line, width: '75%' }]} />
-                          <View style={[styles.themeBar, { backgroundColor: half.line, width: '50%' }]} />
-                        </View>
-                      ))}
-                      {active ? <View style={styles.themeDot} /> : null}
-                    </View>
-                    <Text style={[styles.themeLabel, active && styles.themeLabelActive]}>{option.label}</Text>
-                  </Pressable>
-                );
-              })}
-            </View>
+            <SegmentedButtons
+              value={mode}
+              onValueChange={(value) => setMode(value as ThemeMode)}
+              density="medium"
+              buttons={THEME_OPTIONS.map((option) => ({
+                value: option.id,
+                label: option.label,
+                icon:
+                  option.id === 'light'
+                    ? 'weather-sunny'
+                    : option.id === 'dark'
+                      ? 'weather-night'
+                      : 'theme-light-dark',
+              }))}
+            />
           </GlassView>
         </View>
 
@@ -388,27 +369,15 @@ export default function SettingsScreen() {
               </View>
             </View>
 
-            <View style={styles.segmentedRow} accessibilityRole="radiogroup">
-              {([
-                { id: 'cloud' as const, label: 'Cloud', icon: 'cloud-outline' as const },
-                { id: 'local' as const, label: 'Local server', icon: 'server-outline' as const },
-              ]).map((option) => {
-                const active = currentSettings.mode === option.id;
-                return (
-                  <Pressable
-                    key={option.id}
-                    accessibilityRole="radio"
-                    accessibilityLabel={`${option.label} AI connection`}
-                    accessibilityState={{ selected: active }}
-                    onPress={() => selectMode(option.id)}
-                    style={[styles.segment, active && styles.segmentActive]}
-                  >
-                    <Ionicons name={option.icon} size={16} color={active ? colors.accent : colors.textMuted} />
-                    <Text style={[styles.segmentText, active && styles.segmentTextActive]}>{option.label}</Text>
-                  </Pressable>
-                );
-              })}
-            </View>
+            <SegmentedButtons
+              value={currentSettings.mode}
+              onValueChange={(value) => selectMode(value as AiConnectionMode)}
+              density="medium"
+              buttons={[
+                { value: 'cloud', label: 'Cloud', icon: 'cloud-outline' },
+                { value: 'local', label: 'Local server', icon: 'server-outline' },
+              ]}
+            />
 
             <View style={styles.divider} />
 
@@ -568,29 +537,28 @@ export default function SettingsScreen() {
                 <Text style={styles.settingDescription}>Get alerted 15 minutes before a task is due.</Text>
               </View>
             </View>
-            <View style={styles.statusPill}>
-              <View
-                style={[
-                  styles.statusDot,
-                  {
-                    backgroundColor:
-                      permission === 'granted'
-                        ? colors.success
-                        : permission === 'denied'
-                          ? colors.danger
-                          : colors.warning,
-                  },
-                ]}
+            <View style={styles.switchRow}>
+              <View style={styles.settingText}>
+                <Text style={styles.settingTitle}>
+                  {permission === 'granted' ? 'Notifications enabled' : 'Enable notifications'}
+                </Text>
+                <Text style={styles.settingDescription}>
+                  {permission === 'denied'
+                    ? 'Permission denied in system settings.'
+                    : 'Allow Orbit to send reminder notifications.'}
+                </Text>
+              </View>
+              <Switch
+                value={permission === 'granted'}
+                disabled={permission === 'granted'}
+                onValueChange={(value) => {
+                  if (value) void enableNotifications();
+                }}
               />
-              <Text style={styles.statusText}>
-                {permission === 'granted' ? 'Enabled' : permission === 'denied' ? 'Permission denied' : 'Not set up'}
-              </Text>
             </View>
-            {permission !== 'granted' ? (
-              <Button label="Enable notifications" variant="secondary" onPress={() => { void enableNotifications(); }} />
-            ) : (
+            {permission === 'granted' ? (
               <Button label="Send test reminder" variant="secondary" onPress={() => { void testReminder(); }} />
-            )}
+            ) : null}
           </GlassView>
         </View>
 
@@ -894,10 +862,10 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
       height: 8,
       borderRadius: 4,
     },
-    statusText: {
-      color: colors.text,
-      fontSize: 13,
-      fontWeight: '500',
+    switchRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.md,
     },
     profileAvatar: {
       width: 44,
@@ -906,54 +874,6 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
       backgroundColor: colors.accentSoft,
       alignItems: 'center',
       justifyContent: 'center',
-    },
-    themeRow: {
-      flexDirection: 'row',
-      gap: spacing.sm,
-    },
-    themeTile: {
-      flex: 1,
-      alignItems: 'center',
-      gap: spacing.xs,
-    },
-    themePreview: {
-      width: '100%',
-      height: 72,
-      flexDirection: 'row',
-      borderRadius: radius.md,
-      overflow: 'hidden',
-      borderWidth: 1.5,
-      borderColor: colors.border,
-    },
-    themePreviewActive: {
-      borderColor: colors.accent,
-    },
-    themeHalf: {
-      flex: 1,
-      padding: 10,
-      gap: 5,
-    },
-    themeBar: {
-      height: 4,
-      borderRadius: 2,
-    },
-    themeDot: {
-      position: 'absolute',
-      right: 8,
-      bottom: 8,
-      width: 10,
-      height: 10,
-      borderRadius: 5,
-      backgroundColor: colors.accent,
-    },
-    themeLabel: {
-      color: colors.textMuted,
-      fontSize: 13,
-      fontWeight: '500',
-    },
-    themeLabelActive: {
-      color: colors.accent,
-      fontWeight: '600',
     },
     footer: {
       color: colors.textFaint,

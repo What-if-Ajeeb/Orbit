@@ -1,11 +1,12 @@
 {
   "name": "orbit",
-  "version": "1.10.4",
+  "version": "1.10.5",
   "main": "expo-router/entry",
   "workspaces": [
     "packages/**/*"
   ],
   "dependencies": {
+    "@expo/ui": "~58.0.29",
     "@expo/vector-icons": "^15.0.2",
     "@noble/hashes": "^2.4.0",
     "cordis": "4.0.0-rc.13",
@@ -26,6 +27,7 @@
     "expo-system-ui": "~58.0.7",
     "react": "19.3.0",
     "react-native": "0.88.1",
+    "react-native-paper": "^5.15.5",
     "react-native-safe-area-context": "~5.11.1",
     "react-native-screens": "~4.30.1",
     "react-native-webview": "14.0.1"
