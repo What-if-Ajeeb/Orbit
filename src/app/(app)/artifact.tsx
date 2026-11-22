@@ -242,7 +242,7 @@ export default function ArtifactScreen() {
       .map(([key, value]) => `${key}=${encodeURIComponent(value)}`)
       .join('&');
 
-    router.push(`/chat?${query}` as Href);
+    router.navigate(`/chat?${query}` as Href);
   }, [detail, router]);
 
   const handleShouldStart = useCallback((event: { url: string }) => {

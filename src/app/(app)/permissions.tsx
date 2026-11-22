@@ -819,7 +819,7 @@ export default function PermissionsScreen() {
                 if (router.canGoBack()) {
                   router.back();
                 } else {
-                  router.replace('/settings' as Href);
+                  router.navigate('/settings' as Href);
                 }
               }}
               style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}

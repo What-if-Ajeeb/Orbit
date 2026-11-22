@@ -33,7 +33,7 @@ function NotificationRedirect() {
           const url = response.notification.request.content.data?.url;
 
           if (typeof url === 'string') {
-            router.push(url as Href);
+            router.navigate(url as Href);
             Notifications.clearLastNotificationResponse();
           }
         };
