@@ -18,24 +18,27 @@ import { SidebarButton } from '@/components/SidebarButton';
 import { useSession } from '@/context/auth';
 import { useSidebar } from '@/context/sidebar';
 import { EventStore, type StoredEvent } from '@/lib/events';
-import { colors, radius, spacing } from '@/theme';
+import { radius, spacing } from '@/theme';
+import { useAppTheme, useStyles, type AppTheme } from '@/context/theme';
+
+type Tone = 'accent' | 'success' | 'textMuted' | 'text' | 'warning';
 
 const TYPE_META: Record<
   StoredEvent['type'],
-  { icon: keyof typeof Ionicons.glyphMap; color: string }
+  { icon: keyof typeof Ionicons.glyphMap; tone: Tone }
 > = {
-  turn_started: { icon: 'sparkles', color: colors.accent },
-  turn_ended: { icon: 'sparkles', color: colors.success },
-  step_started: { icon: 'construct', color: colors.accent },
-  step_ended: { icon: 'construct', color: colors.textMuted },
-  tool_call: { icon: 'construct-outline', color: colors.accent },
-  tool_result: { icon: 'checkmark-circle', color: colors.success },
-  message_added: { icon: 'chatbubble-outline', color: colors.text },
-  ai_request: { icon: 'send-outline', color: colors.accent },
-  ai_response: { icon: 'send', color: colors.success },
-  forked: { icon: 'git-compare', color: colors.warning },
-  resumed: { icon: 'play', color: colors.success },
-  paused: { icon: 'pause', color: colors.warning },
+  turn_started: { icon: 'sparkles', tone: 'accent' },
+  turn_ended: { icon: 'sparkles', tone: 'success' },
+  step_started: { icon: 'construct', tone: 'accent' },
+  step_ended: { icon: 'construct', tone: 'textMuted' },
+  tool_call: { icon: 'construct-outline', tone: 'accent' },
+  tool_result: { icon: 'checkmark-circle', tone: 'success' },
+  message_added: { icon: 'chatbubble-outline', tone: 'text' },
+  ai_request: { icon: 'send-outline', tone: 'accent' },
+  ai_response: { icon: 'send', tone: 'success' },
+  forked: { icon: 'git-compare', tone: 'warning' },
+  resumed: { icon: 'play', tone: 'success' },
+  paused: { icon: 'pause', tone: 'warning' },
 };
 
 function summaryText(event: StoredEvent): string {
@@ -76,6 +79,8 @@ function formatTime(timestamp: number): string {
 }
 
 export default function EventsScreen() {
+  const { colors } = useAppTheme();
+  const styles = useStyles(makeStyles);
   const db = useSQLiteContext();
   const insets = useSafeAreaInsets();
   const { user } = useSession();
@@ -157,7 +162,7 @@ export default function EventsScreen() {
               await load();
             } catch (forkError) {
               console.warn('Could not fork conversation.', forkError);
-              setForkNotice('Fork nahi bani. Dobara try karein.');
+              setForkNotice('Could not fork the session. Please try again.');
             }
           },
         },
@@ -191,7 +196,7 @@ export default function EventsScreen() {
         <ScreenHeader
           eyebrow="OBSERVABILITY"
           title="Event log"
-          subtitle="Har turn, tool call aur response ek event mein save hota hai."
+          subtitle="Every turn, tool call and response is saved as an event."
           left={<SidebarButton onPress={openSidebar} />}
         />
 
@@ -222,9 +227,9 @@ export default function EventsScreen() {
           {events.length === 0 ? (
             <View style={styles.empty}>
               <Ionicons name="receipt-outline" size={32} color={colors.textFaint} />
-              <Text style={styles.emptyTitle}>Koi event nahi hai</Text>
+              <Text style={styles.emptyTitle}>No events yet</Text>
               <Text style={styles.emptyText}>
-                Agent se ek baar baat karo — events yahin dikhna shuru honge.
+                Chat with the agent once and events will start appearing here.
               </Text>
             </View>
           ) : (
@@ -237,7 +242,7 @@ export default function EventsScreen() {
                     <View
                       style={[
                         styles.eventIcon,
-                        { backgroundColor: meta.color },
+                        { backgroundColor: colors[meta.tone] },
                       ]}
                     >
                       <Ionicons name={meta.icon} size={15} color={colors.white} />
@@ -249,7 +254,7 @@ export default function EventsScreen() {
                           numberOfLines={1}
                           style={[
                             styles.eventName,
-                            { color: meta.color },
+                            { color: colors[meta.tone] },
                           ]}
                         >
                           {event.type}
@@ -270,14 +275,15 @@ export default function EventsScreen() {
         </View>
 
         <Text style={styles.footer}>
-          Events append-only rehte hain — koi event delete ya edit nahi hota.
+          Events are append-only — none are ever edited or deleted.
         </Text>
       </ScrollView>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = ({ colors }: AppTheme) =>
+  StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: colors.background,
@@ -301,7 +307,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     backgroundColor: colors.successSoft,
     borderWidth: 1,
-    borderColor: 'rgba(62, 224, 161, 0.25)',
+    borderColor: `${colors.success}47`,
     borderRadius: radius.md,
     paddingVertical: spacing.sm + 2,
     paddingHorizontal: spacing.md,
@@ -321,7 +327,7 @@ const styles = StyleSheet.create({
     minHeight: 48,
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: 'rgba(109, 139, 255, 0.32)',
+    borderColor: colors.border,
     backgroundColor: colors.accentSoft,
     marginVertical: spacing.md,
     paddingHorizontal: spacing.md,

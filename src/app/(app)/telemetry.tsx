@@ -16,9 +16,12 @@ import { SidebarButton } from '@/components/SidebarButton';
 import { useSession } from '@/context/auth';
 import { useSidebar } from '@/context/sidebar';
 import { TelemetryStore, type TelemetrySummary } from '@/lib/telemetry';
-import { colors, radius, spacing } from '@/theme';
+import { radius, spacing } from '@/theme';
+import { useAppTheme, useStyles, type AppTheme } from '@/context/theme';
 
 export default function TelemetryScreen() {
+  const { colors } = useAppTheme();
+  const styles = useStyles(makeStyles);
   const db = useSQLiteContext();
   const insets = useSafeAreaInsets();
   const { user } = useSession();
@@ -81,7 +84,7 @@ export default function TelemetryScreen() {
         <ScreenHeader
           eyebrow="OBSERVABILITY"
           title="Telemetry"
-          subtitle="Tool durations, token usage aur cache hit rates."
+          subtitle="Tool durations, token usage and cache hit rates."
           left={<SidebarButton onPress={openSidebar} />}
         />
 
@@ -124,7 +127,7 @@ export default function TelemetryScreen() {
           {Object.entries(s.byTool).length === 0 ? (
             <View style={styles.empty}>
               <Ionicons name="construct-outline" size={32} color={colors.textFaint} />
-              <Text style={styles.emptyText}>Abhi koi tool call nahi hua.</Text>
+              <Text style={styles.emptyText}>No tool calls yet.</Text>
             </View>
           ) : (
             <View style={styles.list}>
@@ -182,8 +185,7 @@ export default function TelemetryScreen() {
         </View>
 
         <Text style={styles.footer}>
-          Telemetry events append-only event log se nikale gaye hain — koi data
-          server par nahi jata.
+          Telemetry is derived from the append-only event log — no data is sent to any server.
         </Text>
       </ScrollView>
     </View>
@@ -199,6 +201,8 @@ function StatCard({
   label: string;
   icon: keyof typeof Ionicons.glyphMap;
 }) {
+  const { colors } = useAppTheme();
+  const styles = useStyles(makeStyles);
   return (
     <View style={styles.statCard}>
       <View style={styles.statTop}>
@@ -221,6 +225,8 @@ function MetricCard({
   subText: string;
   icon: keyof typeof Ionicons.glyphMap;
 }) {
+  const { colors } = useAppTheme();
+  const styles = useStyles(makeStyles);
   return (
     <View style={styles.metricCard}>
       <View style={styles.metricTop}>
@@ -233,7 +239,8 @@ function MetricCard({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = ({ colors }: AppTheme) =>
+  StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: colors.background,

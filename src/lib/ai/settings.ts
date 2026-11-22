@@ -86,7 +86,7 @@ export const PROVIDER_PRESETS: Record<AiProvider, ProviderPreset> = {
     model: 'deepseek-chat',
     keyHint: 'sk-...',
     docsUrl: 'https://platform.deepseek.com/api-keys',
-    note: 'DeepSeek-V4 compatible models. Orbit ke liye recommended.',
+    note: 'DeepSeek-V4 compatible models. Recommended for Orbit.',
   },
   anthropic: {
     id: 'anthropic',

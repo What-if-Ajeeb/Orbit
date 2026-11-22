@@ -31,7 +31,7 @@ async function ensureChannel(Notifications: NotificationsModule): Promise<void> 
     description: 'Reminders for tasks you create in Orbit.',
     importance: Notifications.AndroidImportance.HIGH,
     vibrationPattern: [0, 200, 120, 200],
-    lightColor: '#6D8BFF',
+    lightColor: '#D97757',
     sound: 'default',
   });
 }

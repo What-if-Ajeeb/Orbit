@@ -1,5 +1,4 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { BlurView } from 'expo-blur';
 import { useEffect, useState } from 'react';
 import {
   Animated,
@@ -123,13 +122,6 @@ export function PermissionDialog({
           pointerEvents="none"
           style={[StyleSheet.absoluteFill, styles.backdrop, { opacity: progress }]}
         >
-          <BlurView
-            intensity={34}
-            tint={glass.tint}
-            blurMethod={glass.blurMethod}
-            blurReductionFactor={glass.blurReductionFactor}
-            style={StyleSheet.absoluteFill}
-          />
         </Animated.View>
         <Pressable
           accessibilityRole="button"
@@ -151,14 +143,6 @@ export function PermissionDialog({
             },
           ]}
         >
-          <BlurView
-            intensity={88}
-            tint={glass.tint}
-            blurMethod={glass.blurMethod}
-            blurReductionFactor={glass.blurReductionFactor}
-            pointerEvents="none"
-            style={StyleSheet.absoluteFill}
-          />
           <View pointerEvents="none" style={styles.topGlow} />
           <View pointerEvents="none" style={styles.highlight} />
 
@@ -560,8 +544,8 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
       gap: spacing.xs,
       borderRadius: radius.sm,
       borderWidth: 1,
-      borderColor: 'rgba(255, 159, 10, 0.28)',
-      backgroundColor: 'rgba(255, 159, 10, 0.07)',
+      borderColor: colors.warning,
+      backgroundColor: colors.warningSoft,
       padding: spacing.sm,
     },
     commandHeader: {
@@ -608,7 +592,7 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
       gap: spacing.sm,
       borderRadius: radius.md,
       borderWidth: 1,
-      borderColor: 'rgba(255, 107, 122, 0.25)',
+      borderColor: colors.danger,
       backgroundColor: colors.dangerSoft,
       padding: spacing.sm,
     },
@@ -624,7 +608,7 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
       gap: spacing.sm,
       borderRadius: radius.md,
       borderWidth: 1,
-      borderColor: 'rgba(255, 107, 122, 0.28)',
+      borderColor: colors.danger,
       backgroundColor: colors.dangerSoft,
       padding: spacing.sm,
     },

@@ -1,5 +1,4 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { BlurView } from 'expo-blur';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect, useState } from 'react';
 import {
@@ -120,13 +119,6 @@ export function CompanionPairingModal({
           pointerEvents="none"
           style={[StyleSheet.absoluteFill, styles.backdrop, { opacity: progress }]}
         >
-          <BlurView
-            intensity={34}
-            tint={glass.tint}
-            blurMethod={glass.blurMethod}
-            blurReductionFactor={glass.blurReductionFactor}
-            style={StyleSheet.absoluteFill}
-          />
         </Animated.View>
         <Pressable
           accessibilityRole="button"
@@ -149,14 +141,6 @@ export function CompanionPairingModal({
               },
             ]}
           >
-            <BlurView
-              intensity={90}
-              tint={glass.tint}
-              blurMethod={glass.blurMethod}
-              blurReductionFactor={glass.blurReductionFactor}
-              pointerEvents="none"
-              style={StyleSheet.absoluteFill}
-            />
             <View pointerEvents="none" style={styles.glow} />
             <View pointerEvents="none" style={styles.highlight} />
 
@@ -366,7 +350,7 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
       gap: spacing.sm,
       borderRadius: radius.md,
       borderWidth: 1,
-      borderColor: 'rgba(62, 224, 161, 0.22)',
+      borderColor: colors.success,
       backgroundColor: colors.successSoft,
       padding: spacing.sm,
     },

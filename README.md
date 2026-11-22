@@ -20,7 +20,7 @@ and **expo-notifications**.
 - Task list with quick-add (`pay bill tomorrow 5pm`), filters, and long-press delete
 - App-wide navigation drawer with profile, AI status, and sign out
 - Glassmorphism UI: frosted panels, ambient glows, and translucent surfaces
-- Dark / Light appearance toggle (light palette: Cream, Charcoal, iOS-style accents)
+- Light / Dark / System color mode — flat warm-neutral design with a coral accent and serif headings; navigation lives in the left drawer (Recents, New chat)
 - Multi-conversation chat history with per-chat delete and a slide-in history panel
 - **Orbit Harness** registry for providers, tools, storage, and MCP servers
 - Harness screen with live plugin status, MCP tool counts, manual sync, and the Cordis plugin tree (bhutu-app, bhutu-tools, bhutu-llm, bhutu-mcp, bhutu-agent)

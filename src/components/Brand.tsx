@@ -23,7 +23,7 @@ export function Brand({ size = 56 }: BrandProps) {
           borderRadius: size / 2,
           backgroundColor: colors.accentSoft,
           borderWidth: 1,
-          borderColor: 'rgba(109, 139, 255, 0.28)',
+          borderColor: colors.border,
         }}
       />
       <View

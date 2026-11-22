@@ -27,8 +27,8 @@ export function Button({
   const isDisabled = disabled || loading;
 
   const backgroundByVariant: Record<ButtonVariant, string> = {
-    primary: colors.accentStrong,
-    secondary: glass.fill,
+    primary: colors.inverse,
+    secondary: colors.surfaceAlt,
     danger: colors.dangerSoft,
     ghost: 'transparent',
   };
@@ -36,12 +36,12 @@ export function Button({
   const borderByVariant: Record<ButtonVariant, string> = {
     primary: 'transparent',
     secondary: glass.border,
-    danger: colors.dangerSoft,
+    danger: 'transparent',
     ghost: 'transparent',
   };
 
   const labelByVariant: Record<ButtonVariant, string> = {
-    primary: colors.white,
+    primary: colors.onInverse,
     secondary: colors.text,
     danger: colors.danger,
     ghost: colors.textMuted,
@@ -73,14 +73,12 @@ export function Button({
   );
 }
 
-const makeStyles = ({ glass, glassShadow }: AppTheme) =>
+const makeStyles = (_theme: AppTheme) =>
   StyleSheet.create({
     base: {
-      ...glassShadow,
-      minHeight: 54,
-      borderRadius: radius.md,
-      borderWidth: 1,
-      borderTopColor: glass.borderBright,
+      minHeight: 52,
+      borderRadius: radius.pill,
+      borderWidth: StyleSheet.hairlineWidth,
       alignItems: 'center',
       justifyContent: 'center',
       paddingHorizontal: spacing.lg,
@@ -95,6 +93,5 @@ const makeStyles = ({ glass, glassShadow }: AppTheme) =>
     label: {
       fontSize: 16,
       fontWeight: '600',
-      letterSpacing: 0.2,
     },
   });

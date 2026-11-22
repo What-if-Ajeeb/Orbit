@@ -20,21 +20,18 @@ export function SidebarButton({ onPress, style }: SidebarButtonProps) {
       onPress={onPress}
       style={({ pressed }) => [styles.button, style, pressed && styles.pressed]}
     >
-      <Ionicons name="menu" size={20} color={colors.textMuted} />
+      <Ionicons name="menu" size={22} color={colors.text} />
     </Pressable>
   );
 }
 
-const makeStyles = ({ glass }: AppTheme) =>
+const makeStyles = ({ colors }: AppTheme) =>
   StyleSheet.create({
   button: {
-    width: 40,
-    height: 40,
-    borderRadius: 13,
-    backgroundColor: glass.fillStrong,
-    borderWidth: 1,
-    borderColor: glass.border,
-    borderTopColor: glass.borderBright,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
   },

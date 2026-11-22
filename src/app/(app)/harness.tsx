@@ -270,7 +270,7 @@ export default function HarnessScreen() {
       setError(
         loadError instanceof Error
           ? loadError.message
-          : 'Harness load nahi ho paya.'
+          : 'Could not load the harness.'
       );
     }
   }, []);
@@ -291,7 +291,7 @@ export default function HarnessScreen() {
 
     if ((snapshot?.counts.mcpServers ?? 0) === 0) {
       setNotice(null);
-      setError('Koi MCP server configured nahi hai. Settings → MCP TOOLS me add karo.');
+      setError('No MCP server is configured. Add one in Settings → MCP TOOLS.');
       return;
     }
 
@@ -306,13 +306,13 @@ export default function HarnessScreen() {
       const failed = result.statuses.find((status) => !status.ok);
 
       if (failed) {
-        setError(`${failed.serverName}: ${failed.error ?? 'connect nahi hua.'}`);
+        setError(`${failed.serverName}: ${failed.error ?? 'could not connect.'}`);
       } else {
         setNotice(`MCP synced · ${result.toolCount} tools available.`);
       }
     } catch (syncError) {
       setError(
-        syncError instanceof Error ? syncError.message : 'MCP sync fail ho gaya.'
+        syncError instanceof Error ? syncError.message : 'MCP sync failed.'
       );
     } finally {
       setIsSyncing(false);
@@ -342,7 +342,7 @@ export default function HarnessScreen() {
         <ScreenHeader
           eyebrow="ORBIT HARNESS"
           title="Plugins"
-          subtitle="Providers, tools, storage aur MCP — sab ek registry se."
+          subtitle="Providers, tools, storage and MCP — all from one registry."
           left={<SidebarButton onPress={openSidebar} />}
         />
 
@@ -498,10 +498,9 @@ export default function HarnessScreen() {
                     size={22}
                     color={colors.textFaint}
                   />
-                  <Text style={styles.emptyTitle}>Koi MCP server nahi</Text>
+                  <Text style={styles.emptyTitle}>No MCP servers</Text>
                   <Text style={styles.emptyText}>
-                    Settings → MCP TOOLS me endpoint add karo. Tools agent ko
-                    automatically mil jayenge.
+                    Add an endpoint in Settings → MCP TOOLS. Tools become available to the agent automatically.
                   </Text>
                   <Pressable
                     accessibilityRole="button"
@@ -544,7 +543,7 @@ export default function HarnessScreen() {
                           : 'Koi plugins nahi'}
                       </Text>
                       <Text style={styles.emptyText}>
-                        Settings → MCP TOOLS me add karo, ya Sync MCP tap karo.
+                        Add a server in Settings → MCP TOOLS, or tap Sync MCP.
                       </Text>
                     </View>
                   ) : null}
@@ -579,9 +578,9 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: spacing.sm,
-    backgroundColor: 'rgba(62, 224, 161, 0.10)',
+    backgroundColor: colors.successSoft,
     borderWidth: 1,
-    borderColor: 'rgba(62, 224, 161, 0.28)',
+    borderColor: `${colors.success}47`,
     borderTopColor: glass.borderBright,
     borderRadius: radius.md,
     paddingVertical: spacing.sm + 2,
@@ -595,7 +594,7 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
     lineHeight: 19,
   },
   hero: {
-    borderColor: 'rgba(109, 139, 255, 0.3)',
+    borderColor: colors.border,
     padding: spacing.md + 2,
     marginTop: spacing.lg,
     gap: spacing.md,
@@ -695,7 +694,7 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.borderFocus,
-    backgroundColor: 'rgba(109, 139, 255, 0.14)',
+    backgroundColor: colors.accentSoft,
     borderTopColor: glass.borderBright,
   },
   actionText: {
@@ -839,7 +838,7 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
     borderRadius: radius.pill,
     backgroundColor: colors.accentSoft,
     borderWidth: 1,
-    borderColor: 'rgba(109, 139, 255, 0.3)',
+    borderColor: colors.border,
   },
   emptyButtonText: {
     color: colors.accent,

@@ -20,40 +20,58 @@ export function TaskItem({ task, onToggle, onLongPress }: TaskItemProps) {
   const when = task.remindAt ?? task.dueAt;
   const isOverdue = !isDone && isPast(when);
 
+  const dueLabel = when ? formatDue(when) : null;
+  const a11yLabel = [
+    task.title,
+    isDone ? 'completed' : null,
+    dueLabel ? `${isOverdue ? 'overdue, ' : ''}due ${dueLabel}` : null,
+    task.priority === 'high' ? 'high priority' : null,
+  ]
+    .filter(Boolean)
+    .join(', ');
+
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityHint={onLongPress ? 'Long press to delete' : undefined}
-      onLongPress={onLongPress ? () => onLongPress(task) : undefined}
-      delayLongPress={350}
-      style={({ pressed }) => [styles.row, pressed && onLongPress ? styles.pressed : null]}
-    >
+    <View style={[styles.row, isOverdue && styles.rowOverdue]}>
+      {/* 26dp visual + 11dp slop each side = 48dp touch target */}
       <Pressable
         accessibilityRole="checkbox"
         accessibilityState={{ checked: isDone }}
         accessibilityLabel={`Mark ${task.title} ${isDone ? 'open' : 'done'}`}
-        hitSlop={8}
+        hitSlop={11}
         onPress={() => onToggle(task)}
         style={[styles.check, isDone && styles.checkDone]}
       >
         {isDone ? <Ionicons name="checkmark" size={15} color={colors.background} /> : null}
       </Pressable>
 
-      <View style={styles.body}>
+      <Pressable
+        accessible
+        accessibilityLabel={a11yLabel}
+        accessibilityHint={onLongPress ? 'Long press for more options' : undefined}
+        accessibilityActions={onLongPress ? [{ name: 'delete', label: 'Delete task' }] : undefined}
+        onAccessibilityAction={(event) => {
+          if (event.nativeEvent.actionName === 'delete') {
+            onLongPress?.(task);
+          }
+        }}
+        onLongPress={onLongPress ? () => onLongPress(task) : undefined}
+        delayLongPress={350}
+        style={({ pressed }) => [styles.body, pressed && onLongPress ? styles.pressed : null]}
+      >
         <Text style={[styles.title, isDone && styles.titleDone]} numberOfLines={2}>
           {task.title}
         </Text>
 
         <View style={styles.metaRow}>
-          {when ? (
+          {dueLabel ? (
             <View style={styles.meta}>
               <Ionicons
                 name={task.remindAt ? 'notifications-outline' : 'time-outline'}
-                size={12}
+                size={13}
                 color={isOverdue ? colors.danger : colors.textFaint}
               />
               <Text style={[styles.metaText, isOverdue && styles.overdueText]}>
-                {formatDue(when)}
+                {isOverdue ? `Overdue · ${dueLabel}` : dueLabel}
               </Text>
             </View>
           ) : null}
@@ -63,13 +81,9 @@ export function TaskItem({ task, onToggle, onLongPress }: TaskItemProps) {
               <Text style={styles.priorityText}>HIGH</Text>
             </View>
           ) : null}
-
-          <Text style={styles.id}>#{task.id}</Text>
         </View>
-      </View>
-
-      {isOverdue ? <View style={styles.overdueDot} /> : null}
-    </Pressable>
+      </Pressable>
+    </View>
   );
 }
 
@@ -86,6 +100,11 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
     borderRadius: radius.md,
     paddingVertical: spacing.sm + 4,
     paddingHorizontal: spacing.md,
+    minHeight: 64,
+  },
+  rowOverdue: {
+    borderLeftWidth: 3,
+    borderLeftColor: colors.danger,
   },
   pressed: {
     opacity: 0.7,
@@ -106,6 +125,7 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
   body: {
     flex: 1,
     gap: 5,
+    paddingVertical: 2,
   },
   title: {
     color: colors.text,
@@ -131,6 +151,7 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
   metaText: {
     color: colors.textFaint,
     fontSize: 12,
+    lineHeight: 16,
   },
   overdueText: {
     color: colors.danger,
@@ -143,18 +164,8 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
   },
   priorityText: {
     color: colors.danger,
-    fontSize: 9,
+    fontSize: 10,
     fontWeight: '700',
     letterSpacing: 0.8,
-  },
-  id: {
-    color: colors.textFaint,
-    fontSize: 11,
-  },
-  overdueDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: colors.danger,
   },
   });

@@ -17,13 +17,6 @@ export function ChatBubble({ message }: ChatBubbleProps) {
 
   return (
     <View style={[styles.wrap, isUser ? styles.wrapUser : styles.wrapAssistant]}>
-      {!isUser ? (
-        <View style={styles.agentRow}>
-          <Ionicons name="sparkles" size={12} color={colors.accent} />
-          <Text style={styles.agentLabel}>ORBIT</Text>
-        </View>
-      ) : null}
-
       <View style={[styles.bubble, isUser ? styles.userBubble : styles.assistantBubble]}>
         <Text style={[styles.text, isUser && styles.userText]}>{message.content}</Text>
       </View>
@@ -42,10 +35,10 @@ export function ChatBubble({ message }: ChatBubbleProps) {
   );
 }
 
-const makeStyles = ({ colors, glass }: AppTheme) =>
+const makeStyles = ({ colors }: AppTheme) =>
   StyleSheet.create({
   wrap: {
-    maxWidth: '86%',
+    maxWidth: '92%',
     gap: 5,
   },
   wrapUser: {
@@ -68,35 +61,24 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
     fontWeight: '700',
     letterSpacing: 1.4,
   },
-  bubble: {
+  bubble: {},
+  userBubble: {
+    backgroundColor: colors.surfaceAlt,
     borderRadius: radius.lg,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm + 2,
-    borderWidth: 1,
   },
-  userBubble: {
-    backgroundColor: colors.accentStrong,
-    borderColor: 'transparent',
-    borderBottomRightRadius: 6,
-  },
+  // Assistant replies are plain text on the page, like a document — no bubble.
   assistantBubble: {
-    shadowColor: glass.shadow,
-    shadowOpacity: 0.22,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 4,
-    backgroundColor: glass.fill,
-    borderColor: glass.border,
-    borderTopColor: glass.borderBright,
-    borderBottomLeftRadius: 6,
+    paddingVertical: 2,
   },
   text: {
     color: colors.text,
-    fontSize: 15,
-    lineHeight: 22,
+    fontSize: 16,
+    lineHeight: 24,
   },
   userText: {
-    color: colors.white,
+    color: colors.text,
   },
   traces: {
     gap: 4,

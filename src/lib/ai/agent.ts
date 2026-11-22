@@ -330,7 +330,7 @@ export async function runAgent(input: AgentInput): Promise<AgentResult> {
         error: reason,
       });
       return {
-        reply: `Changes save ho gaye, lekin AI reply nahi de paya. (${reason})`,
+        reply: `Your changes were saved, but the AI could not reply. (${reason})`,
         traces,
         mode: 'ai',
       };

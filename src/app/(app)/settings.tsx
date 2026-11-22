@@ -1,4 +1,4 @@
-import { useAppTheme, useStyles, type AppTheme } from '@/context/theme';
+import { useAppTheme, useStyles, type AppTheme, type ThemeMode } from '@/context/theme';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import Constants from 'expo-constants';
 import { router, useFocusEffect, type Href } from 'expo-router';
@@ -44,7 +44,7 @@ import {
   sendTestReminder,
   type NotificationPermissionState,
 } from '@/lib/notifications';
-import { radius, spacing } from '@/theme';
+import { radius, spacing, palette } from '@/theme';
 
 
 function permissionLabel(state: NotificationPermissionState): string {
@@ -58,6 +58,21 @@ function permissionLabel(state: NotificationPermissionState): string {
 
   return 'Not enabled yet';
 }
+
+const THEME_OPTIONS: { id: ThemeMode; label: string }[] = [
+  { id: 'light', label: 'Light' },
+  { id: 'dark', label: 'Dark' },
+  { id: 'system', label: 'System' },
+];
+
+const LIGHT_HALF = { bg: palette.ivory, line: 'rgba(20, 20, 19, 0.28)' };
+const DARK_HALF = { bg: palette.background, line: 'rgba(255, 255, 255, 0.32)' };
+
+const PREVIEW_HALVES: Record<ThemeMode, { bg: string; line: string }[]> = {
+  light: [LIGHT_HALF],
+  dark: [DARK_HALF],
+  system: [LIGHT_HALF, DARK_HALF],
+};
 
 export default function SettingsScreen() {
   const { colors, mode, setMode } = useAppTheme();
@@ -131,7 +146,7 @@ export default function SettingsScreen() {
     const apiKey = currentSettings.apiKey.trim();
 
     if (!baseUrl || !model) {
-      setError('Base URL aur model dono required hain.');
+      setError('Base URL and model are both required.');
       return null;
     }
 
@@ -143,12 +158,12 @@ export default function SettingsScreen() {
       setSettings(saved);
 
       if (showNotice) {
-        setNotice('AI settings save ho gayi. Ab Agent full AI mode me chalega.');
+        setNotice('AI settings saved. The agent now runs in full AI mode.');
       }
 
       return saved;
     } catch {
-      setError('Settings save nahi ho payi. Dobara try karo.');
+      setError('Could not save settings. Please try again.');
       return null;
     } finally {
       setIsSaving(false);
@@ -167,7 +182,7 @@ export default function SettingsScreen() {
     }
 
     if (!isAiConfigured(saved)) {
-      setError('Test karne ke liye API key bhi daalo.');
+      setError('Enter an API key to run the test.');
       return;
     }
 
@@ -181,7 +196,7 @@ export default function SettingsScreen() {
       setError(
         testError instanceof Error
           ? testError.message
-          : 'Connection test fail ho gaya. Settings check karo.'
+          : 'Connection test failed. Check your settings.'
       );
     } finally {
       setIsTesting(false);
@@ -189,7 +204,7 @@ export default function SettingsScreen() {
   }
 
   function confirmRemoveKey() {
-    Alert.alert('Remove API key?', 'Agent local mode me chala jayega. Tasks safe rahenge.', [
+    Alert.alert('Remove API key?', 'The agent will switch to local mode. Your tasks stay safe.', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Remove',
@@ -201,7 +216,7 @@ export default function SettingsScreen() {
               setSettings(saved);
               setNotice('API key remove kar di gayi.');
             } catch {
-              setError('Key remove nahi ho payi.');
+              setError('Could not remove the key.');
             }
           })();
         },
@@ -217,7 +232,7 @@ export default function SettingsScreen() {
     if (granted) {
       setNotice('Notifications enabled. Ab reminders time par aayenge.');
     } else {
-      setError('Notifications allow nahi hui. System settings se permission do.');
+      setError('Notifications are not allowed. Enable them in system settings.');
     }
   }
 
@@ -228,12 +243,12 @@ export default function SettingsScreen() {
     if (sent) {
       setNotice('Test reminder 3 seconds me aayega.');
     } else {
-      setError('Test reminder nahi bhej paye. Notification permission check karo.');
+      setError('Could not send a test reminder. Check notification permission.');
     }
   }
 
   function confirmClearChat() {
-    Alert.alert('Clear chat history?', 'Tasks aur reminders delete nahi honge.', [
+    Alert.alert('Clear chat history?', 'Your tasks and reminders will not be deleted.', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Clear',
@@ -241,7 +256,7 @@ export default function SettingsScreen() {
         onPress: () => {
           void (async () => {
             await getChatStore(db).clearAllChat(activeUser.id);
-            setNotice('Chat history clear ho gayi.');
+            setNotice('Chat history cleared.');
           })();
         },
       },
@@ -249,7 +264,7 @@ export default function SettingsScreen() {
   }
 
   function confirmSignOut() {
-    Alert.alert('Sign out?', 'Aapka local account is device par rahega.', [
+    Alert.alert('Sign out?', 'Your local account stays on this device.', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Sign out',
@@ -284,7 +299,7 @@ export default function SettingsScreen() {
         <ScreenHeader
           eyebrow="SETTINGS"
           title="Setup"
-          subtitle="AI brain, reminders aur your account."
+          subtitle="AI brain, reminders and your account."
           left={<SidebarButton onPress={openSidebar} />}
         />
 
@@ -306,36 +321,35 @@ export default function SettingsScreen() {
         <GlassView style={styles.card}>
           <View style={styles.cardTitleRow}>
             <View style={styles.cardTitleText}>
-              <Text style={styles.cardTitle}>Theme</Text>
-              <Text style={styles.cardCaption}>
-                Dark glass ya light Cream glass — choice aapki.
-              </Text>
+              <Text style={styles.cardTitle}>Color mode</Text>
+              <Text style={styles.cardCaption}>Pick a look, or follow your phone’s setting.</Text>
             </View>
           </View>
 
-          <View style={styles.providerRow}>
-            {(['dark', 'light'] as const).map((option) => {
-              const active = mode === option;
+          <View accessibilityRole="radiogroup" style={styles.themeRow}>
+            {THEME_OPTIONS.map((option) => {
+              const active = mode === option.id;
 
               return (
                 <Pressable
-                  key={option}
-                  accessibilityRole="button"
+                  key={option.id}
+                  accessibilityRole="radio"
+                  accessibilityLabel={`${option.label} color mode`}
                   accessibilityState={{ selected: active }}
-                  onPress={() => setMode(option)}
-                  style={[
-                    styles.providerChip,
-                    styles.themeChip,
-                    active && styles.providerChipActive,
-                  ]}
+                  onPress={() => setMode(option.id)}
+                  style={({ pressed }) => [styles.themeTile, pressed && { opacity: 0.8 }]}
                 >
-                  <Ionicons
-                    name={option === 'dark' ? 'moon-outline' : 'sunny-outline'}
-                    size={14}
-                    color={active ? colors.accent : colors.textMuted}
-                  />
-                  <Text style={[styles.providerText, active && styles.providerTextActive]}>
-                    {option === 'dark' ? 'Dark' : 'Light'}
+                  <View style={[styles.themePreview, active && styles.themePreviewActive]}>
+                    {PREVIEW_HALVES[option.id].map((half, index) => (
+                      <View key={index} style={[styles.themeHalf, { backgroundColor: half.bg }]}>
+                        <View style={[styles.themeBar, { backgroundColor: half.line, width: '75%' }]} />
+                        <View style={[styles.themeBar, { backgroundColor: half.line, width: '50%' }]} />
+                      </View>
+                    ))}
+                    <View style={styles.themeDot} />
+                  </View>
+                  <Text style={[styles.themeLabel, active && { color: colors.blue }]}>
+                    {option.label}
                   </Text>
                 </Pressable>
               );
@@ -350,7 +364,7 @@ export default function SettingsScreen() {
             <View style={styles.cardTitleText}>
               <Text style={styles.cardTitle}>Cloud AI</Text>
               <Text style={styles.cardCaption}>
-                Apni API key laao. Orbit kisi shared server se nahi chalta.
+                Bring your own API key. Orbit has no shared server.
               </Text>
             </View>
             <View style={[styles.badge, aiReady ? styles.badgeOn : styles.badgeOff]}>
@@ -463,8 +477,7 @@ export default function SettingsScreen() {
           ) : null}
 
           <Text style={styles.securityNote}>
-            Chat messages aapke AI provider ko jaate hain. Tasks, account aur key is phone par
-            rehte hain.
+            Chat messages go to your AI provider. Tasks, your account and your key stay on this phone.
           </Text>
         </GlassView>
 
@@ -559,7 +572,7 @@ export default function SettingsScreen() {
         <GlassView style={styles.card}>
           <Text style={styles.cardTitle}>Chat history</Text>
           <Text style={styles.cardCaption}>
-            Agent conversation clear karo. Tasks aur reminders untouched rehte hain.
+            Clear agent conversations. Tasks and reminders are not affected.
           </Text>
 
           <Button
@@ -601,9 +614,9 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: spacing.sm,
-    backgroundColor: 'rgba(62, 224, 161, 0.10)',
+    backgroundColor: colors.successSoft,
     borderWidth: 1,
-    borderColor: 'rgba(62, 224, 161, 0.28)',
+    borderColor: `${colors.success}47`,
     borderTopColor: glass.borderBright,
     borderRadius: radius.md,
     paddingVertical: spacing.sm + 2,
@@ -813,5 +826,50 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
     fontSize: 12,
     textAlign: 'center',
     marginTop: spacing.xl,
+  },
+  themeRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: spacing.xs,
+  },
+  themeTile: {
+    flex: 1,
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  themePreview: {
+    width: '100%',
+    height: 76,
+    flexDirection: 'row',
+    borderRadius: radius.md,
+    overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: colors.border,
+  },
+  themePreviewActive: {
+    borderColor: colors.blue,
+  },
+  themeHalf: {
+    flex: 1,
+    padding: 10,
+    gap: 5,
+  },
+  themeBar: {
+    height: 4,
+    borderRadius: 2,
+  },
+  themeDot: {
+    position: 'absolute',
+    right: 10,
+    bottom: 10,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: palette.coral,
+  },
+  themeLabel: {
+    color: colors.textMuted,
+    fontSize: 14,
+    fontWeight: '600',
   },
   });

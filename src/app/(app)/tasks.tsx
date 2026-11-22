@@ -16,9 +16,12 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { EmptyState } from '@/components/EmptyState';
+import { FormError } from '@/components/FormError';
 import { GlassBackdrop } from '@/components/GlassBackdrop';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { SidebarButton } from '@/components/SidebarButton';
+import { Skeleton } from '@/components/Skeleton';
 import { TaskItem } from '@/components/TaskItem';
 import { useSession } from '@/context/auth';
 import { useSidebar } from '@/context/sidebar';
@@ -55,6 +58,7 @@ export default function TasksScreen() {
   const [text, setText] = useState('');
   const [isAdding, setIsAdding] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isLoaded, setIsLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(
@@ -73,6 +77,8 @@ export default function TasksScreen() {
       } catch (loadError) {
         setError(loadError instanceof Error ? loadError.message : 'Could not load tasks.');
       } finally {
+        setIsLoaded(true);
+
         if (showSpinner) {
           setIsRefreshing(false);
         }
@@ -161,7 +167,7 @@ export default function TasksScreen() {
   const emptyText =
     filter === 'done'
       ? 'Complete a task and it will show up here.'
-      : 'Naya task add karo — ya Agent se bolwao.';
+      : 'Add a task above, or ask the agent.';
 
   return (
     <View style={styles.root}>
@@ -180,6 +186,7 @@ export default function TasksScreen() {
             value={text}
             onChangeText={setText}
             placeholder="Add task — try “pay bill tomorrow 5pm”"
+            accessibilityLabel="New task"
             placeholderTextColor={colors.textFaint}
             selectionColor={colors.accent}
             style={styles.addInput}
@@ -212,10 +219,9 @@ export default function TasksScreen() {
         </View>
 
         {error ? (
-          <Pressable onPress={() => setError(null)} style={styles.errorBanner}>
-            <Ionicons name="alert-circle-outline" size={15} color={colors.danger} />
-            <Text style={styles.errorText}>{error}</Text>
-          </Pressable>
+          <View style={styles.errorWrap}>
+            <FormError message={error} onDismiss={() => setError(null)} />
+          </View>
         ) : null}
 
         <View style={styles.filters}>
@@ -242,7 +248,7 @@ export default function TasksScreen() {
       <FlatList
         data={tasks}
         keyExtractor={(task) => String(task.id)}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[styles.listContent, { paddingBottom: spacing.xl + insets.bottom }]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
         refreshControl={
@@ -261,11 +267,19 @@ export default function TasksScreen() {
         )}
         ItemSeparatorComponent={() => <View style={styles.separator} />}
         ListEmptyComponent={
-          <View style={styles.empty}>
-            <Ionicons name="checkmark-done-circle-outline" size={34} color={colors.textFaint} />
-            <Text style={styles.emptyTitle}>{emptyTitle}</Text>
-            <Text style={styles.emptyText}>{emptyText}</Text>
-          </View>
+          !isLoaded ? (
+            <View style={styles.skeletonList}>
+              <Skeleton height={64} radius={radius.md} />
+              <Skeleton height={64} radius={radius.md} />
+              <Skeleton height={64} radius={radius.md} />
+            </View>
+          ) : (
+            <EmptyState
+              icon={filter === 'done' ? 'checkmark-done-outline' : 'checkmark-done-circle-outline'}
+              title={emptyTitle}
+              message={emptyText}
+            />
+          )
         }
         ListFooterComponent={
           tasks.length > 0 ? (
@@ -314,24 +328,8 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
   addDisabled: {
     opacity: 0.45,
   },
-  errorBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    backgroundColor: 'rgba(255, 107, 122, 0.10)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 107, 122, 0.28)',
-    borderTopColor: glass.borderBright,
-    borderRadius: radius.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+  errorWrap: {
     marginTop: spacing.sm,
-  },
-  errorText: {
-    flex: 1,
-    color: colors.danger,
-    fontSize: 12,
-    lineHeight: 17,
   },
   filters: {
     flexDirection: 'row',
@@ -347,7 +345,7 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 8,
+    minHeight: 44,
     borderRadius: radius.pill,
   },
   filterActive: {
@@ -370,24 +368,8 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
   separator: {
     height: spacing.sm,
   },
-  empty: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: spacing.xl * 2,
+  skeletonList: {
     gap: spacing.sm,
-  },
-  emptyTitle: {
-    color: colors.text,
-    fontSize: 17,
-    fontWeight: '600',
-  },
-  emptyText: {
-    color: colors.textMuted,
-    fontSize: 13,
-    textAlign: 'center',
-    lineHeight: 19,
-    maxWidth: 280,
   },
   footerHint: {
     color: colors.textFaint,
