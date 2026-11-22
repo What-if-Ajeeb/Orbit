@@ -115,6 +115,16 @@ function defaultRules(): ToolPolicyRule[] {
       sandbox: {},
     },
     {
+      id: 'policy.artifact.local',
+      name: 'Artifacts',
+      description: 'Reading and saving local artifacts is allowed.',
+      match: 'prefix',
+      pattern: 'artifact_',
+      decision: 'allow',
+      enabled: true,
+      sandbox: {},
+    },
+    {
       id: 'policy.mcp.external',
       name: 'External MCP tools',
       description: 'Tools from external MCP servers require approval.',

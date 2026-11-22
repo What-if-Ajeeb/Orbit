@@ -1,6 +1,7 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { rewardChatMessage } from './buddy/rewards';
+import { isArtifactType, type ArtifactRef, type ArtifactType } from './artifacts/types';
 
 export type ChatRole = 'user' | 'assistant';
 
@@ -9,6 +10,8 @@ export type ChatMessage = {
   role: ChatRole;
   content: string;
   traces: string[];
+  /** Artifacts created or updated by this assistant message. */
+  artifacts: ArtifactRef[];
   createdAt: number;
 };
 
@@ -40,7 +43,8 @@ export type ChatStore = {
     conversationId: number,
     role: ChatRole,
     content: string,
-    traces?: string[]
+    traces?: string[],
+    artifacts?: ArtifactRef[]
   ): Promise<ChatMessage>;
   deleteConversation(userId: number, conversationId: number): Promise<void>;
   clearAllChat(userId: number): Promise<void>;
@@ -87,12 +91,57 @@ function parseTraces(meta: string | null): string[] {
   }
 }
 
+/** Reads artifact refs from message meta; messages written before artifacts keep working. */
+function parseArtifacts(meta: string | null): ArtifactRef[] {
+  if (!meta) {
+    return [];
+  }
+
+  try {
+    const value = JSON.parse(meta) as { artifacts?: unknown };
+
+    if (!Array.isArray(value.artifacts)) {
+      return [];
+    }
+
+    const refs: ArtifactRef[] = [];
+
+    for (const item of value.artifacts) {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) {
+        continue;
+      }
+
+      const candidate = item as Record<string, unknown>;
+
+      if (
+        typeof candidate.id === 'string' &&
+        typeof candidate.title === 'string' &&
+        isArtifactType(candidate.type) &&
+        typeof candidate.version === 'number' &&
+        candidate.version >= 1
+      ) {
+        refs.push({
+          id: candidate.id,
+          title: candidate.title,
+          type: candidate.type as ArtifactType,
+          version: candidate.version,
+        });
+      }
+    }
+
+    return refs;
+  } catch {
+    return [];
+  }
+}
+
 function toMessage(row: MessageRow): ChatMessage {
   return {
     id: row.id,
     role: row.role === 'assistant' ? 'assistant' : 'user',
     content: row.content,
     traces: parseTraces(row.meta),
+    artifacts: parseArtifacts(row.meta),
     createdAt: row.created_at,
   };
 }
@@ -183,7 +232,7 @@ export function createSqliteChatStore(db: SQLiteDatabase): ChatStore {
       return rows.map(toMessage);
     },
 
-    async addMessage(userId, conversationId, role, content, traces = []) {
+    async addMessage(userId, conversationId, role, content, traces = [], artifacts = []) {
       const conversation = await getConversation(userId, conversationId);
 
       if (!conversation) {
@@ -191,7 +240,17 @@ export function createSqliteChatStore(db: SQLiteDatabase): ChatStore {
       }
 
       const createdAt = Date.now();
-      const meta = traces.length > 0 ? JSON.stringify({ traces }) : null;
+      const metaPayload: { traces?: string[]; artifacts?: ArtifactRef[] } = {};
+
+      if (traces.length > 0) {
+        metaPayload.traces = traces;
+      }
+
+      if (artifacts.length > 0) {
+        metaPayload.artifacts = artifacts;
+      }
+
+      const meta = Object.keys(metaPayload).length > 0 ? JSON.stringify(metaPayload) : null;
 
       const result = await db.runAsync(
         `INSERT INTO messages (user_id, conversation_id, role, content, meta, created_at)
@@ -235,6 +294,7 @@ export function createSqliteChatStore(db: SQLiteDatabase): ChatStore {
         role,
         content,
         traces,
+        artifacts,
         createdAt,
       };
     },

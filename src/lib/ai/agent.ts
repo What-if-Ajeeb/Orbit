@@ -17,6 +17,8 @@ import { buildSystemPrompt } from './prompt';
 import { requestCompletion } from './providers';
 import { isAiConfigured, type AiSettings } from './settings';
 import { executeTool, listAgentTools, agentToolRegistry } from './tools';
+import { parseArtifactToolRef } from './artifact-tools';
+import type { ArtifactRef } from '../artifacts/types';
 import type { LlmMessage } from './types';
 
 export type AgentHistoryItem = {
@@ -46,6 +48,8 @@ export type AgentInput = {
 export type AgentResult = {
   reply: string;
   traces: string[];
+  /** Artifacts created or updated during this turn, for the chat message meta. */
+  artifacts: ArtifactRef[];
   mode: 'ai' | 'local';
 };
 
@@ -121,7 +125,7 @@ export async function runAgent(input: AgentInput): Promise<AgentResult> {
     const local = await runLocalAgent(db, userId, history[history.length - 1]?.content ?? '');
     await emit('turn_started', { mode: 'local', input: history[history.length - 1]?.content ?? '' });
     await emit('turn_ended', { mode: 'local', reply: local.reply });
-    return { ...local, mode: 'local' };
+    return { ...local, artifacts: [], mode: 'local' };
   }
 
   // Phase 4: load active buddy so the system prompt can include personality + state
@@ -192,6 +196,7 @@ export async function runAgent(input: AgentInput): Promise<AgentResult> {
 
   const toolDefinitions = listAgentTools();
   const traces: string[] = [];
+  const artifactRefs = new Map<string, ArtifactRef>();
 
   await emit('turn_started', {
     model: settings.model,
@@ -228,6 +233,7 @@ export async function runAgent(input: AgentInput): Promise<AgentResult> {
         return {
           reply: turn.text || fallbackReply(traces),
           traces,
+          artifacts: Array.from(artifactRefs.values()),
           mode: 'ai',
         };
       }
@@ -263,7 +269,7 @@ export async function runAgent(input: AgentInput): Promise<AgentResult> {
             ruleId: policy.ruleId,
             reason: policy.reason,
           },
-          execute: () => executeTool(db, userId, call.name, call.arguments),
+          execute: () => executeTool(db, userId, call.name, call.arguments, conversationId),
         });
         const content = secured.content;
         const trace = secured.trace;
@@ -272,6 +278,15 @@ export async function runAgent(input: AgentInput): Promise<AgentResult> {
 
         if (trace) {
           traces.push(trace);
+        }
+
+        if (success && call.name.startsWith('artifact_')) {
+          const ref = parseArtifactToolRef(content);
+
+          if (ref) {
+            // Latest version wins when the same artifact changes twice a turn.
+            artifactRefs.set(ref.id, ref);
+          }
         }
 
         await telemetry.recordToolCall(
@@ -317,7 +332,12 @@ export async function runAgent(input: AgentInput): Promise<AgentResult> {
       rounds: MAX_TOOL_ROUNDS,
       toolCalls: traces.length,
     });
-    return { reply: fallbackReply(traces), traces, mode: 'ai' };
+    return {
+      reply: fallbackReply(traces),
+      traces,
+      artifacts: Array.from(artifactRefs.values()),
+      mode: 'ai',
+    };
   } catch (error) {
     if (traces.length > 0) {
       const reason = error instanceof Error ? error.message : 'Unknown error';
@@ -332,6 +352,7 @@ export async function runAgent(input: AgentInput): Promise<AgentResult> {
       return {
         reply: `Your changes were saved, but the AI could not reply. (${reason})`,
         traces,
+        artifacts: Array.from(artifactRefs.values()),
         mode: 'ai',
       };
     }

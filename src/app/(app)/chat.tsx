@@ -283,7 +283,8 @@ export default function ChatScreen() {
         conversationId,
         'assistant',
         result.reply,
-        result.traces
+        result.traces,
+        result.artifacts
       );
 
       setMessages((current) => [...current, assistantMessage]);

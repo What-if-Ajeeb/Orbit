@@ -7,7 +7,7 @@ export const DATABASE_NAME = 'orbit.db';
  * tasks and the agent conversation) lives in SQLite on the device.
  */
 export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
-  const DATABASE_VERSION = 9;
+  const DATABASE_VERSION = 10;
 
   const result = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
   let currentDbVersion = result?.user_version ?? 0;
@@ -494,6 +494,44 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
     `);
 
     currentDbVersion = 9;
+  }
+
+  if (currentDbVersion === 9) {
+    // Artifacts: substantial self-contained content produced by the agent.
+    await db.execAsync(`
+      CREATE TABLE IF NOT EXISTS artifacts (
+        id TEXT PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        conversation_id INTEGER,
+        title TEXT NOT NULL,
+        type TEXT NOT NULL,
+        language TEXT,
+        current_version INTEGER NOT NULL DEFAULT 1,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+        FOREIGN KEY (conversation_id) REFERENCES conversations (id) ON DELETE SET NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_artifacts_user_updated
+        ON artifacts (user_id, updated_at DESC);
+
+      CREATE TABLE IF NOT EXISTS artifact_versions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        artifact_id TEXT NOT NULL,
+        version INTEGER NOT NULL,
+        content TEXT NOT NULL,
+        summary TEXT,
+        created_at INTEGER NOT NULL,
+        FOREIGN KEY (artifact_id) REFERENCES artifacts (id) ON DELETE CASCADE,
+        UNIQUE (artifact_id, version)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_artifact_versions_artifact_version
+        ON artifact_versions (artifact_id, version DESC);
+    `);
+
+    currentDbVersion = 10;
   }
 
   await db.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);

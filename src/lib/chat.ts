@@ -1,6 +1,7 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { createSqliteChatStore, type ChatRole, type ChatStore } from './chat-store';
+import type { ArtifactRef } from './artifacts/types';
 
 export type {
   ChatMessage,
@@ -8,6 +9,7 @@ export type {
   ChatStore,
   Conversation,
 } from './chat-store';
+export type { ArtifactRef } from './artifacts/types';
 export { createSqliteChatStore } from './chat-store';
 
 /**
@@ -150,9 +152,10 @@ export function addMessage(
   conversationId: number,
   role: ChatRole,
   content: string,
-  traces: string[] = []
+  traces: string[] = [],
+  artifacts: ArtifactRef[] = []
 ) {
-  return getChatStore(db).addMessage(userId, conversationId, role, content, traces);
+  return getChatStore(db).addMessage(userId, conversationId, role, content, traces, artifacts);
 }
 
 export function deleteConversation(

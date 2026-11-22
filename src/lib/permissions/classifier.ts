@@ -26,6 +26,14 @@ const SAFE_TASK_TOOLS = new Set([
   'complete_task',
 ]);
 
+const ARTIFACT_TOOLS = new Set([
+  'artifact_create',
+  'artifact_update',
+  'artifact_edit',
+  'artifact_read',
+  'artifact_list',
+]);
+
 const COMMAND_TOOL_PATTERN =
   /(?:^|_)(?:command|terminal|shell|exec|execute|run)(?:$|_)/i;
 
@@ -191,6 +199,22 @@ function taskActions(toolName: string, args: Record<string, unknown>): string[] 
   return ['Read task data from Orbit’s local database'];
 }
 
+function artifactActions(toolName: string, args: Record<string, unknown>): string[] {
+  const title = firstString(args, ['title']);
+  const id = firstString(args, ['id']);
+
+  switch (toolName) {
+    case 'artifact_create':
+      return [title ? `Save artifact “${title}”` : 'Save a new artifact'];
+    case 'artifact_update':
+      return [id ? `Replace the content of ${id}` : 'Replace artifact content'];
+    case 'artifact_edit':
+      return [id ? `Apply small edits to ${id}` : 'Apply small edits'];
+    default:
+      return [id ? `Read artifact ${id}` : 'Read artifact data'];
+  }
+}
+
 function commandTarget(input: ClassifyInput): PermissionTarget {
   const requestedId = firstString(input.args, ['device_id', 'deviceId']);
   const device =
@@ -219,6 +243,26 @@ export function classifyToolAction(input: ClassifyInput): ClassifiedPermissionAc
   const path = firstString(args, ['path', 'file', 'file_path', 'directory', 'dir', 'cwd']);
   const url = firstString(args, ['url', 'href', 'link', 'website']);
   const display = prettyToolName(rawName);
+
+  if (ARTIFACT_TOOLS.has(name)) {
+    const reading = name === 'artifact_read' || name === 'artifact_list';
+
+    return makeAction(input, {
+      category: 'database_operations',
+      risk: 'low',
+      title: reading
+        ? 'Read artifacts from your Orbit database'
+        : 'Save an artifact to your Orbit database',
+      summary:
+        'Artifacts are self-contained files the agent saves on this device. This stays local, uses no network, and needs no extra approval.',
+      actions: artifactActions(name, args),
+      target: { kind: 'resource', label: 'Orbit artifacts', detail: 'On this device' },
+      reason: 'The agent needs to save or read artifact content to complete your request.',
+      scopeKey: `artifact:${name}:${input.projectId}`,
+      autoApprove: true,
+      metadata: { localOnly: true, noNetwork: true },
+    });
+  }
 
   if (SAFE_TASK_TOOLS.has(name)) {
     return makeAction(input, {

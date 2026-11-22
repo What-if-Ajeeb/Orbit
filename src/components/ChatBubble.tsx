@@ -1,10 +1,99 @@
 import { useAppTheme, useStyles, type AppTheme } from '@/context/theme';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { StyleSheet, Text, View } from 'react-native';
+import { useRouter } from 'expo-router';
+import { useSQLiteContext } from 'expo-sqlite';
+import { useEffect, useState } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { useSession } from '@/context/auth';
+import { ArtifactStore } from '@/lib/artifacts/store';
+import { artifactTypeLabel, type ArtifactRef, type ArtifactType } from '@/lib/artifacts/types';
 import type { ChatMessage } from '@/lib/chat';
 import { radius, spacing } from '@/theme';
 
+const TYPE_ICONS: Record<ArtifactType, keyof typeof Ionicons.glyphMap> = {
+  markdown: 'document-text-outline',
+  html: 'globe-outline',
+  svg: 'image-outline',
+  code: 'code-slash-outline',
+};
+
+type ArtifactCardProps = {
+  artifact: ArtifactRef;
+};
+
+/** One tappable card per artifact under the assistant reply. */
+function ArtifactCard({ artifact }: ArtifactCardProps) {
+  const { colors } = useAppTheme();
+  const styles = useStyles(makeStyles);
+  const db = useSQLiteContext();
+  const router = useRouter();
+  const { user } = useSession();
+  const [exists, setExists] = useState(true);
+
+  useEffect(() => {
+    if (!user) {
+      return;
+    }
+
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const found = await new ArtifactStore(db).exists(user.id, artifact.id);
+
+        if (!cancelled) {
+          setExists(found);
+        }
+      } catch {
+        if (!cancelled) {
+          setExists(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [artifact.id, db, user]);
+
+  const label = artifactTypeLabel(artifact.type);
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={
+        exists
+          ? `Open artifact ${artifact.title}, ${label} version ${artifact.version}`
+          : `Artifact ${artifact.title} was deleted`
+      }
+      disabled={!exists}
+      onPress={() =>
+        router.push({ pathname: '/artifact', params: { id: artifact.id } })
+      }
+      style={({ pressed }) => [styles.card, pressed && exists && styles.cardPressed]}
+    >
+      <View style={styles.cardIcon}>
+        <Ionicons
+          name={exists ? TYPE_ICONS[artifact.type] : 'trash-outline'}
+          size={20}
+          color={exists ? colors.accent : colors.textFaint}
+        />
+      </View>
+      <View style={styles.cardText}>
+        <Text numberOfLines={1} style={styles.cardTitle}>
+          {artifact.title}
+        </Text>
+        <Text style={[styles.cardSubtitle, !exists && styles.cardDeleted]}>
+          {exists ? `${label} · v${artifact.version}` : 'Deleted'}
+        </Text>
+      </View>
+      {exists ? (
+        <Ionicons name="chevron-forward" size={18} color={colors.textFaint} />
+      ) : null}
+    </Pressable>
+  );
+}
 
 type ChatBubbleProps = {
   message: ChatMessage;
@@ -20,6 +109,14 @@ export function ChatBubble({ message }: ChatBubbleProps) {
       <View style={[styles.bubble, isUser ? styles.userBubble : styles.assistantBubble]}>
         <Text style={[styles.text, isUser && styles.userText]}>{message.content}</Text>
       </View>
+
+      {message.artifacts.length > 0 ? (
+        <View style={styles.artifacts}>
+          {message.artifacts.map((artifact) => (
+            <ArtifactCard key={artifact.id} artifact={artifact} />
+          ))}
+        </View>
+      ) : null}
 
       {message.traces.length > 0 ? (
         <View style={styles.traces}>
@@ -79,6 +176,51 @@ const makeStyles = ({ colors }: AppTheme) =>
   },
   userText: {
     color: colors.text,
+  },
+  artifacts: {
+    gap: 6,
+    paddingTop: 4,
+    alignSelf: 'stretch',
+  },
+  card: {
+    minHeight: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm + 2,
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    maxWidth: 360,
+  },
+  cardPressed: {
+    opacity: 0.75,
+  },
+  cardIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: radius.sm,
+    backgroundColor: colors.surfaceAlt,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cardText: {
+    flex: 1,
+    gap: 2,
+  },
+  cardTitle: {
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  cardSubtitle: {
+    color: colors.textMuted,
+    fontSize: 12,
+  },
+  cardDeleted: {
+    color: colors.danger,
   },
   traces: {
     gap: 4,

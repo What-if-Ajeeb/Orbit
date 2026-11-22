@@ -11,6 +11,8 @@ export type ToolExecution = {
 export type AgentToolContext = {
   db: SQLiteDatabase;
   userId: number;
+  /** Conversation the tool call belongs to, when the caller knows it. */
+  conversationId?: number;
 };
 
 /**
