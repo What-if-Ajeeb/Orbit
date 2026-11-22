@@ -3,7 +3,7 @@ import * as Clipboard from 'expo-clipboard';
 import * as Linking from 'expo-linking';
 import { useFocusEffect, useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   FlatList,
@@ -15,7 +15,6 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { WebView } from 'react-native-webview';
 
 import { FormError } from '@/components/FormError';
 import { Skeleton } from '@/components/Skeleton';
@@ -27,6 +26,8 @@ import { formatDateTime } from '@/lib/dates';
 import { fonts, radius, spacing } from '@/theme';
 
 type ViewerTab = 'preview' | 'code';
+
+type WebViewComponent = typeof import('react-native-webview').WebView;
 
 /** Code is windowed in blocks so very large artifacts stay cheap to render. */
 const CODE_CHUNK_LINES = 40;
@@ -59,8 +60,30 @@ export default function ArtifactScreen() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [versionsOpen, setVersionsOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [WebViewView, setWebViewView] = useState<WebViewComponent | null>(null);
 
   const store = useMemo(() => new ArtifactStore(db), [db]);
+
+  // The native WebView module is loaded only when a preview is actually shown.
+  // Hidden tabs can be mounted at startup, so importing it eagerly would make
+  // the first WebView construction part of the app's launch path.
+  useEffect(() => {
+    if (!detail || tab !== 'preview' || WebViewView) {
+      return;
+    }
+
+    let active = true;
+
+    void import('react-native-webview').then((module) => {
+      if (active) {
+        setWebViewView(() => module.WebView);
+      }
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [detail, tab, WebViewView]);
 
   const load = useCallback(async () => {
     if (!user || !id) {
@@ -364,33 +387,37 @@ export default function ArtifactScreen() {
           </View>
 
           {tab === 'preview' ? (
-            <WebView
-              source={{ html: previewHtml, baseUrl: 'about:blank' }}
-              style={[styles.preview, { backgroundColor: colors.surface }]}
-              // react-native-webview auto-opens URLs that fail the whitelist before
-              // onShouldStartLoadWithRequest runs. Let link schemes reach the
-              // callback so the user gets a confirmation instead of a silent launch.
-              originWhitelist={['about:blank', 'data:*', 'http://*', 'https://*', 'mailto:*']}
-              javaScriptEnabled={detail.type === 'html'}
-              domStorageEnabled={false}
-              allowFileAccess={false}
-              allowFileAccessFromFileURLs={false}
-              allowUniversalAccessFromFileURLs={false}
-              javaScriptCanOpenWindowsAutomatically={false}
-              setSupportMultipleWindows={false}
-              saveFormDataDisabled
-              thirdPartyCookiesEnabled={false}
-              mixedContentMode="never"
-              geolocationEnabled={false}
-              mediaCapturePermissionGrantType="deny"
-              mediaPlaybackRequiresUserAction
-              allowsFullscreenVideo={false}
-              allowsInlineMediaPlayback={false}
-              allowsPictureInPictureMediaPlayback={false}
-              cacheEnabled={false}
-              onShouldStartLoadWithRequest={handleShouldStart}
-              showsHorizontalScrollIndicator={false}
-            />
+            WebViewView ? (
+              <WebViewView
+                source={{ html: previewHtml, baseUrl: 'about:blank' }}
+                style={[styles.preview, { backgroundColor: colors.surface }]}
+                // react-native-webview auto-opens URLs that fail the whitelist before
+                // onShouldStartLoadWithRequest runs. Let link schemes reach the
+                // callback so the user gets a confirmation instead of a silent launch.
+                originWhitelist={['about:blank', 'data:*', 'http://*', 'https://*', 'mailto:*']}
+                javaScriptEnabled={detail.type === 'html'}
+                domStorageEnabled={false}
+                allowFileAccess={false}
+                allowFileAccessFromFileURLs={false}
+                allowUniversalAccessFromFileURLs={false}
+                javaScriptCanOpenWindowsAutomatically={false}
+                setSupportMultipleWindows={false}
+                saveFormDataDisabled
+                thirdPartyCookiesEnabled={false}
+                mixedContentMode="never"
+                geolocationEnabled={false}
+                mediaCapturePermissionGrantType="deny"
+                mediaPlaybackRequiresUserAction
+                allowsFullscreenVideo={false}
+                allowsInlineMediaPlayback={false}
+                allowsPictureInPictureMediaPlayback={false}
+                cacheEnabled={false}
+                onShouldStartLoadWithRequest={handleShouldStart}
+                showsHorizontalScrollIndicator={false}
+              />
+            ) : (
+              <Skeleton height={220} radius={radius.md} />
+            )
           ) : (
             <FlatList
               data={codeChunks}

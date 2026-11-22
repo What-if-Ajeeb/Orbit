@@ -1,30 +1,52 @@
 import { Stack, SplashScreen } from 'expo-router';
-import { SQLiteProvider } from 'expo-sqlite';
+import { SQLiteProvider, type SQLiteDatabase } from 'expo-sqlite';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 
+import { FatalErrorBoundary } from '@/components/FatalErrorBoundary';
+import { FatalErrorScreen } from '@/components/FatalErrorScreen';
 import { SessionProvider, useSession } from '@/context/auth';
 import { ThemeProvider, useAppTheme } from '@/context/theme';
 import { DATABASE_NAME, migrateDbIfNeeded } from '@/lib/db';
+import {
+  clearLaunchMarker,
+  installGlobalDiagnostics,
+  markLaunchStarted,
+  reportDiagnostic,
+} from '@/lib/diagnostics';
 import { HarnessProvider } from '@/lib/harness/spine/boot';
 import { configureNotifications } from '@/lib/notifications';
 
 void SplashScreen.preventAutoHideAsync();
+installGlobalDiagnostics();
+void markLaunchStarted();
+
+async function initializeDatabase(db: SQLiteDatabase): Promise<void> {
+  try {
+    await migrateDbIfNeeded(db);
+  } catch (error) {
+    reportDiagnostic('Database initialization', error);
+    throw error;
+  }
+}
 
 export default function RootLayout() {
   return (
-    <SQLiteProvider databaseName={DATABASE_NAME} onInit={migrateDbIfNeeded}>
-      <ThemeProvider>
-        <SessionProvider>
-          <NotificationSetup />
-          <SplashController />
-          <HarnessProvider>
-            <RootNavigator />
-          </HarnessProvider>
-          <StatusBarController />
-        </SessionProvider>
-      </ThemeProvider>
-    </SQLiteProvider>
+    <FatalErrorBoundary>
+      <SQLiteProvider databaseName={DATABASE_NAME} onInit={initializeDatabase}>
+        <ThemeProvider>
+          <SessionProvider>
+            <NotificationSetup />
+            <SplashController />
+            <HarnessProvider>
+              <RootNavigator />
+            </HarnessProvider>
+            <StatusBarController />
+          </SessionProvider>
+        </ThemeProvider>
+      </SQLiteProvider>
+      <FatalErrorScreen />
+    </FatalErrorBoundary>
   );
 }
 
@@ -36,7 +58,9 @@ function StatusBarController() {
 
 function NotificationSetup() {
   useEffect(() => {
-    void configureNotifications();
+    void configureNotifications().catch((error: unknown) => {
+      reportDiagnostic('Notification setup', error);
+    });
   }, []);
 
   return null;
@@ -47,6 +71,7 @@ function SplashController() {
 
   useEffect(() => {
     if (!isLoading) {
+      void clearLaunchMarker();
       SplashScreen.hide();
     }
   }, [isLoading]);
