@@ -112,7 +112,8 @@ function validateTitle(raw: string): string {
     throw new Error(`The title can be at most ${ARTIFACT_TITLE_MAX} characters.`);
   }
 
-  return title;
+  // An empty title would render as a blank, untappable card.
+  return title || 'Untitled artifact';
 }
 
 function validateContent(raw: unknown): string {

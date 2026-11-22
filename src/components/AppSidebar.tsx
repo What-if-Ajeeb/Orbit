@@ -34,6 +34,7 @@ const MAIN_ITEMS: NavItem[] = [
   { label: 'Agent', href: '/chat', icon: 'sparkles-outline', activeIcon: 'sparkles' },
   { label: 'Tasks', href: '/tasks', icon: 'checkbox-outline', activeIcon: 'checkbox' },
   { label: 'Workflows', href: '/workflows', icon: 'flash-outline', activeIcon: 'flash' },
+  { label: 'Artifacts', href: '/artifacts', icon: 'cube-outline', activeIcon: 'cube' },
   { label: 'Buddy', href: '/buddy', icon: 'paw-outline', activeIcon: 'paw' },
   { label: 'Settings', href: '/settings', icon: 'settings-outline', activeIcon: 'settings' },
 ];

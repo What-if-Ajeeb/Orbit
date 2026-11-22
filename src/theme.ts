@@ -41,6 +41,7 @@ export const palette = {
 /** Serif for headings and greetings; the system font everywhere else. */
 export const fonts = {
   serif: Platform.select({ ios: 'Georgia', default: 'serif' }) as string,
+  mono: Platform.select({ ios: 'Menlo', default: 'monospace' }) as string,
 } as const;
 
 export const darkColors = {

@@ -88,8 +88,10 @@ export default function AppLayout() {
           <Tabs.Screen name="buddy" />
           <Tabs.Screen name="tasks" />
           <Tabs.Screen name="workflows" />
+          <Tabs.Screen name="artifacts" />
           <Tabs.Screen name="settings" />
-          {/* Advanced screens stay reachable from the sidebar; they are not tabs. */}
+          {/* Detail and advanced screens stay reachable from in-app links; they are not tabs. */}
+          <Tabs.Screen name="artifact" options={{ href: null }} />
           <Tabs.Screen name="harness" options={{ href: null }} />
           <Tabs.Screen name="permissions" options={{ href: null }} />
           <Tabs.Screen name="events" options={{ href: null }} />
