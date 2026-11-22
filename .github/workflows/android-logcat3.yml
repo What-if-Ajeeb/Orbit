@@ -1,0 +1,97 @@
+name: Android launch diagnostics v3
+
+on:
+  push:
+    tags:
+      - 'diag3-*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  logcat:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Init state
+        run: |
+          git config user.name "orbit-ci"
+          git config user.email "orbit-ci@users.noreply.github.com"
+          git checkout -B diag-logs
+          echo "v3 start $(date -u)" > diag-state.txt
+          git add -f diag-state.txt && git commit -m "diag3: start" || true
+          git push -f origin diag-logs || true
+
+      - name: Java and SDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: SDK
+        uses: android-actions/setup-android@v4
+
+      - name: Install image and create AVD
+        timeout-minutes: 10
+        run: |
+          yes | sdkmanager --licenses > /dev/null 2>&1 || true
+          sdkmanager --install "platform-tools" "emulator" "system-images;android-36;google_apis;x86_64"
+          echo no | avdmanager create avd -n orbit-api36 \
+            -k "system-images;android-36;google_apis;x86_64" \
+            --device "pixel_7" --force
+          echo "image and avd ready $(date -u)" >> diag-state.txt
+          git add -f diag-state.txt && git commit -m "diag3: avd" || true
+          git push -f origin diag-logs || true
+
+      - name: Boot with progress
+        timeout-minutes: 15
+        run: |
+          emulator -avd orbit-api36 -no-audio -no-window -gpu swiftshader_indirect -no-boot-anim \
+            > emulator.log 2>&1 &
+          for i in $(seq 1 25); do
+            {
+              echo "--- boot poll $i $(date -u) ---"
+              echo "devices:"; adb devices 2>&1 || true
+              echo "boot_completed:"; adb shell getprop sys.boot_completed 2>&1 || true
+              echo "emulator log tail:"; tail -25 emulator.log 2>/dev/null || true
+            } >> diag-state.txt
+            git add -f diag-state.txt emulator.log && git commit -m "diag3: boot $i" || true
+            git push -f origin diag-logs || true
+            if [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = "1" ]; then
+              echo "BOOTED $(date -u)" >> diag-state.txt
+              git add -f diag-state.txt && git commit -m "diag3: booted" || true
+              git push -f origin diag-logs || true
+              break
+            fi
+            sleep 10
+          done
+
+      - name: Launch app and capture logcat
+        timeout-minutes: 8
+        run: |
+          curl -sL -o orbit.apk \
+            "https://github.com/What-if-Ajeeb/Orbit/releases/download/v1.9.2/orbit-v1.9.2.apk"
+          {
+            echo "install:"; adb install -r orbit.apk 2>&1 || true
+            echo "version:"; adb shell getprop ro.build.version.release 2>&1 || true
+          } >> diag-state.txt
+          git add -f diag-state.txt && git commit -m "diag3: install" || true
+          git push -f origin diag-logs || true
+          adb logcat -c
+          adb shell monkey -p com.orbit.app -c android.intent.category.LAUNCHER 1 >> diag-state.txt 2>&1 || true
+          sleep 25
+          timeout 60 adb logcat -d -v threadtime > logcat-full.txt || true
+          {
+            echo "=== matched ==="
+            grep -iE 'orbit|reactnative|androidruntime|fatal|webview|expo|sqlite|securestore|splash|jserror|turbo|so loader' logcat-full.txt | tail -500 || true
+            echo "=== tail ==="
+            tail -250 logcat-full.txt
+          } > logcat.txt
+          git add -f diag-state.txt logcat.txt logcat-full.txt && git commit -m "diag3: logcat" || true
+          git push -f origin diag-logs || true
+          cat logcat.txt
