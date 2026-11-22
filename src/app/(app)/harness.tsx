@@ -434,7 +434,7 @@ export default function HarnessScreen() {
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Open settings"
-              onPress={() => router.push('/settings')}
+              onPress={() => router.navigate('/settings')}
               style={({ pressed }) => [
                 styles.secondaryButton,
                 pressed && styles.pressed,
@@ -460,7 +460,7 @@ export default function HarnessScreen() {
                   key={plugin.id}
                   plugin={plugin}
                   first={index === 0}
-                  onPress={() => router.push('/settings')}
+                  onPress={() => router.navigate('/settings')}
                 />
               ))}
             </GlassView>
@@ -504,7 +504,7 @@ export default function HarnessScreen() {
                   </Text>
                   <Pressable
                     accessibilityRole="button"
-                    onPress={() => router.push('/settings')}
+                    onPress={() => router.navigate('/settings')}
                     style={({ pressed }) => [
                       styles.emptyButton,
                       pressed && styles.pressed,
@@ -520,7 +520,7 @@ export default function HarnessScreen() {
                     key={plugin.id}
                     plugin={plugin}
                     first={index === 0}
-                    onPress={() => router.push('/settings')}
+                    onPress={() => router.navigate('/settings')}
                   />
                 ))
               )}

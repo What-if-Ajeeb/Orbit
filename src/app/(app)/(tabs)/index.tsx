@@ -127,11 +127,11 @@ export default function HomeScreen() {
   /** Opens the agent chat, optionally pre-filling the composer (the user still taps send). */
   function openChat(prompt?: string) {
     if (!prompt) {
-      router.push('/chat');
+      router.navigate('/chat');
       return;
     }
 
-    router.push(`/chat?prompt=${encodeURIComponent(prompt)}&t=${Date.now()}` as Href);
+    router.navigate(`/chat?prompt=${encodeURIComponent(prompt)}&t=${Date.now()}` as Href);
   }
 
   async function refresh() {
@@ -189,7 +189,7 @@ export default function HomeScreen() {
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Open settings"
-            onPress={() => router.push('/settings')}
+            onPress={() => router.navigate('/settings')}
             style={({ pressed }) => [styles.avatar, pressed && styles.pressed]}
           >
             <Text style={styles.avatarText}>{initials || 'O'}</Text>
@@ -235,7 +235,7 @@ export default function HomeScreen() {
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Connect an AI provider in settings"
-              onPress={() => router.push('/settings')}
+              onPress={() => router.navigate('/settings')}
               style={({ pressed }) => [styles.connectCta, pressed && styles.pressed]}
             >
               <Ionicons name="key-outline" size={16} color={colors.accent} />
@@ -260,7 +260,7 @@ export default function HomeScreen() {
           <QuickAction icon="add-circle-outline" label="Add task" onPress={() => openChat('Add task ')} />
           <QuickAction icon="alarm-outline" label="Remind me" onPress={() => openChat('Remind me to ')} />
           <QuickAction icon="list-outline" label="Pending" onPress={() => openChat("What's pending?")} />
-          <QuickAction icon="checkbox-outline" label="All tasks" onPress={() => router.push('/tasks')} />
+          <QuickAction icon="checkbox-outline" label="All tasks" onPress={() => router.navigate('/tasks')} />
         </View>
 
         {/* Overview */}
@@ -278,7 +278,7 @@ export default function HomeScreen() {
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="View all tasks"
-            onPress={() => router.push('/tasks')}
+            onPress={() => router.navigate('/tasks')}
             hitSlop={12}
           >
             <Text style={styles.link}>View all</Text>

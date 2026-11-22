@@ -150,7 +150,7 @@ export default function ArtifactsScreen() {
   );
 
   const openAgent = useCallback(() => {
-    router.push(`/chat?n=1&t=${Date.now()}` as Href);
+    router.navigate(`/chat?n=1&t=${Date.now()}` as Href);
   }, [router]);
 
   const isFiltered = query.trim().length > 0 || filter !== 'all';

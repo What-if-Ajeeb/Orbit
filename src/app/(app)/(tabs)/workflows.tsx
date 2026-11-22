@@ -380,7 +380,7 @@ export default function WorkflowsScreen() {
         {aiReady === false ? (
           <Pressable
             accessibilityRole="button"
-            onPress={() => router.push('/settings')}
+            onPress={() => router.navigate('/settings')}
             style={({ pressed }) => [styles.notice, pressed && styles.pressed]}
           >
             <Ionicons name="key-outline" size={16} color={colors.accent} />

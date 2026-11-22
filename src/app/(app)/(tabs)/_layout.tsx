@@ -7,6 +7,7 @@ export default function TabLayout() {
 
   return (
     <Tabs
+      backBehavior="history"
       screenOptions={{
         headerShown: false,
         // Navigation lives in the drawer (hamburger, top-left), like a chat app.

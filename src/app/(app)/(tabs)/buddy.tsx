@@ -266,7 +266,7 @@ export default function BuddyScreen() {
           <View style={styles.actionRow}>
             <Pressable
               style={({ pressed }) => [styles.actionBtn, styles.secondaryBtn, pressed && styles.pressed]}
-              onPress={() => router.push('/chat')}
+              onPress={() => router.navigate('/chat')}
             >
               <Ionicons name="chatbubble-outline" size={18} color={colors.text} />
               <Text style={styles.secondaryBtnText}>Chat</Text>
