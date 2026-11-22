@@ -80,7 +80,7 @@ jobs:
         timeout-minutes: 8
         run: |
           curl -sL -o orbit.apk \
-            "https://github.com/What-if-Ajeeb/Orbit/releases/download/v1.9.3/orbit-v1.9.3.apk"
+            "https://github.com/What-if-Ajeeb/Orbit/releases/download/v1.9.4/orbit-v1.9.4.apk"
           {
             echo "install:"; adb install -r orbit.apk 2>&1 || true
             echo "version:"; adb shell getprop ro.build.version.release 2>&1 || true

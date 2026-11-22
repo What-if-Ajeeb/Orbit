@@ -36,6 +36,11 @@ export function getDiagnosticReport(): DiagnosticReport | null {
   return current;
 }
 
+/** Dismisses a stale/interrupted-launch report once the app is actually ready. */
+export function clearDiagnosticReport(): void {
+  publish(null);
+}
+
 export function subscribeDiagnosticReport(listener: () => void): () => void {
   listeners.add(listener);
 
@@ -44,7 +49,7 @@ export function subscribeDiagnosticReport(listener: () => void): () => void {
   };
 }
 
-function publish(report: DiagnosticReport): void {
+function publish(report: DiagnosticReport | null): void {
   current = report;
 
   for (const listener of listeners) {

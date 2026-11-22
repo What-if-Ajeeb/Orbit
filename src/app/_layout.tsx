@@ -9,6 +9,7 @@ import { SessionProvider, useSession } from '@/context/auth';
 import { ThemeProvider, useAppTheme } from '@/context/theme';
 import { DATABASE_NAME, migrateDbIfNeeded } from '@/lib/db';
 import {
+  clearDiagnosticReport,
   clearLaunchMarker,
   getStartupStage,
   installGlobalDiagnostics,
@@ -77,6 +78,9 @@ function SplashController() {
   useEffect(() => {
     if (!isLoading) {
       void clearLaunchMarker();
+      // A stale marker from an older crash is no longer relevant: the app is
+      // live now, so remove the report before it hides the real UI.
+      clearDiagnosticReport();
       markStartupStage('Session ready');
       SplashScreen.hide();
       return;
