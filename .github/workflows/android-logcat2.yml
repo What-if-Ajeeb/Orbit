@@ -1,0 +1,132 @@
+name: Android launch diagnostics v2
+
+on:
+  push:
+    tags:
+      - 'diag2-*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-logcat2-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  logcat:
+    name: Boot Android 16 and capture logcat
+    runs-on: ubuntu-latest
+    timeout-minutes: 32
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare diagnostics branch
+        run: |
+          git config user.name "orbit-ci"
+          git config user.email "orbit-ci@users.noreply.github.com"
+          git checkout -B diag-logs
+          echo "checkout ok $(date -u)" > diag-state.txt
+          git add -f diag-state.txt
+          git commit -m "diag: checkout" || true
+          git push -f origin diag-logs
+
+      - name: Set up Java and Android SDK
+        continue-on-error: true
+        timeout-minutes: 8
+        run: |
+          echo "setup start $(date -u)" >> diag-state.txt
+          git add -f diag-state.txt && git commit -m "diag: setup start" || true
+          git push -f origin diag-logs || true
+          echo "kvm:" >> diag-state.txt
+          ls -l /dev/kvm >> diag-state.txt 2>&1 || true
+          git add -f diag-state.txt && git commit -m "diag: kvm" || true
+          git push -f origin diag-logs || true
+
+      - name: Install Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Set up SDK
+        uses: android-actions/setup-android@v4
+
+      - name: Install Android 16 emulator image
+        continue-on-error: true
+        timeout-minutes: 12
+        run: |
+          echo "sdkmanager start $(date -u)" >> diag-state.txt
+          git add -f diag-state.txt && git commit -m "diag: sdk start" || true
+          git push -f origin diag-logs || true
+          yes | sdkmanager --licenses > /dev/null 2>&1 || true
+          sdkmanager --install "platform-tools" "emulator" "system-images;android-36;google_apis;x86_64"
+          echo "sdkmanager done $(date -u)" >> diag-state.txt
+          git add -f diag-state.txt && git commit -m "diag: sdk done" || true
+          git push -f origin diag-logs || true
+
+      - name: Create AVD
+        continue-on-error: true
+        timeout-minutes: 5
+        run: |
+          echo "avd start $(date -u)" >> diag-state.txt
+          git add -f diag-state.txt && git commit -m "diag: avd start" || true
+          git push -f origin diag-logs || true
+          echo no | avdmanager create avd -n orbit-api36 \
+            -k "system-images;android-36;google_apis;x86_64" \
+            --device "pixel_7" --force
+          echo "avd done $(date -u)" >> diag-state.txt
+          git add -f diag-state.txt && git commit -m "diag: avd done" || true
+          git push -f origin diag-logs || true
+
+      - name: Boot emulator
+        continue-on-error: true
+        timeout-minutes: 10
+        run: |
+          echo "emulator start $(date -u)" >> diag-state.txt
+          git add -f diag-state.txt && git commit -m "diag: emulator start" || true
+          git push -f origin diag-logs || true
+          emulator -avd orbit-api36 -no-audio -no-window -gpu swiftshader_indirect -no-boot-anim \
+            > emulator.log 2>&1 &
+          timeout 420 bash -c 'adb wait-for-device; while [ -z "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d "\r")" ]; do sleep 5; done'
+          echo "boot rc=$? $(date -u)" >> diag-state.txt
+          adb shell getprop ro.build.version.release >> diag-state.txt 2>&1 || true
+          adb shell getprop ro.build.version.sdk >> diag-state.txt 2>&1 || true
+          git add -f diag-state.txt emulator.log && git commit -m "diag: boot" || true
+          git push -f origin diag-logs || true
+
+      - name: Install, launch and capture logcat
+        continue-on-error: true
+        timeout-minutes: 8
+        run: |
+          echo "launch start $(date -u)" >> diag-state.txt
+          git add -f diag-state.txt && git commit -m "diag: launch start" || true
+          git push -f origin diag-logs || true
+          curl -sL -o orbit.apk \
+            "https://github.com/What-if-Ajeeb/Orbit/releases/download/v1.9.2/orbit-v1.9.2.apk"
+          adb install -r orbit.apk >> diag-state.txt 2>&1 || true
+          adb logcat -c
+          adb shell monkey -p com.orbit.app -c android.intent.category.LAUNCHER 1 >> diag-state.txt 2>&1 || true
+          sleep 25
+          timeout 60 adb logcat -d -v threadtime > logcat-full.txt || true
+          echo "launch done $(date -u)" >> diag-state.txt
+          git add -f diag-state.txt logcat-full.txt && git commit -m "diag: logcat" || true
+          git push -f origin diag-logs || true
+
+      - name: Publish summary
+        if: always()
+        run: |
+          {
+            echo "=== state ==="
+            cat diag-state.txt 2>/dev/null || true
+            echo "=== matched ==="
+            grep -iE 'orbit|reactnative|androidruntime|fatal|webview|expo|sqlite|securestore|splash|jserror|turbo|so loader' logcat-full.txt 2>/dev/null | tail -500 || true
+            echo "=== tail ==="
+            tail -250 logcat-full.txt 2>/dev/null || true
+          } > logcat.txt
+          git add -f logcat.txt
+          git commit -m "diag: summary" || true
+          git push -f origin diag-logs || true
+          cat logcat.txt
