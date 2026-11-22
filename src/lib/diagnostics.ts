@@ -20,7 +20,17 @@ export type DiagnosticReport = {
 const STARTUP_MARKER = 'orbit.startup.marker.v1';
 
 let current: DiagnosticReport | null = null;
+let startupStage = 'Bundle loaded';
 const listeners = new Set<() => void>();
+
+/** Records the last completed startup stage for timeout diagnostics. */
+export function markStartupStage(stage: string): void {
+  startupStage = stage;
+}
+
+export function getStartupStage(): string {
+  return startupStage;
+}
 
 export function getDiagnosticReport(): DiagnosticReport | null {
   return current;

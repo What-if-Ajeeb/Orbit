@@ -10,8 +10,10 @@ import { ThemeProvider, useAppTheme } from '@/context/theme';
 import { DATABASE_NAME, migrateDbIfNeeded } from '@/lib/db';
 import {
   clearLaunchMarker,
+  getStartupStage,
   installGlobalDiagnostics,
   markLaunchStarted,
+  markStartupStage,
   reportDiagnostic,
 } from '@/lib/diagnostics';
 import { HarnessProvider } from '@/lib/harness/spine/boot';
@@ -19,11 +21,14 @@ import { configureNotifications } from '@/lib/notifications';
 
 void SplashScreen.preventAutoHideAsync();
 installGlobalDiagnostics();
+markStartupStage('Runtime diagnostics installed');
 void markLaunchStarted();
 
 async function initializeDatabase(db: SQLiteDatabase): Promise<void> {
   try {
+    markStartupStage('Database initialization started');
     await migrateDbIfNeeded(db);
+    markStartupStage('Database ready');
   } catch (error) {
     reportDiagnostic('Database initialization', error);
     throw error;
@@ -72,8 +77,22 @@ function SplashController() {
   useEffect(() => {
     if (!isLoading) {
       void clearLaunchMarker();
+      markStartupStage('Session ready');
       SplashScreen.hide();
+      return;
     }
+
+    // A provider that never resolves used to leave the native splash up with
+    // no explanation. Surface the last completed stage and let the UI render.
+    const timeout = setTimeout(() => {
+      reportDiagnostic(
+        'Startup timed out',
+        new Error(`Last completed stage: ${getStartupStage()}`)
+      );
+      SplashScreen.hide();
+    }, 8000);
+
+    return () => clearTimeout(timeout);
   }, [isLoading]);
 
   return null;
@@ -82,6 +101,10 @@ function SplashController() {
 function RootNavigator() {
   const { user } = useSession();
   const { colors } = useAppTheme();
+
+  useEffect(() => {
+    markStartupStage('Navigator rendered');
+  }, []);
 
   return (
     <Stack

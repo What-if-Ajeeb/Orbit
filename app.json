@@ -2,7 +2,7 @@
   "expo": {
     "name": "Orbit",
     "slug": "orbit",
-    "version": "1.9.1",
+    "version": "1.9.2",
     "orientation": "portrait",
     "scheme": "orbit",
     "icon": "./assets/icon.png",
