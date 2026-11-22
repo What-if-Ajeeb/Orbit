@@ -48,141 +48,78 @@ jobs:
           ORBIT_RELEASE_KEY_PASSWORD: ${{ secrets.ORBIT_RELEASE_KEY_PASSWORD }}
         run: |
           python3 - <<'PYTHON'
-          import os, pathlib, textwrap
+          import os, pathlib
           p = pathlib.Path('android/app/build.gradle')
           s = p.read_text()
-          old = textwrap.dedent("""\
-              signingConfigs {
-                  debug {
-                      storeFile file('debug.keystore')
-                      storePassword 'android'
-                      keyAlias 'androiddebugkey'
-                      keyPassword 'android'
-                  }
-              }
-              buildTypes {
-                  debug {
-                      signingConfig signingConfigs.debug
-                  }
-                  release {
-                      // Caution! In production, you need to generate your own keystore file.
-                      // see https://reactnative.dev/docs/signed-apk-android.
-                      signingConfig signingConfigs.debug
-                      def enableShrinkResources = findProperty('android.enableShrinkResourcesInReleaseBuilds') ?: 'false'
-                      shrinkResources enableShrinkResources.toBoolean()
-                      minifyEnabled enableMinifyInReleaseBuilds
-                      proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
-                      def enablePngCrunchInRelease = findProperty('android.enablePngCrunchInReleaseBuilds') ?: 'true'
-                      crunchPngs enablePngCrunchInRelease.toBoolean()
-                  }
-              }""")
-          new = textwrap.dedent("""\
-              signingConfigs {
-                  debug {
-                      storeFile file('debug.keystore')
-                      storePassword 'android'
-                      keyAlias 'androiddebugkey'
-                      keyPassword 'android'
-                  }
-                  release {
-                      def releaseStoreFile = System.getenv('ORBIT_RELEASE_STORE_FILE')
-                      if (releaseStoreFile) {
-                          storeFile file(releaseStoreFile)
-                          storePassword System.getenv('ORBIT_RELEASE_STORE_PASSWORD')
-                          keyAlias System.getenv('ORBIT_RELEASE_KEY_ALIAS')
-                          keyPassword System.getenv('ORBIT_RELEASE_KEY_PASSWORD')
-                      } else {
-                          storeFile file('debug.keystore')
-                          storePassword 'android'
-                          keyAlias 'androiddebugkey'
-                          keyPassword 'android'
-                      }
-                  }
-              }
-              buildTypes {
-                  debug {
-                      signingConfig signingConfigs.debug
-                  }
-                  release {
-                      signingConfig signingConfigs.release
-                      def enableShrinkResources = findProperty('android.enableShrinkResourcesInReleaseBuilds') ?: 'false'
-                      shrinkResources enableShrinkResources.toBoolean()
-                      minifyEnabled enableMinifyInReleaseBuilds
-                      proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
-                      def enablePngCrunchInRelease = findProperty('android.enablePngCrunchInReleaseBuilds') ?: 'true'
-                      crunchPngs enablePngCrunchInRelease.toBoolean()
-                  }
-              }""")
-          # Normalize to file's 4-space indentation style (gradle template uses 4 spaces)
-          old = old.replace('    ', '  ') if False else old
-          # Actually match the 4-space indented block as generated in app/build.gradle
-          old4 = old.replace('\n        ', '\n    ').replace('\n            ', '\n        ').replace('\n                ', '\n            ').replace('\n                    ', '\n                ')
-          # simpler: build from known 4-space format
-          old4 = """    signingConfigs {
-        debug {
-            storeFile file('debug.keystore')
-            storePassword 'android'
-            keyAlias 'androiddebugkey'
-            keyPassword 'android'
-        }
-    }
-    buildTypes {
-        debug {
-            signingConfig signingConfigs.debug
-        }
-        release {
-            // Caution! In production, you need to generate your own keystore file.
-            // see https://reactnative.dev/docs/signed-apk-android.
-            signingConfig signingConfigs.debug
-            def enableShrinkResources = findProperty('android.enableShrinkResourcesInReleaseBuilds') ?: 'false'
-            shrinkResources enableShrinkResources.toBoolean()
-            minifyEnabled enableMinifyInReleaseBuilds
-            proguardFiles getDefaultProguardFile(\"proguard-android-optimize.txt\"), \"proguard-rules.pro\"
-            def enablePngCrunchInRelease = findProperty('android.enablePngCrunchInReleaseBuilds') ?: 'true'
-            crunchPngs enablePngCrunchInRelease.toBoolean()
-        }
-    }"""
-          new4 = """    signingConfigs {
-        debug {
-            storeFile file('debug.keystore')
-            storePassword 'android'
-            keyAlias 'androiddebugkey'
-            keyPassword 'android'
-        }
-        release {
-            def releaseStoreFile = System.getenv('ORBIT_RELEASE_STORE_FILE')
-            if (releaseStoreFile) {
-                storeFile file(releaseStoreFile)
-                storePassword System.getenv('ORBIT_RELEASE_STORE_PASSWORD')
-                keyAlias System.getenv('ORBIT_RELEASE_KEY_ALIAS')
-                keyPassword System.getenv('ORBIT_RELEASE_KEY_PASSWORD')
-            } else {
-                storeFile file('debug.keystore')
-                storePassword 'android'
-                keyAlias 'androiddebugkey'
-                keyPassword 'android'
-            }
-        }
-    }
-    buildTypes {
-        debug {
-            signingConfig signingConfigs.debug
-        }
-        release {
-            signingConfig signingConfigs.release
-            def enableShrinkResources = findProperty('android.enableShrinkResourcesInReleaseBuilds') ?: 'false'
-            shrinkResources enableShrinkResources.toBoolean()
-            minifyEnabled enableMinifyInReleaseBuilds
-            proguardFiles getDefaultProguardFile(\"proguard-android-optimize.txt\"), \"proguard-rules.pro\"
-            def enablePngCrunchInRelease = findProperty('android.enablePngCrunchInReleaseBuilds') ?: 'true'
-            crunchPngs enablePngCrunchInRelease.toBoolean()
-        }
-    }"""
+          old4 = '\n'.join([
+              '    signingConfigs {',
+              '        debug {',
+              "            storeFile file('debug.keystore')",
+              "            storePassword 'android'",
+              "            keyAlias 'androiddebugkey'",
+              "            keyPassword 'android'",
+              '        }',
+              '    }',
+              '    buildTypes {',
+              '        debug {',
+              '            signingConfig signingConfigs.debug',
+              '        }',
+              '        release {',
+              '            // Caution! In production, you need to generate your own keystore file.',
+              '            // see https://reactnative.dev/docs/signed-apk-android.',
+              '            signingConfig signingConfigs.debug',
+              "            def enableShrinkResources = findProperty('android.enableShrinkResourcesInReleaseBuilds') ?: 'false'",
+              '            shrinkResources enableShrinkResources.toBoolean()',
+              '            minifyEnabled enableMinifyInReleaseBuilds',
+              '            proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"',
+              "            def enablePngCrunchInRelease = findProperty('android.enablePngCrunchInReleaseBuilds') ?: 'true'",
+              '            crunchPngs enablePngCrunchInRelease.toBoolean()',
+              '        }',
+              '    }',
+          ])
+          new4 = '\n'.join([
+              '    signingConfigs {',
+              '        debug {',
+              "            storeFile file('debug.keystore')",
+              "            storePassword 'android'",
+              "            keyAlias 'androiddebugkey'",
+              "            keyPassword 'android'",
+              '        }',
+              '        release {',
+              "            def releaseStoreFile = System.getenv('ORBIT_RELEASE_STORE_FILE')",
+              '            if (releaseStoreFile) {',
+              '                storeFile file(releaseStoreFile)',
+              "                storePassword System.getenv('ORBIT_RELEASE_STORE_PASSWORD')",
+              "                keyAlias System.getenv('ORBIT_RELEASE_KEY_ALIAS')",
+              "                keyPassword System.getenv('ORBIT_RELEASE_KEY_PASSWORD')",
+              '            } else {',
+              "                storeFile file('debug.keystore')",
+              "                storePassword 'android'",
+              "                keyAlias 'androiddebugkey'",
+              "                keyPassword 'android'",
+              '            }',
+              '        }',
+              '    }',
+              '    buildTypes {',
+              '        debug {',
+              '            signingConfig signingConfigs.debug',
+              '        }',
+              '        release {',
+              '            signingConfig signingConfigs.release',
+              "            def enableShrinkResources = findProperty('android.enableShrinkResourcesInReleaseBuilds') ?: 'false'",
+              '            shrinkResources enableShrinkResources.toBoolean()',
+              '            minifyEnabled enableMinifyInReleaseBuilds',
+              '            proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"',
+              "            def enablePngCrunchInRelease = findProperty('android.enablePngCrunchInReleaseBuilds') ?: 'true'",
+              '            crunchPngs enablePngCrunchInRelease.toBoolean()',
+              '        }',
+              '    }',
+          ])
           if old4 in s:
               p.write_text(s.replace(old4, new4))
               print('patched signing config')
           else:
-            print('signing config pattern not found; keeping generated config')
+              print('signing config pattern not found; keeping generated config')
           PYTHON
           if [ -n "$ORBIT_RELEASE_STORE_FILE" ]; then
             echo "$ORBIT_RELEASE_STORE_FILE" | base64 -d > android/app/release.keystore
