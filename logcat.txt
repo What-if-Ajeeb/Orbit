@@ -1,0 +1,473 @@
+=== matched ===
+11-22 12:14:02.689  2668  2668 D AndroidRuntime: >>>>>> START com.android.internal.os.RuntimeInit uid 2000 <<<<<<
+11-22 12:14:02.695  2668  2668 I AndroidRuntime: Using default boot image
+11-22 12:14:02.695  2668  2668 I AndroidRuntime: Leaving lock profiling enabled
+11-22 12:14:02.745  2668  2668 D nativeloader: InitDefaultPublicLibraries for_preload=1: libandroid.so:libaaudio.so:libamidi.so:libbinder_ndk.so:libc.so:libcamera2ndk.so:libdl.so:libEGL.so:libGLESv1_CM.so:libGLESv2.so:libGLESv3.so:libicu.so:libicui18n.so:libicuuc.so:libjnigraphics.so:liblog.so:libmediandk.so:libm.so:libnativehelper.so:libnativewindow.so:libOpenMAXAL.so:libOpenSLES.so:libRS.so:libstdc++.so:libsync.so:libvulkan.so:libwebviewchromium_plat_support.so:libz.so
+11-22 12:14:02.815  2668  2668 D AndroidRuntime: Calling main entry com.android.commands.monkey.Monkey
+11-22 12:14:02.819  2668  2668 W Monkey  : args: [-p, com.orbit.app, -c, android.intent.category.LAUNCHER, 1]
+11-22 12:14:02.830  2668  2668 I AconfigPackage: android.database.sqlite is mapped to system
+11-22 12:14:02.837  1271  1303 I Launcher.IconCache: Database bulk icon loading failed, using fallback bulk icon loading for: ComponentInfo{com.orbit.app/com.orbit.app.MainActivity}
+11-22 12:14:02.859  2668  2668 E FeatureFlagsImplExport: android.os.flagging.AconfigStorageReadException: ERROR_PACKAGE_NOT_FOUND: package android.xr cannot be found on the device
+11-22 12:14:02.877  2668  2668 W Monkey  :  arg: "com.orbit.app"
+11-22 12:14:02.877  2668  2668 W Monkey  : data="com.orbit.app"
+11-22 12:14:02.913   622   972 I SdkSandboxManager: No SDKs used. Skipping SDK data reconcilation for CallingInfo{mUid=10216, mPackageName='com.orbit.app, mAppProcessToken='null'}
+11-22 12:14:02.989   622   682 W system_server: Long monitor contention with owner shortcut (961) at boolean com.android.server.pm.ShortcutPackageItem.waitForBitmapSaves()(ShortcutPackageItem.java:225) waiters=0 in android.util.ArraySet com.android.server.pm.ShortcutLauncher.getPinnedShortcutIds(java.lang.String, int) for 591ms
+11-22 12:14:03.036  1271  1303 D AlphabeticIndexCompat: computeSectionName: cs: Orbit sectionName: O
+11-22 12:14:03.047  1271  1271 D AlphabeticalAppsList: addAppsWithSections: adding sectionName: O with appInfoTitle: Orbit
+11-22 12:14:03.047  1271  1271 D AlphabeticalAppsList: addAppsWithSections: adding sectionName: O with appInfoTitle: Orbit
+11-22 12:14:03.193   622  1173 I ActivityTaskManager: START u0 {act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10200000 cmp=com.orbit.app/.MainActivity} with LAUNCH_SINGLE_TASK from uid 2000 (BAL_ALLOW_PERMISSION) result code=0
+11-22 12:14:03.196  1001  1077 V WindowManagerShell: Transition requested (#12): android.os.BinderProxy@14a2048 TransitionRequestInfo { type = OPEN, triggerTask = TaskInfo{userId=0 taskId=8 effectiveUid=10216 displayId=0 isRunning=true baseIntent=Intent { act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10200000 cmp=com.orbit.app/.MainActivity } baseActivity=ComponentInfo{com.orbit.app/com.orbit.app.MainActivity} topActivity=ComponentInfo{com.orbit.app/com.orbit.app.MainActivity} origActivity=null realActivity=ComponentInfo{com.orbit.app/com.orbit.app.MainActivity} numActivities=1 lastActiveTime=57656 supportsMultiWindow=true resizeMode=1 isResizeable=true minWidth=-1 minHeight=-1 defaultMinSize=220 token=WCT{android.window.IWindowContainerToken$Stub$Proxy@215dee1} topActivityType=1 pictureInPictureParams=null shouldDockBigOverlays=false launchIntoPipHostTaskId=-1 lastParentTaskIdBeforePip=-1 displayCutoutSafeInsets=Rect(0, 136 - 0, 0) topActivityInfo=ActivityInfo{3ea406 com.orbit.app.MainActivity} launchCookies=[] positionInParent=Point(0, 0) parentTaskId=-1 isFocused=false isVisible=false isVisibleRequested=false isTopActivityNoDisplay=false isSleeping=false locusId=null displayAreaFeatureId=1 isTopActivityTransparent=false isActivityStackTransparent=false lastNonFullscreenBounds=Rect(276, 696 - 805, 1776) capturedLink=null capturedLinkTimestamp=0 requestedVisibleTypes=-9 topActivityRequestOpenInBrowserEducationTimestamp=0 appCompatTaskInfo=AppCompatTaskInfo { topActivityInSizeCompat=false eligibleForLetterboxEducation= false isLetterboxEducationEnabled= true isLetterboxDoubleTapEnabled= false eligibleForUserAspectRatioButton= false topActivityBoundsLetterboxed= false isFromLetterboxDoubleTap= false topActivityLetterboxVerticalPosition= -1 topActivityLetterboxHorizontalPosition= -1 topActivityLetterboxWidth=-1 topActivityLetterboxHeight=-1 topActivityAppBounds=Rect(0, 0 - 1080, 2400) isUserFullscreenOverrideEnabled=false isSystemFullscreenOverrideEnabled=false hasMinAspectRatioOverride=false topActivityLetterboxBounds=null cameraCompatTaskInfo=CameraCompatTaskInfo { freeformCameraCompatMode=inactive}} topActivityMainWindowFrame=null}, pipChange = null, remoteTransition = null, displayChange = null, flags = 0, debugId = 12 }
+11-22 12:14:03.255   622  1318 I AppsFilter: interaction: PackageSetting{a80c331 com.android.microdroid.empty_payload/10202} -> PackageSetting{d323a16 com.orbit.app/10216} BLOCKED
+11-22 12:14:03.264  1001  1137 D SplashScreenView: Build android.window.SplashScreenView{9402dde V.E...... ......ID 0,0-0,0}
+11-22 12:14:03.264  1001  1137 D SplashScreenView: Icon: view: android.widget.ImageView{6015bbf V.ED..... ......I. 0,0-0,0 #1020542 android:id/splashscreen_icon_view} drawable: com.android.wm.shell.startingsurface.SplashscreenIconDrawableFactory$ImmobileIconDrawable@19d49ea size: 504
+11-22 12:14:03.264  1001  1137 D SplashScreenView: Branding: view: android.view.View{179f4db G.ED..... ......I. 0,0-0,0 #1020541 android:id/splashscreen_branding_view} drawable: null size w: 0 h: 0
+11-22 12:14:03.272   622  1318 D CoreBackPreview: Window{cc597f2 u0 Splash Screen com.orbit.app}: Setting back callback OnBackInvokedCallbackInfo{mCallback=android.window.IOnBackInvokedCallback$Stub$Proxy@cce9e33, mPriority=0, mIsAnimationCallback=false, mOverrideBehavior=0}
+11-22 12:14:03.442   518   549 D NativePermissionController: updatePackagesForUid, UidPackageState{uid: 10216, packageNames: [com.orbit.app]}
+11-22 12:14:03.461  2668  2668 I AndroidRuntime: VM exiting with result code 0.
+11-22 12:14:03.475   622   948 I AppWidgetServiceImpl: Updating package stopped masked state for uid 10216 package com.orbit.app isStopped false
+11-22 12:14:03.740  2711  2711 I com.orbit.app: Using CollectorTypeCMC GC.
+11-22 12:14:03.742  2711  2711 W com.orbit.app: Unexpected CPU variant for x86: x86_64.
+11-22 12:14:03.742  2711  2711 W com.orbit.app: Known variants: atom, sandybridge, silvermont, goldmont, goldmont-plus, goldmont-without-sha-xsaves, tremont, kabylake, alderlake, default
+11-22 12:14:03.745  2711  2711 E com.orbit.app: Not starting debugger since process cannot load the jdwp agent.
+11-22 12:14:03.755   622   622 I AppsFilter: interaction: PackageSetting{a80c331 com.android.microdroid.empty_payload/10202} -> PackageSetting{d323a16 com.orbit.app/10216} BLOCKED
+11-22 12:14:03.757   622   684 I ActivityManager: Start proc 2711:com.orbit.app/u0a216 for next-top-activity {com.orbit.app/com.orbit.app.MainActivity}
+11-22 12:14:03.775   622   682 W system_server: Long monitor contention with owner shortcut (961) at boolean com.android.server.pm.ShortcutPackageItem.waitForBitmapSaves()(ShortcutPackageItem.java:225) waiters=0 in android.util.ArraySet com.android.server.pm.ShortcutLauncher.getPinnedShortcutIds(java.lang.String, int) for 635ms
+11-22 12:14:03.904   622   961 D ShortcutService: adding package: com.orbit.app userId=0
+11-22 12:14:04.352  2711  2711 D nativeloader: Configuring clns-9 for other apk /data/app/~~hesOGrKmYX0izqGYSbrr4Q==/com.orbit.app-k9_qt2igoKbHGRfHVQVCUw==/base.apk. target_sdk_version=36, uses_libraries=, library_path=/data/app/~~hesOGrKmYX0izqGYSbrr4Q==/com.orbit.app-k9_qt2igoKbHGRfHVQVCUw==/lib/x86_64:/data/app/~~hesOGrKmYX0izqGYSbrr4Q==/com.orbit.app-k9_qt2igoKbHGRfHVQVCUw==/base.apk!/lib/x86_64, permitted_path=/data:/mnt/expand:/data/user/0/com.orbit.app
+11-22 12:14:04.356  2711  2711 I com.orbit.app: AssetManager2(0x7083230946f8) locale list changing from [] to [en-US]
+11-22 12:14:04.357  2711  2711 V GraphicsEnvironment: com.orbit.app is not listed in per-application setting
+11-22 12:14:04.357  2711  2711 V GraphicsEnvironment: com.orbit.app is not listed in ANGLE allowlist or settings, returning default
+11-22 12:14:04.525  2699  2699 W SQLiteCompatibilityWalFlags: Cannot read global setting sqlite_compatibility_wal_flags - Application state not available
+11-22 12:14:04.528   622   674 V WindowManager: Sent Transition (#12) createdAt=11-22 12:14:03.157 via request=TransitionRequestInfo { type = OPEN, triggerTask = TaskInfo{userId=0 taskId=8 effectiveUid=10216 displayId=0 isRunning=true baseIntent=Intent { act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10200000 cmp=com.orbit.app/.MainActivity } baseActivity=ComponentInfo{com.orbit.app/com.orbit.app.MainActivity} topActivity=ComponentInfo{com.orbit.app/com.orbit.app.MainActivity} origActivity=null realActivity=ComponentInfo{com.orbit.app/com.orbit.app.MainActivity} numActivities=1 lastActiveTime=57656 supportsMultiWindow=true resizeMode=1 isResizeable=true minWidth=-1 minHeight=-1 defaultMinSize=220 token=WCT{RemoteToken{d482b6f Task{ba8af9a #8 type=standard A=10216:com.orbit.app}}} topActivityType=1 pictureInPictureParams=null shouldDockBigOverlays=false launchIntoPipHostTaskId=-1 lastParentTaskIdBeforePip=-1 displayCutoutSafeInsets=Rect(0, 136 - 0, 0) topActivityInfo=ActivityInfo{bd0807c com.orbit.app.MainActivity} launchCookies=[] positionInParent=Point(0, 0) parentTaskId=-1 isFocused=false isVisible=false isVisibleRequested=false isTopActivityNoDisplay=false isSleeping=false locusId=null displayAreaFeatureId=1 isTopActivityTransparent=false isActivityStackTransparent=false lastNonFullscreenBounds=Rect(276, 696 - 805, 1776) capturedLink=null capturedLinkTimestamp=0 requestedVisibleTypes=-9 topActivityRequestOpenInBrowserEducationTimestamp=0 appCompatTaskInfo=AppCompatTaskInfo { topActivityInSizeCompat=false eligibleForLetterboxEducation= false isLetterboxEducationEnabled= true isLetterboxDoubleTapEnabled= false eligibleForUserAspectRatioButton= false topActivityBoundsLetterboxed= false isFromLetterboxDoubleTap= false topActivityLetterboxVerticalPosition= -1 topActivityLetterboxHorizontalPosition= -1 topActivityLetterboxWidth=-1 topActivityLetterboxHeight=-1 topActivityAppBounds=Rect(0, 0 - 1080, 2400) isUserFullscreenOverrideEnabled=false isSystemFullscreenOverrideEnabled=false hasMinAspectRatioOverride=false topActivityLetterboxBounds=null cameraCompatTaskInfo=CameraCompatTaskInfo { freeformCameraCompatMode=inactive}} topActivityMainWindowFrame=null}, pipChange = null, remoteTransition = null, displayChange = null, flags = 0, debugId = 12 }
+11-22 12:14:04.529   622   674 V WindowManager:         {WCT{RemoteToken{d482b6f Task{ba8af9a #8 type=standard A=10216:com.orbit.app}}} m=OPEN f=NONE leash=Surface(name=Task=8)/@0xe781e7 sb=Rect(0, 0 - 1080, 2400) eb=Rect(0, 0 - 1080, 2400) epz=Point(1080, 2400) d=0 taskParent=-1},
+11-22 12:14:04.530  2711  2711 W SoLoader: Recording new base apk path: /data/app/~~hesOGrKmYX0izqGYSbrr4Q==/com.orbit.app-k9_qt2igoKbHGRfHVQVCUw==/base.apk
+11-22 12:14:04.530  2711  2711 I SoLoader: Preparing SO source: DirectApkSoSource[root = [/data/app/~~hesOGrKmYX0izqGYSbrr4Q==/com.orbit.app-k9_qt2igoKbHGRfHVQVCUw==/base.apk!/lib/x86_64]]
+11-22 12:14:04.533  2711  2711 I SoLoader: Preparing SO source: ApplicationSoSource[DirectorySoSource[root = /data/app/~~hesOGrKmYX0izqGYSbrr4Q==/com.orbit.app-k9_qt2igoKbHGRfHVQVCUw==/lib/x86_64 flags = 0]]
+11-22 12:14:04.545  1176  1176 D CarrierSvcBindHelper: onPackageAdded: com.orbit.app
+11-22 12:14:04.626  1176  1428 D ImsResolver: maybeAddedImsService, packageName: com.orbit.app
+11-22 12:14:04.626  1176  1428 V ImsResolver: searchForImsServices: package=com.orbit.app, users=[UserHandle{0}]
+11-22 12:14:04.696  1176  1428 V ImsResolver: searchForImsServices: package=com.orbit.app, users=[UserHandle{0}]
+11-22 12:14:04.792  2711  2711 D nativeloader: Load /data/app/~~hesOGrKmYX0izqGYSbrr4Q==/com.orbit.app-k9_qt2igoKbHGRfHVQVCUw==/base.apk!/lib/x86_64/libc++_shared.so using class loader ns clns-9 (caller=/data/app/~~hesOGrKmYX0izqGYSbrr4Q==/com.orbit.app-k9_qt2igoKbHGRfHVQVCUw==/base.apk): ok
+11-22 12:14:04.818  2711  2711 D nativeloader: Load /data/app/~~hesOGrKmYX0izqGYSbrr4Q==/com.orbit.app-k9_qt2igoKbHGRfHVQVCUw==/base.apk!/lib/x86_64/libjsi.so using class loader ns clns-9 (caller=/data/app/~~hesOGrKmYX0izqGYSbrr4Q==/com.orbit.app-k9_qt2igoKbHGRfHVQVCUw==/base.apk): ok
+11-22 12:14:04.825  2711  2711 D nativeloader: Load /data/app/~~hesOGrKmYX0izqGYSbrr4Q==/com.orbit.app-k9_qt2igoKbHGRfHVQVCUw==/base.apk!/lib/x86_64/libfbjni.so using class loader ns clns-9 (caller=/data/app/~~hesOGrKmYX0izqGYSbrr4Q==/com.orbit.app-k9_qt2igoKbHGRfHVQVCUw==/base.apk): ok
+11-22 12:14:04.840  2711  2711 D nativeloader: Load /data/app/~~hesOGrKmYX0izqGYSbrr4Q==/com.orbit.app-k9_qt2igoKbHGRfHVQVCUw==/base.apk!/lib/x86_64/libreactnative.so using class loader ns clns-9 (caller=/data/app/~~hesOGrKmYX0izqGYSbrr4Q==/com.orbit.app-k9_qt2igoKbHGRfHVQVCUw==/base.apk): ok
+11-22 12:14:04.841  2711  2711 D jni_lib_merge: Preparing to register libreactnativeblob_so.  onload_func: 0x7081c9234f70
+11-22 12:14:04.841  2711  2711 D jni_lib_merge: Preparing to register libreactnativejni_so.  onload_func: 0x7081c92414f0
+11-22 12:14:04.841  2711  2711 D jni_lib_merge: Preparing to register libreactnativejni_common_so.  onload_func: 0x7081c9245c40
+11-22 12:14:04.841  2711  2711 D jni_lib_merge: Preparing to register libturbomodulejsijni_so.  onload_func: 0x7081c9316630
+11-22 12:14:04.849  2711  2711 D nativeloader: Load /data/app/~~hesOGrKmYX0izqGYSbrr4Q==/com.orbit.app-k9_qt2igoKbHGRfHVQVCUw==/base.apk!/lib/x86_64/libreact_codegen_rnscreens.so using class loader ns clns-9 (caller=/data/app/~~hesOGrKmYX0izqGYSbrr4Q==/com.orbit.app-k9_qt2igoKbHGRfHVQVCUw==/base.apk): ok
+11-22 12:14:04.850  2711  2711 D jni_lib_merge: Preparing to register libreactnativeblob_so.  onload_func: 0x7081c9234f70
+11-22 12:14:04.850  2711  2711 D jni_lib_merge: Preparing to register libreactnativejni_so.  onload_func: 0x7081c92414f0
+11-22 12:14:04.850  2711  2711 D jni_lib_merge: Preparing to register libreactnativejni_common_so.  onload_func: 0x7081c9245c40
+11-22 12:14:04.851  2711  2711 D jni_lib_merge: Preparing to register libturbomodulejsijni_so.  onload_func: 0x7081c9316630
+11-22 12:14:04.852  2711  2711 D nativeloader: Load /data/app/~~hesOGrKmYX0izqGYSbrr4Q==/com.orbit.app-k9_qt2igoKbHGRfHVQVCUw==/base.apk!/lib/x86_64/libreact_codegen_safeareacontext.so using class loader ns clns-9 (caller=/data/app/~~hesOGrKmYX0izqGYSbrr4Q==/com.orbit.app-k9_qt2igoKbHGRfHVQVCUw==/base.apk): ok
+11-22 12:14:04.864  2711  2711 D nativeloader: Load /data/app/~~hesOGrKmYX0izqGYSbrr4Q==/com.orbit.app-k9_qt2igoKbHGRfHVQVCUw==/base.apk!/lib/x86_64/libappmodules.so using class loader ns clns-9 (caller=/data/app/~~hesOGrKmYX0izqGYSbrr4Q==/com.orbit.app-k9_qt2igoKbHGRfHVQVCUw==/base.apk): ok
+11-22 12:14:04.897  2711  2711 I com.orbit.app: AssetManager2(0x708323092178) locale list changing from [] to [en-US]
+11-22 12:14:04.906  2711  2711 I com.orbit.app: AssetManager2(0x70832309c718) locale list changing from [] to [en-US]
+11-22 12:14:04.920  1176  1176 W VvmPkgInstalledRcvr: carrierVvmPkgAdded: carrier vvm packages doesn't contain com.orbit.app
+11-22 12:14:04.925  1332  2211 I SQLiteConnection: Long db operation: /data/user/0/com.google.android.gms/databases/phenotype.db
+11-22 12:14:05.093  2711  2711 D nativeloader: Load /data/app/~~hesOGrKmYX0izqGYSbrr4Q==/com.orbit.app-k9_qt2igoKbHGRfHVQVCUw==/base.apk!/lib/x86_64/libhermesvm.so using class loader ns clns-9 (caller=/data/app/~~hesOGrKmYX0izqGYSbrr4Q==/com.orbit.app-k9_qt2igoKbHGRfHVQVCUw==/base.apk): ok
+11-22 12:14:05.094  2711  2711 D nativeloader: Load /data/app/~~hesOGrKmYX0izqGYSbrr4Q==/com.orbit.app-k9_qt2igoKbHGRfHVQVCUw==/base.apk!/lib/x86_64/libhermestooling.so using class loader ns clns-9 (caller=/data/app/~~hesOGrKmYX0izqGYSbrr4Q==/com.orbit.app-k9_qt2igoKbHGRfHVQVCUw==/base.apk): ok
+11-22 12:14:05.127   622   682 D LauncherAppsService: onPackageAdded: triggering onPackageAdded for user=UserHandle{0}, packageName=com.orbit.app
+11-22 12:14:05.127   622   682 D LauncherAppsService: onPackageAdded: Skipping - package filtered for user=UserHandle{0}, packageName=com.orbit.app
+11-22 12:14:05.127   622   682 D LauncherAppsService: onPackageAdded: triggering onPackageAdded for user=UserHandle{0}, packageName=com.orbit.app
+11-22 12:14:05.127   622   682 D LauncherAppsService: onPackageAdded: triggering onPackageAdded for user=UserHandle{0}, packageName=com.orbit.app
+11-22 12:14:05.135  1570  1570 I AiAiEcho: AppFetcherImplV2 updateApps package:[com.orbit.app], userId:[0], reason:[package is added.].
+11-22 12:14:05.161   622   659 D CoreBackPreview: Window{3bb7a6f u0 com.orbit.app/com.orbit.app.MainActivity}: Setting back callback OnBackInvokedCallbackInfo{mCallback=android.window.IOnBackInvokedCallback$Stub$Proxy@803c426, mPriority=0, mIsAnimationCallback=false, mOverrideBehavior=0}
+11-22 12:14:05.253  1004  1004 I SafetyLabelChangedBroadcastReceiver: received broadcast packageName: com.orbit.app, current user: UserHandle{0}, packageChangeEvent: NEW_INSTALL, intent user: UserHandle{0}
+11-22 12:14:05.327  1332  1342 W .gms.persistent: Long monitor contention with owner lowpool[1] (1696) at android.database.sqlite.SQLiteDatabase eebk.k()(:com.google.android.gms@252635038@25.26.35 (260800-783060121):323) waiters=0 in android.database.sqlite.SQLiteDatabase eebk.k() for 360ms
+11-22 12:14:05.668  2711  2772 I ExpoModulesCore: ✅ AppContext was initialized
+11-22 12:14:05.760  1332  1965 W .gms.persistent: Long monitor contention with owner lowpool[1] (1696) at android.database.sqlite.SQLiteDatabase eebk.k()(:com.google.android.gms@252635038@25.26.35 (260800-783060121):323) waiters=2 in android.database.sqlite.SQLiteDatabase eebk.k() for 227ms
+11-22 12:14:05.810   622   961 D ShortcutService: changing package: com.orbit.app userId=0
+11-22 12:14:06.556  2711  2776 D nativeloader: Load /data/app/~~hesOGrKmYX0izqGYSbrr4Q==/com.orbit.app-k9_qt2igoKbHGRfHVQVCUw==/base.apk!/lib/x86_64/libexpo-modules-jsi.so using class loader ns clns-9 (caller=/data/app/~~hesOGrKmYX0izqGYSbrr4Q==/com.orbit.app-k9_qt2igoKbHGRfHVQVCUw==/base.apk): ok
+11-22 12:14:06.679  1176  1431 I SatelliteAppTracker: onPackageModified : com.orbit.app
+11-22 12:14:06.848  2711  2776 D nativeloader: Load /data/app/~~hesOGrKmYX0izqGYSbrr4Q==/com.orbit.app-k9_qt2igoKbHGRfHVQVCUw==/base.apk!/lib/x86_64/libexpo-modules-core.so using class loader ns clns-9 (caller=/data/app/~~hesOGrKmYX0izqGYSbrr4Q==/com.orbit.app-k9_qt2igoKbHGRfHVQVCUw==/base.apk): ok
+11-22 12:14:07.111  2711  2776 I ExpoModulesCore: ✅ JSI interop was installed
+11-22 12:14:07.114  2711  2776 D nativeloader: Load /data/app/~~hesOGrKmYX0izqGYSbrr4Q==/com.orbit.app-k9_qt2igoKbHGRfHVQVCUw==/base.apk!/lib/x86_64/libexpo-modules-v2.so using class loader ns clns-9 (caller=/data/app/~~hesOGrKmYX0izqGYSbrr4Q==/com.orbit.app-k9_qt2igoKbHGRfHVQVCUw==/base.apk): ok
+11-22 12:14:07.126  2711  2776 I ExpoModulesCore: ✅ Expo Modules v2 installed 3 module(s) on globalThis.expo.modules
+11-22 12:14:07.310  2711  2776 I ExpoModulesCore: ✅ Constants were exported
+11-22 12:14:07.558   622   683 D SystemServerTimingAsync: ssm.onUnlockedUser-0_com.android.server.webkit.WebViewUpdateService
+11-22 12:14:07.558   622   683 V SystemServerTimingAsync: ssm.onUnlockedUser-0_com.android.server.webkit.WebViewUpdateService took to complete: 0ms
+11-22 12:14:07.639  2711  2776 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class expo.modules.kotlin.views.GroupViewManagerWrapper
+11-22 12:14:07.832  1478  2879 I fchi    : Setting isLegacySQLite mode to false.
+11-22 12:14:08.063  2711  2776 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.reactnativecommunity.webview.RNCWebViewManager
+11-22 12:14:08.118  1176  1176 D CarrierSvcBindHelper: onPackageModified: com.orbit.app
+11-22 12:14:08.148  2711  2776 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class org.reactnative.maskedview.RNCMaskedViewManager
+11-22 12:14:08.182   622   682 W system_server: Long monitor contention with owner shortcut (961) at boolean com.android.server.pm.ShortcutPackageItem.waitForBitmapSaves()(ShortcutPackageItem.java:225) waiters=0 in void com.android.server.pm.ShortcutPackage.forEachShortcutStopWhen(java.util.function.Function) for 456ms
+11-22 12:14:08.202  1176  1428 D ImsResolver: maybeAddedImsService, packageName: com.orbit.app
+11-22 12:14:08.203  1176  1428 V ImsResolver: searchForImsServices: package=com.orbit.app, users=[UserHandle{0}]
+11-22 12:14:08.209  1176  1428 V ImsResolver: searchForImsServices: package=com.orbit.app, users=[UserHandle{0}]
+11-22 12:14:08.211  1176  1176 D SatelliteController: packageStateChanged: package:com.orbit.app DefaultSmsPackageName:com.google.android.apps.messaging
+11-22 12:14:08.212  1570  2319 I AiAiEcho: AppIndexer Package:[com.orbit.app] UserProfile:[0] Enabled:[true].
+11-22 12:14:08.212  1570  2319 I AiAiEcho: AppFetcherImplV2 updateApps package:[com.orbit.app], userId:[0], reason:[package is updated.].
+11-22 12:14:08.591   622  2912 I HealthConnectExportImport: Delete local export files started.
+11-22 12:14:08.591   622  2912 I HealthConnectExportImport: Delete local export files completed.
+11-22 12:14:08.989  2711  2776 D nativeloader: Load /data/app/~~hesOGrKmYX0izqGYSbrr4Q==/com.orbit.app-k9_qt2igoKbHGRfHVQVCUw==/base.apk!/lib/x86_64/librnscreens.so using class loader ns clns-9 (caller=/data/app/~~hesOGrKmYX0izqGYSbrr4Q==/com.orbit.app-k9_qt2igoKbHGRfHVQVCUw==/base.apk): ok
+11-22 12:14:09.230  2711  2776 I ReactNativeJS: Running "main"
+11-22 12:14:09.447  2711  2776 W ExpoModulesV2: x03 does not implement io.github.expo.modules.v2.Enumerable. It crosses to JavaScript here, but R8 keeps an enum's entries and its property only when it does, so a release build may fail on it or send its entry names instead
+11-22 12:14:10.005  2292  2292 E FeatureFlagsImplExport: android.os.flagging.AconfigStorageReadException: ERROR_PACKAGE_NOT_FOUND: package com.android.settingslib.widget.theme.flags cannot be found on the device
+11-22 12:14:10.546  2711  2776 D nativeloader: Load /data/app/~~hesOGrKmYX0izqGYSbrr4Q==/com.orbit.app-k9_qt2igoKbHGRfHVQVCUw==/base.apk!/lib/x86_64/libexpo-sqlite.so using class loader ns clns-9 (caller=/data/app/~~hesOGrKmYX0izqGYSbrr4Q==/com.orbit.app-k9_qt2igoKbHGRfHVQVCUw==/base.apk): ok
+11-22 12:14:10.654  2711  3020 D ProfileInstaller: Installing profile for com.orbit.app
+11-22 12:14:11.311  2711  2711 D SplashScreenView: Building from parcel drawable: android.graphics.drawable.BitmapDrawable@32c5ef5
+11-22 12:14:11.313   622   674 I ActivityTaskManager: Displayed com.orbit.app/.MainActivity for user 0: +8s208ms
+11-22 12:14:11.340  2711  2711 D SplashScreenView: Build android.window.SplashScreenView{3386afb V.E...... ......ID 0,0-0,0}
+11-22 12:14:11.340  2711  2711 D SplashScreenView: Icon: view: ea{8c03718 V.ED..... ......I. 0,0-0,0 #1020542 android:id/splashscreen_icon_view} drawable: android.graphics.drawable.BitmapDrawable@32c5ef5 size: 504
+11-22 12:14:11.340  2711  2711 D SplashScreenView: Branding: view: android.view.View{f30f571 G.ED..... ......I. 0,0-0,0 #1020541 android:id/splashscreen_branding_view} drawable: null size w: 0 h: 0
+11-22 12:14:11.347   622   771 I ImeTracker: com.orbit.app:f53952d4: onRequestHide at ORIGIN_SERVER reason HIDE_UNSPECIFIED_WINDOW fromUser false
+11-22 12:14:11.357  2711  2711 I ImeTracker: com.orbit.app:f53952d4: onCancelled at PHASE_CLIENT_ALREADY_HIDDEN
+11-22 12:14:11.385  1488  1488 I GoogleInputMethodService: GoogleInputMethodService.onStartInput():1293 onStartInput(EditorInfo{EditorInfo{packageName=com.orbit.app, inputType=0, inputTypeString=NULL, enableLearning=false, autoCorrection=false, autoComplete=false, imeOptions=0, privateImeOptions=null, actionName=UNSPECIFIED, actionLabel=null, initialSelStart=-1, initialSelEnd=-1, initialCapsMode=0, label=null, fieldId=0, fieldName=null, extras=null, hintText=null, hintLocales=[]}}, false)
+11-22 12:14:11.388   622  1732 W PackageConfigPersister: App-specific configuration not found for packageName: com.orbit.app and userId: 0
+11-22 12:14:11.598  1478  1484 W System  : A resource failed to call SQLiteConnectionPool.close. 
+11-22 12:14:11.598  1478  1484 W SQLiteConnectionPool: A SQLiteConnection object for database '/data/user/0/com.google.android.gms/databases/backup_d2d_restore_app_info.db' was leaked!  Please fix your application to end transactions in progress properly and to close the database when it is no longer needed.
+11-22 12:14:11.598  1478  1484 W System  : A resource failed to call SQLiteConnection.close. 
+11-22 12:14:11.598  1478  1484 W SQLiteConnectionPool: A SQLiteConnection object for database '/data/user/0/com.google.android.gms/databases/backup_d2d_restore_app_info.db' was leaked!  Please fix your application to end transactions in progress properly and to close the database when it is no longer needed.
+11-22 12:14:11.598  1478  1484 W System  : A resource failed to call SQLiteConnection.close. 
+11-22 12:14:12.412  2711  2711 D SplashScreenView: remove starting view
+11-22 12:14:12.665   622  3131 D SystemServerTimingAsync: ssm.onCompletedEventUser-0_{|Unlocked|}_com.android.server.webkit.WebViewUpdateService
+11-22 12:14:12.665   622  3131 V SystemServerTimingAsync: ssm.onCompletedEventUser-0_{|Unlocked|}_com.android.server.webkit.WebViewUpdateService took to complete: 0ms
+11-22 12:14:16.650  1598  2215 W ModernMediaScanner: android.database.sqlite.SQLiteConstraintException: UNIQUE constraint failed: files._data (code 2067 SQLITE_CONSTRAINT_UNIQUE)
+11-22 12:14:16.650  1598  2215 W ModernMediaScanner: 	at android.database.sqlite.SQLiteConnection.nativeExecuteForLastInsertedRowId(Native Method)
+11-22 12:14:16.650  1598  2215 W ModernMediaScanner: 	at android.database.sqlite.SQLiteConnection.executeForLastInsertedRowId(SQLiteConnection.java:985)
+11-22 12:14:16.650  1598  2215 W ModernMediaScanner: 	at android.database.sqlite.SQLiteSession.executeForLastInsertedRowId(SQLiteSession.java:825)
+11-22 12:14:16.650  1598  2215 W ModernMediaScanner: 	at android.database.sqlite.SQLiteStatement.executeInsert(SQLiteStatement.java:89)
+11-22 12:14:16.650  1598  2215 W ModernMediaScanner: 	at com.android.providers.media.util.SQLiteQueryBuilder.insert(SQLiteQueryBuilder.java:641)
+11-22 12:14:16.650  1598  2215 W ModernMediaScanner: 	at com.android.providers.media.util.SQLiteQueryBuilder.lambda$insert$1(SQLiteQueryBuilder.java:605)
+11-22 12:14:16.650  1598  2215 W ModernMediaScanner: 	at com.android.providers.media.util.SQLiteQueryBuilder.$r8$lambda$1_sr46pjM8wwFdSQpMjCTR4_wfk(SQLiteQueryBuilder.java:0)
+11-22 12:14:16.650  1598  2215 W ModernMediaScanner: 	at com.android.providers.media.util.SQLiteQueryBuilder$$ExternalSyntheticLambda4.apply(R8$$SyntheticClass:0)
+11-22 12:14:16.650  1598  2215 W ModernMediaScanner: 	at com.android.providers.media.util.SQLiteQueryBuilder.insert(SQLiteQueryBuilder.java:604)
+11-22 12:14:16.650  1598  2215 W ModernMediaScanner: android.database.sqlite.SQLiteConstraintException: UNIQUE constraint failed: files._data (code 2067 SQLITE_CONSTRAINT_UNIQUE)
+11-22 12:14:16.650  1598  2215 W ModernMediaScanner: 	at android.database.sqlite.SQLiteConnection.nativeExecuteForLastInsertedRowId(Native Method)
+11-22 12:14:16.650  1598  2215 W ModernMediaScanner: 	at android.database.sqlite.SQLiteConnection.executeForLastInsertedRowId(SQLiteConnection.java:985)
+11-22 12:14:16.650  1598  2215 W ModernMediaScanner: 	at android.database.sqlite.SQLiteSession.executeForLastInsertedRowId(SQLiteSession.java:825)
+11-22 12:14:16.650  1598  2215 W ModernMediaScanner: 	at android.database.sqlite.SQLiteStatement.executeInsert(SQLiteStatement.java:89)
+11-22 12:14:16.650  1598  2215 W ModernMediaScanner: 	at com.android.providers.media.util.SQLiteQueryBuilder.insert(SQLiteQueryBuilder.java:641)
+11-22 12:14:16.650  1598  2215 W ModernMediaScanner: 	at com.android.providers.media.util.SQLiteQueryBuilder.lambda$insert$1(SQLiteQueryBuilder.java:605)
+11-22 12:14:16.650  1598  2215 W ModernMediaScanner: 	at com.android.providers.media.util.SQLiteQueryBuilder.$r8$lambda$1_sr46pjM8wwFdSQpMjCTR4_wfk(SQLiteQueryBuilder.java:0)
+11-22 12:14:16.650  1598  2215 W ModernMediaScanner: 	at com.android.providers.media.util.SQLiteQueryBuilder$$ExternalSyntheticLambda4.apply(R8$$SyntheticClass:0)
+11-22 12:14:16.650  1598  2215 W ModernMediaScanner: 	at com.android.providers.media.util.SQLiteQueryBuilder.insert(SQLiteQueryBuilder.java:604)
+11-22 12:14:17.635  1332  2211 W .gms.persistent: Long monitor contention with owner highpool[5] (1965) at android.database.sqlite.SQLiteDatabase eebk.k()(:com.google.android.gms@252635038@25.26.35 (260800-783060121):323) waiters=1 in android.database.sqlite.SQLiteDatabase eebk.k() for 226ms
+11-22 12:14:19.264  2323  2687 I dmkr    : (REDACTED) Setting isLegacySQLite mode to %s.
+11-22 12:14:19.292  3160  3297 I DialerCallRecordingInfoStorageAsyncSqlite: com.android.dialer.callrecording.impl.storage.CallRecordingInfoStorageAsyncSqlite.deleteCallLogInitiated:501 enter
+11-22 12:14:19.585  3160  3329 I DialerCallRecordingInfoStorageAsyncSqlite: com.android.dialer.callrecording.impl.storage.CallRecordingInfoStorageAsyncSqlite.deleteCallLogInitiated:501 enter
+11-22 12:14:20.125  1256  1270 E FeatureFlagsImplExport: android.os.flagging.AconfigStorageReadException: ERROR_PACKAGE_NOT_FOUND: package com.android.settingslib.widget.theme.flags cannot be found on the device
+11-22 12:14:20.630  1478  3516 W gle.android.gms: Long monitor contention with owner LIT-UnlimitedExecutor #1 (3517) at android.database.sqlite.SQLiteDatabase android.database.sqlite.SQLiteOpenHelper.getWritableDatabase()(SQLiteOpenHelper.java:336) waiters=0 in android.database.sqlite.SQLiteDatabase android.database.sqlite.SQLiteOpenHelper.getWritableDatabase() for 285ms
+11-22 12:14:20.816  1271  1303 D SessionCommitReceiver: Removing unneeded PromiseIcon for package: com.orbit.app, install reason: 0, alreadyAddedPromiseIcon: false
+11-22 12:14:20.832  1256  3508 D PrefCtrlListHelper: Could not find Context-only controller for pref: com.android.settings.deviceinfo.legal.WebViewLicensePreferenceController
+11-22 12:14:20.842  1256  1456 D PrefCtrlListHelper: Could not find Context-only controller for pref: com.android.settings.deviceinfo.legal.WebViewLicensePreferenceController
+11-22 12:14:20.948  1256  1273 D PrefCtrlListHelper: Could not find Context-only controller for pref: com.android.settings.deviceinfo.legal.WebViewLicensePreferenceController
+11-22 12:14:22.042  3617  3617 W SQLiteCompatibilityWalFlags: Cannot read global setting sqlite_compatibility_wal_flags - Application state not available
+11-22 12:14:22.592  3579  3722 I Bugle   : DatabaseHelperBasic: sqlite version is 3.44.3
+11-22 12:14:22.818  1332  3323 I SQLiteCastDBHelper: Creating cast database
+11-22 12:14:22.825  1332  3323 I SQLiteCastStore: 0 CastNetworkInfo instances loaded, 0 CastDeviceInfo instances loaded, 0 paired guest mode devices loaded.
+11-22 12:14:22.972  1271  1303 D LauncherAppsCallbackImpl: onPackageAdded triggered for packageName=com.orbit.app, user=UserHandle{0}
+11-22 12:14:22.981  1271  1303 D PackageUpdatedTask: Package updated: mOp=ADD packages=[com.orbit.app], user=UserHandle{0}
+11-22 12:14:23.086  1332  1972 I TrustedTime: SntpTimeSignal: SntpTimeSignalImpl{serverSocketAddress=time.google.com/216.239.35.12:123, response=NtpMessage{header=NtpHeader{leapIndicator=0, versionNumber=3, mode=4, stratum=1, pollInterval=Duration{seconds=1, nanosOfSecond=0}, precisionExponent=-20, rootDelay=Duration{seconds=0, nanosOfSecond=0}, rootDispersion=Duration{seconds=0, nanosOfSecond=91552}, referenceIdentifier='GOOG', referenceTimestamp=eead5b1e.d859f48d, originateTimestamp=77f825b1.6e05df0e, receiveTimestamp=eead5b1e.d859f48e, transmitTimestamp=eead5b1e.d859f490}}, resultTicks=Ticks{originalTicker=PlatformTicker, value=77529643229}, resultInstant=Instant{seconds=1795349662, nanosOfSecond=864945936}, clientOffset=Duration{seconds=-1, nanosOfSecond=800299282}, totalTransactionDuration=Duration{seconds=0, nanosOfSecond=39646654}, roundTripDuration=Duration{seconds=0, nanosOfSecond=39646654}, responseInstant=Instant{seconds=1795349663, nanosOfSecond=64646654}} [CONTEXT service_id=326 ]
+11-22 12:14:23.150  1332  1965 I SQLiteConnection: Long db operation: /data/user/0/com.google.android.gms/databases/phenotype.db
+11-22 12:14:23.290  3579  3723 I Bugle   : DatabaseHelperBasic: sqlite version is 3.44.3
+11-22 12:14:23.397  1598  2215 W ModernMediaScanner: android.database.sqlite.SQLiteConstraintException: UNIQUE constraint failed: files._data (code 2067 SQLITE_CONSTRAINT_UNIQUE)
+11-22 12:14:23.397  1598  2215 W ModernMediaScanner: 	at android.database.sqlite.SQLiteConnection.nativeExecuteForLastInsertedRowId(Native Method)
+11-22 12:14:23.397  1598  2215 W ModernMediaScanner: 	at android.database.sqlite.SQLiteConnection.executeForLastInsertedRowId(SQLiteConnection.java:985)
+11-22 12:14:23.397  1598  2215 W ModernMediaScanner: 	at android.database.sqlite.SQLiteSession.executeForLastInsertedRowId(SQLiteSession.java:825)
+11-22 12:14:23.397  1598  2215 W ModernMediaScanner: 	at android.database.sqlite.SQLiteStatement.executeInsert(SQLiteStatement.java:89)
+11-22 12:14:23.397  1598  2215 W ModernMediaScanner: 	at com.android.providers.media.util.SQLiteQueryBuilder.insert(SQLiteQueryBuilder.java:641)
+11-22 12:14:23.397  1598  2215 W ModernMediaScanner: 	at com.android.providers.media.util.SQLiteQueryBuilder.lambda$insert$1(SQLiteQueryBuilder.java:605)
+11-22 12:14:23.397  1598  2215 W ModernMediaScanner: 	at com.android.providers.media.util.SQLiteQueryBuilder.$r8$lambda$1_sr46pjM8wwFdSQpMjCTR4_wfk(SQLiteQueryBuilder.java:0)
+11-22 12:14:23.397  1598  2215 W ModernMediaScanner: 	at com.android.providers.media.util.SQLiteQueryBuilder$$ExternalSyntheticLambda4.apply(R8$$SyntheticClass:0)
+11-22 12:14:23.397  1598  2215 W ModernMediaScanner: 	at com.android.providers.media.util.SQLiteQueryBuilder.insert(SQLiteQueryBuilder.java:604)
+11-22 12:14:23.676  1478  1707 I Blockstore: [DataStoreImpl] Clearing Blockstore Data for package com.orbit.app [CONTEXT service_id=258 ]
+11-22 12:14:24.597  3460  3497 W SQLiteLog: (28) double-quoted string literal: "com.android.cellbroadcastreceiver"
+11-22 12:14:24.599  3460  3497 W SQLiteLog: (28) double-quoted string literal: "com.android.healthconnect.controller"
+11-22 12:14:24.599  3460  3497 W SQLiteLog: (28) double-quoted string literal: "com.android.permissioncontroller"
+11-22 12:14:24.599  3460  3497 W SQLiteLog: (28) double-quoted string literal: "com.android.permissioncontroller.role"
+11-22 12:14:24.600  3460  3497 W SQLiteLog: (28) double-quoted string literal: "com.android.permissioncontroller.safetycenter"
+11-22 12:14:24.600  3460  3497 W SQLiteLog: (28) double-quoted string literal: "com.android.settings"
+11-22 12:14:24.600  3460  3497 W SQLiteLog: (28) double-quoted string literal: "com.android.traceur"
+11-22 12:14:24.600  3460  3497 W SQLiteLog: (28) double-quoted string literal: "com.google.android.accessibility.switchaccess.systemsettings.search.SwitchAccessSearchIndexablesProvider"
+11-22 12:14:24.600  3460  3497 W SQLiteLog: (28) double-quoted string literal: "com.google.android.apps.gsa.opa.AssistantSettingsProvider"
+11-22 12:14:24.600  3460  3497 W SQLiteLog: (28) double-quoted string literal: "com.google.android.apps.messaging.settings.search"
+11-22 12:14:24.600  3460  3497 W SQLiteLog: (28) double-quoted string literal: "com.google.android.apps.nexuslauncher"
+11-22 12:14:24.600  3460  3497 W SQLiteLog: (28) double-quoted string literal: "com.google.android.apps.safetyhub.platformsettings.searchindexablesprovider"
+11-22 12:14:24.600  3460  3497 W SQLiteLog: (28) double-quoted string literal: "com.google.android.apps.search.assistant.surfaces.settings.search"
+11-22 12:14:24.600  3460  3497 W SQLiteLog: (28) double-quoted string literal: "com.google.android.apps.wellbeing"
+11-22 12:14:24.600  3460  3497 W SQLiteLog: (28) double-quoted string literal: "com.google.android.gms"
+11-22 12:14:24.600  3460  3497 W SQLiteLog: (28) double-quoted string literal: "com.google.android.gms.accountsettings.content"
+11-22 12:14:24.600  3460  3497 W SQLiteLog: (28) double-quoted string literal: "com.google.android.googlequicksearchbox.settings.search"
+11-22 12:14:24.600  3460  3497 W SQLiteLog: (28) double-quoted string literal: "com.google.android.inputmethod.latin"
+11-22 12:14:24.600  3460  3497 W SQLiteLog: (28) double-quoted string literal: "com.google.android.marvin.talkback.preference.search.TalkBackSearchIndexablesProvider"
+11-22 12:14:24.600  3460  3497 W SQLiteLog: (28) double-quoted string literal: "com.google.android.settings.intelligence.modules.battery.impl.chargingoptimization.searchprovider"
+11-22 12:14:24.600  3460  3497 W SQLiteLog: (28) double-quoted string literal: "com.google.android.settings.intelligence.provider.search"
+11-22 12:14:24.600  3460  3497 W SQLiteLog: (28) double-quoted string literal: "com.google.android.settings.intelligence.routines.impl"
+11-22 12:14:25.209  2711  2718 W com.orbit.app: Cleared Reference was only reachable from finalizer (only reported once)
+11-22 12:14:26.044  1271  1271 D AlphabeticalAppsList: addAppsWithSections: adding sectionName: O with appInfoTitle: Orbit
+11-22 12:14:26.044  1271  1271 D AlphabeticalAppsList: addAppsWithSections: adding sectionName: O with appInfoTitle: Orbit
+11-22 12:14:26.081  1271  1303 D PackageUpdatedTask: Package updated: mOp=UPDATE packages=[com.orbit.app], user=UserHandle{0}
+11-22 12:14:26.155  1271  1303 D AlphabeticIndexCompat: computeSectionName: cs: Orbit sectionName: O
+11-22 12:14:26.155  1271  1271 D AlphabeticalAppsList: addAppsWithSections: adding sectionName: O with appInfoTitle: Orbit
+11-22 12:14:26.156  1271  1271 D AlphabeticalAppsList: addAppsWithSections: adding sectionName: O with appInfoTitle: Orbit
+11-22 12:14:26.343  1271  1271 D AlphabeticalAppsList: addAppsWithSections: adding sectionName: O with appInfoTitle: Orbit
+11-22 12:14:26.343  1271  1271 D AlphabeticalAppsList: addAppsWithSections: adding sectionName: O with appInfoTitle: Orbit
+11-22 12:14:26.525  1271  1271 D AlphabeticalAppsList: addAppsWithSections: adding sectionName: O with appInfoTitle: Orbit
+11-22 12:14:26.526  1271  1271 D AlphabeticalAppsList: addAppsWithSections: adding sectionName: O with appInfoTitle: Orbit
+11-22 12:14:26.659  1271  1271 D AlphabeticalAppsList: addAppsWithSections: adding sectionName: O with appInfoTitle: Orbit
+11-22 12:14:26.659  1271  1271 D AlphabeticalAppsList: addAppsWithSections: adding sectionName: O with appInfoTitle: Orbit
+11-22 12:14:28.680  1598  2215 W ModernMediaScanner: android.database.sqlite.SQLiteConstraintException: UNIQUE constraint failed: files._data (code 2067 SQLITE_CONSTRAINT_UNIQUE)
+11-22 12:14:28.680  1598  2215 W ModernMediaScanner: 	at android.database.sqlite.SQLiteConnection.nativeExecuteForLastInsertedRowId(Native Method)
+11-22 12:14:28.680  1598  2215 W ModernMediaScanner: 	at android.database.sqlite.SQLiteConnection.executeForLastInsertedRowId(SQLiteConnection.java:985)
+11-22 12:14:28.680  1598  2215 W ModernMediaScanner: 	at android.database.sqlite.SQLiteSession.executeForLastInsertedRowId(SQLiteSession.java:825)
+11-22 12:14:28.680  1598  2215 W ModernMediaScanner: 	at android.database.sqlite.SQLiteStatement.executeInsert(SQLiteStatement.java:89)
+11-22 12:14:28.680  1598  2215 W ModernMediaScanner: 	at com.android.providers.media.util.SQLiteQueryBuilder.insert(SQLiteQueryBuilder.java:641)
+11-22 12:14:28.680  1598  2215 W ModernMediaScanner: 	at com.android.providers.media.util.SQLiteQueryBuilder.lambda$insert$1(SQLiteQueryBuilder.java:605)
+11-22 12:14:28.680  1598  2215 W ModernMediaScanner: 	at com.android.providers.media.util.SQLiteQueryBuilder.$r8$lambda$1_sr46pjM8wwFdSQpMjCTR4_wfk(SQLiteQueryBuilder.java:0)
+11-22 12:14:28.680  1598  2215 W ModernMediaScanner: 	at com.android.providers.media.util.SQLiteQueryBuilder$$ExternalSyntheticLambda4.apply(R8$$SyntheticClass:0)
+11-22 12:14:28.680  1598  2215 W ModernMediaScanner: 	at com.android.providers.media.util.SQLiteQueryBuilder.insert(SQLiteQueryBuilder.java:604)
+=== tail ===
+11-22 12:14:28.952  1271  1303 D AlphabeticIndexCompat: computeSectionName: cs: Drive sectionName: D
+11-22 12:14:28.952  1271  1303 D AlphabeticIndexCompat: computeSectionName: cs: Clock sectionName: C
+11-22 12:14:28.952  1271  1303 D AlphabeticIndexCompat: computeSectionName: cs: Contacts sectionName: C
+11-22 12:14:28.952  1271  1303 D AlphabeticIndexCompat: computeSectionName: cs: Calendar sectionName: C
+11-22 12:14:28.953  1271  1303 D AlphabeticIndexCompat: computeSectionName: cs: Maps sectionName: M
+11-22 12:14:28.953  1271  1303 D AlphabeticIndexCompat: computeSectionName: cs: YouTube Music sectionName: Y
+11-22 12:14:28.953  1271  1303 D AlphabeticIndexCompat: computeSectionName: cs: YouTube sectionName: Y
+11-22 12:14:28.953  1271  1303 D AlphabeticIndexCompat: computeSectionName: cs: Google sectionName: G
+11-22 12:14:28.953  1271  1303 D AlphabeticIndexCompat: computeSectionName: cs: Digital Wellbeing sectionName: D
+11-22 12:14:28.953  1271  1303 D AlphabeticIndexCompat: computeSectionName: cs: Conversations sectionName: C
+11-22 12:14:28.954  1332  3319 I PhenotypeResourceReader: unable to find any Phenotype resource metadata for com.android.systemui
+11-22 12:14:28.956  1478  2955 W Conscrypt: Could not set socket write timeout: java.net.SocketException: Socket closed
+11-22 12:14:28.956  1478  2955 W Conscrypt: 	at com.google.android.gms.org.conscrypt.Platform.setSocketWriteTimeout(:com.google.android.gms@252635038@25.26.35 (260800-783060121):204)
+11-22 12:14:28.956  1478  2955 W Conscrypt: 	at com.google.android.gms.org.conscrypt.ConscryptFileDescriptorSocket.setSoWriteTimeout(:com.google.android.gms@252635038@25.26.35 (260800-783060121):4)
+11-22 12:14:28.959  1271  1303 D PackageUpdatedTask: Package updated: mOp=UPDATE packages=[com.google.android.healthconnect.controller], user=UserHandle{0}
+11-22 12:14:28.961  1332  3319 I .gms.persistent: AssetManager2(0x7083230ada18) locale list changing from [] to [en-US]
+11-22 12:14:28.962  1271  1303 W AllAppsList: updatePackage: no Activities matched updated package, removing any AppInfo with package=com.google.android.healthconnect.controller, user=UserHandle{0}
+11-22 12:14:28.963  1271  1303 D PackageUpdatedTask: Package updated: mOp=UPDATE packages=[com.google.android.nfc], user=UserHandle{0}
+11-22 12:14:28.964  1271  1303 W AllAppsList: updatePackage: no Activities matched updated package, removing any AppInfo with package=com.google.android.nfc, user=UserHandle{0}
+11-22 12:14:28.964  1271  1303 D PackageUpdatedTask: OP_UPDATE: package com.google.android.nfc is disabled, removing package.
+11-22 12:14:28.964  1271  1303 D ModelWriter: removing items from db . Reason: [removed because the corresponding package or component is removed. mOp=2 removedPackages=[com.google.android.nfc] removedComponents=[]]
+11-22 12:14:28.964  1478  2481 I GmsDebugLogger: [73] 1801
+11-22 12:14:28.965  1271  1303 D PackageUpdatedTask: Package updated: mOp=UPDATE packages=[com.google.android.settings.intelligence], user=UserHandle{0}
+11-22 12:14:28.966  1271  1303 W AllAppsList: updatePackage: no Activities matched updated package, removing any AppInfo with package=com.google.android.settings.intelligence, user=UserHandle{0}
+11-22 12:14:28.967  1478  2481 W ZappDownloader: No successful Zapp module downloads for requested modules [MlkitBarcodeUi.optional:252635100800:permitMetered, VisionBarcode.optional:252635100800:permitMetered, TfliteDynamiteDynamite.integ:264010405100800:permitMetered].
+11-22 12:14:28.967  1478  2481 I GmsDebugLogger: [30] [MlkitBarcodeUi.optional:252635100800],[VisionBarcode.optional:252635100800],[TfliteDynamiteDynamite.integ:264010405100800]
+11-22 12:14:28.967  1271  1303 D PackageUpdatedTask: Package updated: mOp=UPDATE packages=[com.google.android.settings.intelligence], user=UserHandle{0}
+11-22 12:14:28.968  1271  1303 W AllAppsList: updatePackage: no Activities matched updated package, removing any AppInfo with package=com.google.android.settings.intelligence, user=UserHandle{0}
+11-22 12:14:28.969   622   659 I AppWidgetServiceImpl: getInstalledProvidersForProfiles() 0
+11-22 12:14:28.971  1478  2481 W ChimeraConfigService: Retry attempt was throttled. [CONTEXT service_id=264 ]
+11-22 12:14:28.971  1478  2481 I GmsDebugLogger: [83] 1 [mlkit.barcode.ui]
+11-22 12:14:28.972  1478  3564 W Pay     : Active account was null, notification task will be cancelled. [CONTEXT service_id=198 ]
+11-22 12:14:28.972  1478  3564 I Pay     : PendingSeProvisioningTaskOperation: Active account not found! [CONTEXT service_id=198 ]
+11-22 12:14:28.972   622  1732 W ParceledListSlice: Element #26 is 19556 bytes.
+11-22 12:14:28.972   622  1732 W ParceledListSlice: Element #27 is 19592 bytes.
+11-22 12:14:28.976   622   743 W ParceledListSlice: Element #28 is 19432 bytes.
+11-22 12:14:28.976   622   743 W ParceledListSlice: Element #29 is 19520 bytes.
+11-22 12:14:28.976   622   743 W ParceledListSlice: Element #30 is 19456 bytes.
+11-22 12:14:28.977  1478  3037 I ChangeFmdSettings: FMD on [CONTEXT service_id=284 ]
+11-22 12:14:28.978  1271  1303 I s.nexuslauncher: AssetManager2(0x7083230b4a98) locale list changing from [] to [en-US]
+11-22 12:14:28.984  1332  1332 D WearableService: Creating wearable service asynchronously.
+11-22 12:14:28.986  1478  3564 W Pay     : Active account was null, notification task will be cancelled. [CONTEXT service_id=198 ]
+11-22 12:14:28.987  1271  1303 W HWUI    : Image decoding logging dropped!
+11-22 12:14:28.993  1332  1625 I Wear_Controller: Wearable module requires a companion app to be installed.
+11-22 12:14:28.993  1332  1625 I WearableService: onCreate: Wearable Services not starting. Wear is not available on this device.
+11-22 12:14:28.997  1271  1303 W HWUI    : Image decoding logging dropped!
+11-22 12:14:28.997  1478  3564 W Pay     : Active account was null, notification task will be cancelled. [CONTEXT service_id=198 ]
+11-22 12:14:28.998  1478  3564 W Pay     : DownloadSePrepaidCardOnWearOperation: Active account not found! [CONTEXT service_id=198 ]
+11-22 12:14:29.000  1478  3564 W Pay     : Active account was null, notification task will be cancelled. [CONTEXT service_id=198 ]
+11-22 12:14:29.000  1478  3564 W Pay     : [eMoney card recovery task] exiting without init: active tapandpay account not found! [CONTEXT service_id=198 ]
+11-22 12:14:29.002  1271  1303 W HWUI    : Image decoding logging dropped!
+11-22 12:14:29.003  1332  2460 W WearableService: onGetService: Wear is not available on this device.
+11-22 12:14:29.007  1332  2437 I NetworkScheduler.Stats: Task com.google.android.gms/com.google.android.gms.tapandpay.gcmtask.TapAndPayGcmTaskService started execution. cause:5 exec_start_elapsed_seconds: 82 [CONTEXT service_id=218 ]
+11-22 12:14:29.007  1271  1303 W HWUI    : Image decoding logging dropped!
+11-22 12:14:29.008  1332  2437 I NetworkScheduler.Stats: Task com.google.android.gms/com.google.android.gms.tapandpay.gcmtask.TapAndPayGcmTaskService finished executing. cause:5 result: 1 elapsed_millis: 158 uptime_millis: 158 exec_start_elapsed_seconds: 82 [CONTEXT service_id=218 ]
+11-22 12:14:29.009  2699  2811 I EGL_emulation: Opening libGLESv1_CM_emulation.so
+11-22 12:14:29.010  2699  2811 I EGL_emulation: Opening libGLESv2_emulation.so
+11-22 12:14:29.012  1478  3564 W Pay     : Active account was null, notification task will be cancelled. [CONTEXT service_id=198 ]
+11-22 12:14:29.012  1478  3564 W Pay     : [eMoney txn sync] exiting without init: active tapandpay account not found! [CONTEXT service_id=198 ]
+11-22 12:14:29.012  1478  3564 I BackfillPlatformInstrum: multi device transactions not enabled, backfill task will not be scheduled [CONTEXT service_id=198 ]
+11-22 12:14:29.012  1478  3564 I Pay     : Requested immediate check to see whether to show pay module downloading complete notification. [CONTEXT service_id=198 ]
+11-22 12:14:29.012  1271  1303 I s.nexuslauncher: AssetManager2(0x7083230b34b8) locale list changing from [] to [en-US]
+11-22 12:14:29.013  1478  3564 I Pay     : Requested check of feature migrations. [CONTEXT service_id=198 ]
+11-22 12:14:29.018   622   659 D PackageManager: Instant App installer not found with android.intent.action.INSTALL_INSTANT_APP_PACKAGE
+11-22 12:14:29.018   622   659 D PackageManager: Clear ephemeral installer activity
+11-22 12:14:29.020  1271  1303 W HWUI    : Image decoding logging dropped!
+11-22 12:14:29.023   622   659 D PackageManager: Instant App installer not found with android.intent.action.INSTALL_INSTANT_APP_PACKAGE
+11-22 12:14:29.023   622   659 D PackageManager: Clear ephemeral installer activity
+11-22 12:14:29.025  1271  1303 W HWUI    : Image decoding logging dropped!
+11-22 12:14:29.028   622   743 D PackageManager: Instant App installer not found with android.intent.action.INSTALL_INSTANT_APP_PACKAGE
+11-22 12:14:29.028   622   743 D PackageManager: Clear ephemeral installer activity
+11-22 12:14:29.029  1271  1303 W HWUI    : Image decoding logging dropped!
+11-22 12:14:29.031  1271  1303 W HWUI    : Image decoding logging dropped!
+11-22 12:14:29.036  1478  3564 I TelephonySpamInit: On boot completed TelephonySpam module initialized [CONTEXT service_id=150 ]
+11-22 12:14:29.036  1478  3564 I TelephonySpamInit: onModuleUpdated TelephonySpam module initialized [CONTEXT service_id=150 ]
+11-22 12:14:29.036  1478  3564 I SpamListSync: scheduleSyncTasks [CONTEXT service_id=150 ]
+11-22 12:14:29.036  1478  3564 I SpamListSync: schedulePeriodicTask [CONTEXT service_id=150 ]
+11-22 12:14:29.036  1478  3564 I SpamListSync: scheduleOneTimeTask [CONTEXT service_id=150 ]
+11-22 12:14:29.036  1478  3564 I GmsThreadNetwork: [ThreadNetworkModuleInitIntentOperation] Initializing runtime states: 2 [CONTEXT service_id=305 ]
+11-22 12:14:29.036  1478  3564 I GmsThreadNetwork: [ThreadNetworkModuleInitIntentOperation] Enable component com.google.android.gms.threadnetwork.credentials.ui.ShareCredentialsActivity [CONTEXT service_id=305 ]
+11-22 12:14:29.037  1478  3564 I GmsThreadNetwork: [BorderRouterSynchronizer] Scheduled periodic Border Router sync task: PeriodicBrSync [CONTEXT service_id=305 ]
+11-22 12:14:29.037  1478  3564 W GmsThreadNetwork: [ThreadNetworkModuleInitIntentOperation] Skip joining preferred or random network: flag disabled [CONTEXT service_id=305 ]
+11-22 12:14:29.043  1271  1303 W HWUI    : Image decoding logging dropped!
+11-22 12:14:29.045  1478  3564 I Thunderbird: Refreshing ThunderbirdSettings state: true [CONTEXT service_id=226 ]
+11-22 12:14:29.046  1271  1303 W HWUI    : Image decoding logging dropped!
+11-22 12:14:29.046  1478  3564 I ActiveUnlock_FeatureEna: enableSetupEnhancements: true isAllowlisted: false hash: 7984DE9EEFC53253D0A8B7E4F972A04B1ED2E77C1F8AFD2BF2B94E6EB2D160CA
+11-22 12:14:29.047  1332  3319 I .gms.persistent: AssetManager2(0x7083230aeff8) locale list changing from [] to [en-US]
+11-22 12:14:29.050  1570  3039 I AiAiEcho: Settings changed for uri: content://settings/secure/active_unlock_provider
+11-22 12:14:29.051  1570  1931 I AiAiEcho: Settings changed for uri: content://settings/secure/active_unlock_target
+11-22 12:14:29.051  1478  3564 W ChimeraUtils: Module com.google.android.gms.activeunlock_primary missing resource null(0)
+11-22 12:14:29.051  1570  1710 I AiAiEcho: Predicting[0]:  [CONTEXT sampling_count=5 ]
+11-22 12:14:29.052  1478  3564 I ActiveUnlock_FeatureEna: enableSetupEnhancements: true isAllowlisted: false hash: 7984DE9EEFC53253D0A8B7E4F972A04B1ED2E77C1F8AFD2BF2B94E6EB2D160CA
+11-22 12:14:29.053  1271  1303 I s.nexuslauncher: AssetManager2(0x7083230aab38) locale list changing from [] to [en-US]
+11-22 12:14:29.053  1570  1710 I AiAiEcho: EchoTargets: 
+11-22 12:14:29.053  1570  1710 I AiAiEcho: Filtered by AiAi flag check: 
+11-22 12:14:29.053  1570  1710 I AiAiEcho: [CONTEXT ratelimit_period="10 SECONDS" ]
+11-22 12:14:29.053  1570  1710 I AiAiEcho: #remoteViewsTwiddler: feature disabled.
+11-22 12:14:29.054  1570  1710 I AiAiEcho: Predicting[0]:  [CONTEXT sampling_count=5 ]
+11-22 12:14:29.054  1570  1710 I AiAiEcho: EchoTargets: 
+11-22 12:14:29.054  1570  1710 I AiAiEcho: Filtered by AiAi flag check: 
+11-22 12:14:29.054  1570  1710 I AiAiEcho: [CONTEXT ratelimit_period="10 SECONDS" ]
+11-22 12:14:29.054  1570  1710 I AiAiEcho: #remoteViewsTwiddler: feature disabled.
+11-22 12:14:29.054  1570  1710 I AiAiEcho: Predicting[0]:  [CONTEXT sampling_count=5 ]
+11-22 12:14:29.054  1570  1710 I AiAiEcho: EchoTargets: 
+11-22 12:14:29.054  1570  1710 I AiAiEcho: Filtered by AiAi flag check: 
+11-22 12:14:29.054  1570  1710 I AiAiEcho: [CONTEXT ratelimit_period="10 SECONDS" ]
+11-22 12:14:29.054  1570  1710 I AiAiEcho: #remoteViewsTwiddler: feature disabled.
+11-22 12:14:29.055  1570  1710 I AiAiEcho: Predicting[0]:  [CONTEXT sampling_count=5 ]
+11-22 12:14:29.058  1570  1710 I AiAiEcho: EchoTargets: 
+11-22 12:14:29.058  1570  1710 I AiAiEcho: Filtered by AiAi flag check: 
+11-22 12:14:29.058  1570  1710 I AiAiEcho: [CONTEXT ratelimit_period="10 SECONDS" ]
+11-22 12:14:29.058  1570  1710 I AiAiEcho: #remoteViewsTwiddler: feature disabled.
+11-22 12:14:29.058  1570  1710 I AiAiEcho: #postPredictionTargets: Sending updates to UISurface home with targets# 0 (types=[])
+11-22 12:14:29.058  1570  1710 I AiAiEcho: #postPredictionTargets: Sending updates to UISurface lockscreen with targets# 0 (types=[])
+11-22 12:14:29.058  1570  1710 I AiAiEcho: #postPredictionTargets: Sending updates to UISurface home with targets# 0 (types=[])
+11-22 12:14:29.058  1570  1710 I AiAiEcho: #postPredictionTargets: Sending updates to UISurface lockscreen with targets# 0 (types=[])
+11-22 12:14:29.059  1271  1303 W HWUI    : Image decoding logging dropped!
+11-22 12:14:29.060  1001  1001 W PageIndicator: Total number of pages invalid: 0. Assuming 1 page.
+11-22 12:14:29.061  1001  1001 W PageIndicator: Total number of pages invalid: 0. Assuming 1 page.
+11-22 12:14:29.061  1478  3564 I Trustlet_Onbody: onbodyAlreadySet: false [CONTEXT service_id=294 ]
+11-22 12:14:29.062  1478  3564 I Trustlet_Onbody: isOnbodySuggestionEnabledByPhenotype: false [CONTEXT service_id=294 ]
+11-22 12:14:29.062  1478  3564 I Trustlet_Onbody: isTrustAgentEnabled: ggeg@9b2c5e4[status=SUCCESS, result=[true]] [CONTEXT service_id=294 ]
+11-22 12:14:29.062  1478  3564 I Trustlet_Onbody: Trustlet onbody is supported. [CONTEXT service_id=294 ]
+11-22 12:14:29.062  1478  3564 I Trustlet_Onbody: isSupported: true [CONTEXT service_id=294 ]
+11-22 12:14:29.062  1478  3564 I Trustlet_Onbody: isChromeOsDevice: false [CONTEXT service_id=294 ]
+11-22 12:14:29.069  1271  1303 W HWUI    : Image decoding logging dropped!
+11-22 12:14:29.080  1271  1303 I s.nexuslauncher: AssetManager2(0x7083230b8f58) locale list changing from [] to [en-US]
+11-22 12:14:29.083  1478  3564 I ChimeraConfigurator: Starting update, reason: 4 urgentFeatures: vision.ocr:-1
+11-22 12:14:29.084  1332  3816 I UsageReportingOptionsSt: User 0 is opted-in? false [CONTEXT service_id=41 ]
+11-22 12:14:29.086  1332  3816 I UsageReportingOptionsSt: Updating global setting to unknown [CONTEXT service_id=41 ]
+11-22 12:14:29.093  1478  4008 I Wear_Controller: Wearable module requires a companion app to be installed.
+11-22 12:14:29.093  1478  4008 I Wear_Controller: onStartup - Wear is not available on this device.
+11-22 12:14:29.110  1271  1303 I s.nexuslauncher: AssetManager2(0x7083230c18d8) locale list changing from [] to [en-US]
+11-22 12:14:29.115  1478  3564 I ChimeraConfigurator: Detected pending changes for urgent request: [vision.ocr]. Pending module sets: container:2526359260800+mlkit.ocr.common+vision.ocr,tflite_dynamite:2640104055100800+tflite_dynamite
+11-22 12:14:29.126  1332  3319 I .gms.persistent: AssetManager2(0x7083230aff98) locale list changing from [] to [en-US]
+11-22 12:14:29.132  1271  1303 W HWUI    : Image decoding logging dropped!
+11-22 12:14:29.135  1478  3564 I GmsDebugLogger: [73] 1801
+11-22 12:14:29.137  1271  1303 W HWUI    : Image decoding logging dropped!
+11-22 12:14:29.137  1332  2437 W NetworkScheduler: Immediate task was not started com.google.android.gms/.pay.gcmtask.PayGcmTaskService{u=0 tag="accountfreshener.oneoff" trigger=window{start=0s,end=1s,earliest=0s,latest=0s} requirements=[NET_ANY,PREFERRED_CHARGING] attributes=[] scheduled=0s last_run=N/A exec_window_multiplier=1.0000 jid=N/A status=PENDING retries=0 client_lib=GMS_TASK_SCHEDULER-252635000}. Rescheduling immediate tasks can cause excessive battery drain.
+11-22 12:14:29.140  1478  3981 I Checkin : [CheckinOperation] Starting Checkin: Default Task Reason : 1 Force : false UserId : 0 Start time : 83604
+11-22 12:14:29.141  1478  3981 I CheckinUtil: Classify the device as Phone. [CONTEXT service_id=130 ]
+11-22 12:14:29.143  1478  3564 W ZappDownloader: No successful Zapp module downloads for requested modules [MlkitOcrCommon.optional:252635100800:permitMetered, VisionOcr.optional:252635100000:permitMetered, TfliteDynamiteDynamite.integ:264010405100800:permitMetered].
+11-22 12:14:29.143  1478  3564 I GmsDebugLogger: [30] [MlkitOcrCommon.optional:252635100800],[VisionOcr.optional:252635100000],[TfliteDynamiteDynamite.integ:264010405100800]
+11-22 12:14:29.150  1478  3564 W ChimeraConfigService: Retry attempt was throttled. [CONTEXT service_id=264 ]
+11-22 12:14:29.150  1478  3564 I GmsDebugLogger: [83] 1 [vision.ocr]
+11-22 12:14:29.154  1478  2481 W Vision  : Request for optional module download of ocr failed. Request again.
+11-22 12:14:29.155  1478  2481 W Vision  : Would have logged:
+11-22 12:14:29.155  1478  2481 W Vision  : # gptm@44f943d5
+11-22 12:14:29.155  1478  2481 I Vision  : Schedule retrying download ocr at 83619 with backoff 10 seconds
+11-22 12:14:29.163   622   743 D PackageManager: Instant App installer not found with android.intent.action.INSTALL_INSTANT_APP_PACKAGE
+11-22 12:14:29.163   622   743 D PackageManager: Clear ephemeral installer activity
+11-22 12:14:29.176   622  1705 V SafetySourceDataValidat: Package: com.google.android.gms has expected signature
+11-22 12:14:29.176   622  1705 V SafetySourceDataValidat: Package: com.google.android.gms has expected signature
+11-22 12:14:29.176   622  1705 V SafetySourceDataValidat: Package: com.google.android.gms has expected signature
+11-22 12:14:29.176  1271  1303 W HWUI    : Image decoding logging dropped!
+11-22 12:14:29.185  1478  3981 I Checkin : [AndroidCheckinProtoModule] Checkin reason type: 1 attempt count: 1.
+11-22 12:14:29.187  1271  1303 W HWUI    : Image decoding logging dropped!
+11-22 12:14:29.190  1271  1303 I s.nexuslauncher: AssetManager2(0x70832308d998) locale list changing from [] to [en-US]
+11-22 12:14:29.191  1271  1303 W HWUI    : Image decoding logging dropped!
+11-22 12:14:29.194   622   918 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET, states=14
+11-22 12:14:29.194  1271  1303 W HWUI    : Image decoding logging dropped!
+11-22 12:14:29.195   622   743 I WifiService: isScanAlwaysAvailable uid=10146
+11-22 12:14:29.195   622   918 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET6, states=14
+11-22 12:14:29.195   622   918 D InetDiagMessage: Destroyed live tcp sockets for uids={10109} in 2ms
+11-22 12:14:29.196  1271  1303 W HWUI    : Image decoding logging dropped!
+11-22 12:14:29.196   622   918 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET, states=14
+11-22 12:14:29.196   622   918 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET6, states=14
+11-22 12:14:29.196   622   918 D InetDiagMessage: Destroyed live tcp sockets for uids={20109} in 1ms
+11-22 12:14:29.199  1271  1303 W HWUI    : Image decoding logging dropped!
+11-22 12:14:29.199  1332  1965 I .gms.persistent: IncrementDisableThreadFlip blocked for 18.865ms
+11-22 12:14:29.201  1271  1303 W HWUI    : Image decoding logging dropped!
+11-22 12:14:29.203  1271  1303 W HWUI    : Image decoding logging dropped!
+11-22 12:14:29.206   622  1705 I WifiService: getWifiEnabledState uid=10146 state=3
+11-22 12:14:29.207  1570  3039 I AiAiEcho: Settings changed for uri: content://settings/secure/mandatory_biometrics_requirements_satisfied
+11-22 12:14:29.209  1332  2385 I GCoreUlr: Unbound from all signal providers.
+11-22 12:14:29.210  1570  1710 I AiAiEcho: Predicting[0]:  [CONTEXT sampling_count=5 ]
+11-22 12:14:29.211  1570  1710 I AiAiEcho: EchoTargets: 
+11-22 12:14:29.211  1570  1710 I AiAiEcho: Filtered by AiAi flag check: 
+11-22 12:14:29.211  1570  1710 I AiAiEcho: [CONTEXT ratelimit_period="10 SECONDS" ]
+11-22 12:14:29.214  1570  1710 I AiAiEcho: #remoteViewsTwiddler: feature disabled.
+11-22 12:14:29.214  1570  1710 I AiAiEcho: Predicting[0]:  [CONTEXT sampling_count=5 ]
+11-22 12:14:29.216  1570  1710 I AiAiEcho: EchoTargets: 
+11-22 12:14:29.216  1570  1710 I AiAiEcho: Filtered by AiAi flag check: 
+11-22 12:14:29.216  1570  1710 I AiAiEcho: [CONTEXT ratelimit_period="10 SECONDS" ]
+11-22 12:14:29.216  1570  1710 I AiAiEcho: #remoteViewsTwiddler: feature disabled.
+11-22 12:14:29.217  1570  1710 I AiAiEcho: #postPredictionTargets: Sending updates to UISurface home with targets# 0 (types=[])
+11-22 12:14:29.217  1570  1710 I AiAiEcho: #postPredictionTargets: Sending updates to UISurface lockscreen with targets# 0 (types=[])
+11-22 12:14:29.218  1271  1303 W HWUI    : Image decoding logging dropped!
+11-22 12:14:29.221  1001  1001 W PageIndicator: Total number of pages invalid: 0. Assuming 1 page.
+11-22 12:14:29.222  1271  1303 W HWUI    : Image decoding logging dropped!
+11-22 12:14:29.225  1332  1332 I GCoreUlr: Unbound from all signal providers.
+11-22 12:14:29.225  1332  1332 I GCoreUlr: Stopping handler for UlrDispSvcFast
+11-22 12:14:29.233  1271  1303 W HWUI    : Image decoding logging dropped!
+11-22 12:14:29.235  1332  2437 W NetworkScheduler: Immediate task was not started com.google.android.gms/.pay.gcmtask.PayGcmTaskService{u=0 tag="hceserviceinitoneoff.sync" trigger=window{start=0s,end=1s,earliest=0s,latest=0s} requirements=[NET_ANY,PREFERRED_CHARGING] attributes=[PERSISTED] scheduled=0s last_run=N/A exec_window_multiplier=1.0000 jid=N/A status=PENDING retries=0 client_lib=GMS_TASK_SCHEDULER-252635000}. Rescheduling immediate tasks can cause excessive battery drain.
+11-22 12:14:29.237  3579  3707 W SharedPreferencesSimSta: SharedPreferencesSimStateStore: No sim subscription info found for subscription id: 1
+11-22 12:14:29.240  3579  3707 W Bugle   : No subscription info to log for Primes crash metrics [CONTEXT sub_id=1 ]
+11-22 12:14:29.245  1271  1303 W HWUI    : Image decoding logging dropped!
+11-22 12:14:29.255   622  1905 D FileUtils: Rounded bytes from 2593075200 to 4000000000
+11-22 12:14:29.258  1332  2437 W NetworkScheduler: Immediate task was not started com.google.android.gms/.pay.gcmtask.PayGcmTaskService{u=0 tag="issuerlocationsoneoff.sync" trigger=window{start=0s,end=1s,earliest=0s,latest=0s} requirements=[NET_UNMETERED,PREFERRED_NET_UNMETERED,PREFERRED_CHARGING] attributes=[] scheduled=0s last_run=N/A exec_window_multiplier=1.0000 jid=N/A status=PENDING retries=0 client_lib=GMS_TASK_SCHEDULER-252635000}. Rescheduling immediate tasks can cause excessive battery drain.
+11-22 12:14:29.258  1271  1303 I s.nexuslauncher: AssetManager2(0x7083230b66b8) locale list changing from [] to [en-US]
+11-22 12:14:29.266  1271  1303 W HWUI    : Image decoding logging dropped!
+11-22 12:14:29.270  1271  1303 W HWUI    : Image decoding logging dropped!
+11-22 12:14:29.272  3579  3896 V ClearcutMetricXmitter: Transmission is done.
+11-22 12:14:29.273  1271  1303 W HWUI    : Image decoding logging dropped!
+11-22 12:14:29.275  1271  1303 W HWUI    : Image decoding logging dropped!
+11-22 12:14:29.279  1332  2437 W NetworkScheduler: Immediate task was not started com.google.android.gms/.pay.gcmtask.PayGcmTaskService{u=0 tag="passnotification.reschedule.oneoff" trigger=window{start=0s,end=1s,earliest=0s,latest=0s} requirements=[NET_ANY,PREFERRED_CHARGING] attributes=[] scheduled=0s last_run=N/A exec_window_multiplier=1.0000 jid=N/A status=PENDING retries=0 client_lib=GMS_TASK_SCHEDULER-252635000}. Rescheduling immediate tasks can cause excessive battery drain.
+11-22 12:14:29.284  1332  2437 I NetworkScheduler.Stats: Task com.google.android.gms/com.google.android.gms.pay.gcmtask.PayGcmTaskService started execution. cause:5 exec_start_elapsed_seconds: 83 [CONTEXT service_id=218 ]
+11-22 12:14:29.417     0     0 I logd    : logdr: UID=2000 GID=2000 PID=4070 n tail=0 logMask=99 pid=0 start=0ns deadline=0ns
+11-22 12:14:29.293  1332  1504 I NearbyConnections: Client 0p:com.google.android.gms.nearby.sharing disconnecting
+11-22 12:14:29.293  1332  1504 I Nearby  : Successfully shutdown executor ClientBridge.alarmExecutor. [CONTEXT service_id=49 ]
+11-22 12:14:29.295  1332  1910 I NearbyConnections: Because they unbound from our service, all state for client 159355844 will now be cleaned up.
+11-22 12:14:29.301  1332  1910 I Nearby  : Successfully shutdown executor AnalyticsRecorder.analyticsExecutor. [CONTEXT service_id=49 ]
+11-22 12:14:29.302  1332  1910 I Nearby  : Successfully shutdown executor AnalyticsRecorder.analyticsExecutor. [CONTEXT service_id=49 ]
+11-22 12:14:29.302  1332  1910 I Nearby  : Successfully shutdown executor AnalyticsRecorder.analyticsExecutor. [CONTEXT service_id=49 ]
+11-22 12:14:29.302  1332  1910 I Nearby  : Successfully shutdown executor EndpointIdManager.roatateEndpointIdAlarmExecutor. [CONTEXT service_id=49 ]
+11-22 12:14:29.302  1332  1910 I Nearby  : Successfully shutdown executor PayloadManager.streamPayloadExecutor. [CONTEXT service_id=49 ]
+11-22 12:14:29.302  1332  1910 I Nearby  : Successfully shutdown executor PayloadManager.filePayloadExecutor. [CONTEXT service_id=49 ]
+11-22 12:14:29.302  1332  1910 I Nearby  : Successfully shutdown executor PayloadManager.bytesPayloadExecutor. [CONTEXT service_id=49 ]
+11-22 12:14:29.302  1332  1910 I Nearby  : Successfully shutdown executor ClientProxy.endpointRotationAlarmExecutor. [CONTEXT service_id=49 ]
+11-22 12:14:29.302  1332  1910 I Nearby  : Successfully shutdown executor ClientProxy.endpointIdRotationExecutor. [CONTEXT service_id=49 ]
+11-22 12:14:29.303  1332  1910 I Nearby  : Successfully shutdown executor AnalyticsRecorder.analyticsExecutor. [CONTEXT service_id=49 ]
+11-22 12:14:29.303  1332  2437 I NetworkScheduler.Stats: Task com.google.android.gms/com.google.android.gms.pay.gcmtask.PayGcmTaskService finished executing. cause:5 result: 1 elapsed_millis: 76 uptime_millis: 76 exec_start_elapsed_seconds: 83 [CONTEXT service_id=218 ]
+11-22 12:14:29.310   622  1905 I RemoteProvisionSysSvc: getRegistration(android.hardware.security.keymint.IRemotelyProvisionedComponent/default)
+11-22 12:14:29.439     0     0 I servicemanager: Caller(pid=238,uid=1017,sid=u:r:keystore:s0) Found android.hardware.security.keymint.IRemotelyProvisionedComponent/default in device VINTF manifest.
+11-22 12:14:29.313   622   964 D BackgroundInstallControlService: Package event received: 0
+11-22 12:14:29.313   622   964 D BackgroundInstallControlService: Package event received: 0
+11-22 12:14:29.316   622   622 I RegistrationProxy: onServiceConnected: com.android.rkpdapp.service.RemoteProvisioningService
+11-22 12:14:29.323   622  1732 I RegistrationProxy: IGetRegistrationCallback.onSuccess
+11-22 12:14:29.457     0     0 I servicemanager: Caller(pid=3045,uid=10212,sid=u:r:rkpdapp:s0:c212,c256,c512,c768) Found android.hardware.security.keymint.IRemotelyProvisionedComponent/default in device VINTF manifest.
+11-22 12:14:29.330   622   743 I RemoteProvisionSysSvc: Fetching key 10146 for client 232637089
+11-22 12:14:29.330   622   743 I RegistrationProxy: getKeyAsync operation started with callback 37690566
+11-22 12:14:29.332  3045  3111 I RkpdRegistrationBinder: Key requested for : android.hardware.security.keymint.IRemotelyProvisionedComponent/default, clientUid: 1017, keyId: 10146, callback: 197457968
+11-22 12:14:29.333  3045  3111 I RkpdRegistrationBinder: Key successfully assigned to client
+11-22 12:14:29.333   622   622 I RemoteProvisionSysSvc: Successfully fetched key for client 232637089
+11-22 12:14:29.475     0     0 I servicemanager: Caller(pid=238,uid=1017,sid=u:r:keystore:s0) Found android.hardware.security.keymint.IRemotelyProvisionedComponent/default in device VINTF manifest.
+11-22 12:14:29.342   240   240 D SoftKeymaster: system/keymaster/km_openssl/certificate_utils.cpp, Line 148: Using TAG_CERTIFICATE_NOT_BEFORE: 0
+11-22 12:14:29.342   240   240 D SoftKeymaster: system/keymaster/km_openssl/certificate_utils.cpp, Line 154: Using TAG_CERTIFICATE_NOT_AFTER: 2461449600000
+11-22 12:14:29.342   240   240 D SoftKeymaster: system/keymaster/km_openssl/certificate_utils.cpp, Line 159: Got certificate date params:  NotBefore = 0, NotAfter = 2461449600000
+11-22 12:14:29.342   240   240 D SoftKeymaster: system/keymaster/km_openssl/certificate_utils.cpp, Line 273: Setting notBefore to 0
+11-22 12:14:29.342   240   240 D SoftKeymaster: system/keymaster/km_openssl/certificate_utils.cpp, Line 282: Setting notAfter to 2461449600
+11-22 12:14:29.348  1271  1303 I s.nexuslauncher: AssetManager2(0x7083230b3e18) locale list changing from [] to [en-US]
+11-22 12:14:29.355  1271  1303 W HWUI    : Image decoding logging dropped!
+11-22 12:14:29.360  1271  1303 W HWUI    : Image decoding logging dropped!
+11-22 12:14:29.370  1478  2472 W ChimeraUtils: Module com.google.android.gms.container missing resource null(0)
+11-22 12:14:29.380   622  1089 D FileUtils: Rounded bytes from 2593075200 to 4000000000
+11-22 12:14:29.382  1271  1303 I s.nexuslauncher: AssetManager2(0x7083230bcab8) locale list changing from [] to [en-US]
+11-22 12:14:29.400  1332  2591 I NetworkScheduler.Stats: Task com.google.android.gms/com.google.android.gms.pay.gcmtask.PayGcmTaskService started execution. cause:5 exec_start_elapsed_seconds: 83 [CONTEXT service_id=218 ]
+11-22 12:14:29.403  1271  1303 W HWUI    : Image decoding logging dropped!
+11-22 12:14:29.408  2323  2753 E ajwr    : Couldn't get logged in Google account.
+11-22 12:14:29.410  1332  2591 I NetworkScheduler.Stats: Task com.google.android.gms/com.google.android.gms.pay.gcmtask.PayGcmTaskService finished executing. cause:5 result: 1 elapsed_millis: 40 uptime_millis: 40 exec_start_elapsed_seconds: 83 [CONTEXT service_id=218 ]

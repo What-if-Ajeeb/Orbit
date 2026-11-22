@@ -119,3 +119,18 @@ Performing Streamed Install
 Success
 version:
 16
+  bash arg: -p
+  bash arg: com.orbit.app
+  bash arg: -c
+  bash arg: android.intent.category.LAUNCHER
+  bash arg: 1
+args: [-p, com.orbit.app, -c, android.intent.category.LAUNCHER, 1]
+ arg: "-p"
+ arg: "com.orbit.app"
+ arg: "-c"
+ arg: "android.intent.category.LAUNCHER"
+ arg: "1"
+data="com.orbit.app"
+data="android.intent.category.LAUNCHER"
+Events injected: 1
+## Network stats: elapsed time=258ms (0ms mobile, 0ms wifi, 258ms not connected)
