@@ -157,7 +157,7 @@ export function AppSidebar() {
   });
 
   function isActive(href: Href): boolean {
-    return href === '/' ? pathname === '/' || pathname === '/index' : pathname === href;
+    return href === '/' ? pathname === '/' || pathname === '/index' : pathname === href || pathname.startsWith(`${href}/`);
   }
 
   function renderNavRow(item: NavItem, compact = false) {

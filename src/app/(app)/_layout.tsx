@@ -1,4 +1,4 @@
-import { Tabs, router, type Href } from 'expo-router';
+import { Stack, router, type Href } from 'expo-router';
 import { useEffect } from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
 import { useSQLiteContext } from 'expo-sqlite';
@@ -73,31 +73,24 @@ export default function AppLayout() {
     <SidebarProvider>
       <View style={styles.root}>
         <NotificationRedirect />
-        <Tabs
+        <Stack
           screenOptions={{
             headerShown: false,
-            // Navigation lives in the drawer (hamburger, top-left), like a chat app.
-            tabBarStyle: { display: 'none' },
-            sceneStyle: {
-              backgroundColor: colors.background,
-            },
+            contentStyle: { backgroundColor: colors.background },
+            animation: 'slide_from_right',
           }}
         >
-          <Tabs.Screen name="index" />
-          <Tabs.Screen name="chat" />
-          <Tabs.Screen name="buddy" />
-          <Tabs.Screen name="tasks" />
-          <Tabs.Screen name="workflows" />
-          <Tabs.Screen name="artifacts" />
-          <Tabs.Screen name="settings" />
-          {/* Detail and advanced screens stay reachable from in-app links; they are not tabs. */}
-          <Tabs.Screen name="artifact" options={{ href: null }} />
-          <Tabs.Screen name="harness" options={{ href: null }} />
-          <Tabs.Screen name="permissions" options={{ href: null }} />
-          <Tabs.Screen name="events" options={{ href: null }} />
-          <Tabs.Screen name="telemetry" options={{ href: null }} />
-          <Tabs.Screen name="policy" options={{ href: null }} />
-        </Tabs>
+          <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="artifact" />
+          <Stack.Screen name="harness" />
+          <Stack.Screen name="permissions" />
+          <Stack.Screen name="events" />
+          <Stack.Screen name="telemetry" />
+          <Stack.Screen name="policy" />
+          <Stack.Screen name="buddy/tree" />
+          <Stack.Screen name="buddy/evolve" />
+          <Stack.Screen name="buddy/collection" />
+        </Stack>
         <AppSidebar />
         <PermissionHost />
       </View>
