@@ -51,7 +51,10 @@ jobs:
       - name: Boot with progress
         timeout-minutes: 15
         run: |
-          emulator -avd orbit-api36 -no-audio -no-window -gpu swiftshader_indirect -no-boot-anim \
+          SDK_DIR="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          export PATH="$SDK_DIR/emulator:$PATH"
+          echo "sdk dir: $SDK_DIR emulator: $(command -v emulator)" >> diag-state.txt
+          "$SDK_DIR/emulator/emulator" -avd orbit-api36 -no-audio -no-window -gpu swiftshader_indirect -no-boot-anim \
             > emulator.log 2>&1 &
           for i in $(seq 1 25); do
             {
