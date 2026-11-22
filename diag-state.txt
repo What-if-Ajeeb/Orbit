@@ -80,3 +80,36 @@ WARNING      | Device 'cache' does not have the requested snapshot 'default_boot
 WARNING      | Failed to load snapshot 'default_boot'
 USER_INFO    | The emulator is performing a cold boot without a saved state because there's no snapshot and you have configured it not to save on exit.
 WARNING      | Failed to process .ini file /home/runner/.android/emu-update-last-check.ini for reading.
+--- boot poll 4 Sun Nov 22 12:13:37 UTC 2026 ---
+devices:
+List of devices attached
+emulator-5554	device
+
+boot_completed:
+
+emulator log tail:
+INFO         |   androidboot.vbmeta.digest=7466b5c28e6a3e1427b22ed2c317c6c7066294bde838d4d5243cce5d37992bd5
+INFO         |   androidboot.vbmeta.hash_alg=sha256
+INFO         |   androidboot.vbmeta.size=6848
+INFO         |   androidboot.veritymode=enforcing
+WARNING: cannnot unmap ptr 0x744b91601000 as it is in the protected range from 0x744af1600000 to 0x744b91800000
+INFO         | Monitoring duration of emulator setup.
+WARNING      | The emulator now requires a signed jwt token for gRPC access! Use the -grpc flag if you really want an open unprotected grpc port
+INFO         | Using security allow list from: /usr/local/lib/android/sdk/emulator/lib/emulator_access.json
+INFO         | The active JSON Web Key Sets can be found here: /run/user/1001/avd/running/2653/jwks/1c03e5d1-2103-47e7-938f-40c8baf56074/active.jwk
+INFO         | Scanning /run/user/1001/avd/running/2653/jwks/1c03e5d1-2103-47e7-938f-40c8baf56074 for jwk keys.
+INFO         | Started GRPC server at 127.0.0.1:8554, security: Local, auth: +token
+INFO         | Advertising in: /run/user/1001/avd/running/pid_2653.ini
+INFO         | Activated packet streamer for bluetooth emulation
+INFO         | Successfully initialized netsim WiFi
+INFO         | Activated packet streamer for uwb emulation
+INFO         | Setting display: 0 configuration to: 1080x2400, dpi: 420x420 
+INFO         | setDisplayActiveConfig: id:0, 1080x2400
+INFO         | emulatorSetupEnvironment: Environment scene is not required
+INFO         | Loading snapshot 'default_boot'...
+WARNING      | Failed to process .ini file /home/runner/.android/emu-update-last-check.ini for reading.
+WARNING      | Device 'cache' does not have the requested snapshot 'default_boot'
+
+WARNING      | Failed to load snapshot 'default_boot'
+USER_INFO    | The emulator is performing a cold boot without a saved state because there's no snapshot and you have configured it not to save on exit.
+WARNING      | Failed to process .ini file /home/runner/.android/emu-update-last-check.ini for reading.
