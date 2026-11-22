@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { BuddyAvatar } from '@/components/buddy/BuddyAvatar';
 import { GlassBackdrop } from '@/components/GlassBackdrop';
 import { GlassView } from '@/components/GlassView';
 import { useSession } from '@/context/auth';
@@ -42,12 +43,12 @@ export default function EvolveScreen() {
     if (!id) return;
     try {
       setLoading(true);
-      const b = await getUserBuddy(db, id);
+      const b = user ? await getUserBuddy(db, user.id, id) : null;
       setBuddy(b);
     } finally {
       setLoading(false);
     }
-  }, [db, id]);
+  }, [db, id, user]);
 
   useEffect(() => {
     void load();
@@ -55,22 +56,36 @@ export default function EvolveScreen() {
 
   async function handleEvolve(targetFormId: string) {
     if (!buddy || evolving) return;
-
-    setEvolving(true);
-    try {
-      const result = await tryEvolve(db, buddy.id, targetFormId);
-      if (result.success) {
-        Alert.alert('Evolution!', result.message, [
-          { text: 'Awesome', onPress: () => router.back() },
-        ]);
-      } else {
-        Alert.alert('Cannot evolve', result.message);
-      }
-    } catch {
-      Alert.alert('Error', 'Something went wrong');
-    } finally {
-      setEvolving(false);
-    }
+    const target = getForm(targetFormId);
+    Alert.alert(
+      'Confirm Evolution',
+      `Evolve ${getForm(buddy.currentFormId)?.name ?? 'buddy'} into ${target?.name ?? 'this form'}? This only happens after your confirmation.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Evolve',
+          onPress: async () => {
+            setEvolving(true);
+            try {
+              const result = await tryEvolve(db, user!.id, buddy.id, targetFormId);
+              if (result.ok && result.evolved) {
+                Alert.alert('Evolution!', `${result.from.name} evolved into ${result.to.name}!`, [
+                  { text: 'Awesome', onPress: () => { void load(); } },
+                ]);
+              } else if (result.ok) {
+                Alert.alert('Cannot evolve', result.reason);
+              } else {
+                Alert.alert('Cannot evolve', result.error);
+              }
+            } catch {
+              Alert.alert('Error', 'Something went wrong');
+            } finally {
+              setEvolving(false);
+            }
+          },
+        },
+      ],
+    );
   }
 
   if (!user) return null;
@@ -103,9 +118,7 @@ export default function EvolveScreen() {
         <GlassView style={styles.currentCard}>
           <Text style={styles.sectionLabel}>CURRENT FORM</Text>
           <View style={styles.formRow}>
-            <View style={styles.avatar}>
-              <Ionicons name="paw" size={32} color={colors.accent} />
-            </View>
+            <BuddyAvatar speciesId={buddy.speciesId} formId={buddy.currentFormId} size={88} interactive={false} />
             <View>
               <Text style={styles.formName}>{currentForm?.name ?? 'Unknown'}</Text>
               <Text style={styles.meta}>
@@ -134,9 +147,7 @@ export default function EvolveScreen() {
             return (
               <GlassView key={fid} style={styles.pathCard}>
                 <View style={styles.pathHeader}>
-                  <View style={styles.avatar}>
-                    <Ionicons name="flash" size={28} color={ready ? colors.accent : colors.textFaint} />
-                  </View>
+                  <BuddyAvatar speciesId={buddy.speciesId} formId={target.id} size={72} interactive={false} state={ready ? 'happy' : 'idle'} />
                   <View style={{ flex: 1 }}>
                     <Text style={styles.formName}>{target.name}</Text>
                     <Text style={styles.meta}>

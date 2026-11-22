@@ -1,7 +1,7 @@
 /**
  * Orbit Buddy System – Type definitions
- * Pokémon-style companion progression with evolution trees,
- * bond, XP, forms (Common / Advanced / Shiny / Mythical).
+ * Data-driven companion system: species, forms, personality, animations,
+ * evolution, activities, and AI integration.
  */
 
 export type BuddyRarity = 'common' | 'advanced' | 'shiny' | 'mythical';
@@ -18,7 +18,36 @@ export type BuddyElement =
   | 'nature'
   | 'psychic'
   | 'ice'
-  | 'metal';
+  | 'metal'
+  | 'air'
+  | 'light';
+
+export type BuddyGroup = 'NT' | 'NF' | 'SJ' | 'SP';
+
+export type BuddyMood = 'calm' | 'happy' | 'curious' | 'sleepy' | 'focused' | 'sad' | 'excited';
+
+export type BuddyAnimationState =
+  | 'idle'
+  | 'blink'
+  | 'happy'
+  | 'sad'
+  | 'angry'
+  | 'curious'
+  | 'thinking'
+  | 'speaking'
+  | 'sleeping'
+  | 'walking'
+  | 'jumping'
+  | 'celebrating'
+  | 'tapped'
+  | 'double-tapped'
+  | 'long-pressed'
+  | 'petting'
+  | 'feeding'
+  | 'playing'
+  | 'working'
+  | 'waiting'
+  | 'concerned';
 
 export interface BuddyStats {
   power: number;
@@ -27,39 +56,57 @@ export interface BuddyStats {
   affinity: number;
 }
 
+export interface PersonalityProfile {
+  intelligence: number;
+  friendliness: number;
+  curiosity: number;
+  playfulness: number;
+  emotionalSensitivity: number;
+  confidence: number;
+  energy: number;
+  humor: number;
+  greeting: string;
+  conversationStyle: string;
+  encouragement: string;
+  comfort: string;
+  teasing: string;
+  favoriteActivities: string[];
+  voiceStyle: string;
+}
+
 export interface EvolutionRequirement {
   level?: number;
   bond?: number; // 0-100
   items?: { itemId: string; quantity: number }[];
   tasksCompleted?: number;
-  special?: string; // e.g. 'full_moon', 'event_id'
+  special?: string;
 }
 
 export interface BuddyForm {
-  id: string; // e.g. 'fox_base', 'fox_aether', 'fox_aether_shiny'
+  id: string;
   speciesId: string;
   name: string;
-  stage: number; // 1 = base, 2, 3, 4...
+  stage: number;
   rarity: BuddyRarity;
   element: BuddyElement;
   description: string;
-  stats: BuddyStats; // base stats at this form
+  stats: BuddyStats;
   requirements?: EvolutionRequirement;
-  evolvesFrom?: string; // form id
-  evolvesTo?: string[]; // possible next form ids (for branching)
-  imageKey: string; // for asset lookup / placeholder
+  evolvesFrom?: string;
+  evolvesTo?: string[];
+  imageKey: string;
   isDefault?: boolean;
 }
 
 export interface BuddySpecies {
-  id: string; // 'fox', 'raven', 'owl'...
+  id: string;
   name: string;
-  mbti: string; // e.g. 'ENTP'
+  mbti: string;
+  group: BuddyGroup;
   element: BuddyElement;
   description: string;
-  baseFormId: string;
+  personality: PersonalityProfile;
   forms: BuddyForm[];
-  maxStage: number;
 }
 
 export interface UserBuddy {
@@ -72,6 +119,7 @@ export interface UserBuddy {
   xp: number;
   bond: number; // 0-100
   isActive: boolean;
+  mood: BuddyMood;
   unlockedForms: string[];
   createdAt: number;
   updatedAt: number;
@@ -79,30 +127,35 @@ export interface UserBuddy {
 }
 
 export interface BuddyInventoryItem {
+  id: number;
+  userId: number;
   itemId: string;
   quantity: number;
 }
 
-export interface EvolutionResult {
-  success: boolean;
-  fromFormId: string;
-  toFormId: string;
-  message: string;
-  newLevel?: number;
-  newBond?: number;
+export interface BuddyActivityLog {
+  id: number;
+  userId: number;
+  userBuddyId: string;
+  activity: string;
+  xpGained: number;
+  bondGained: number;
+  createdAt: number;
 }
 
-/** XP required to go from level N to N+1 */
+export type EvolutionResult =
+  | { ok: true; evolved: true; from: BuddyForm; to: BuddyForm; buddy: UserBuddy }
+  | { ok: true; evolved: false; reason: string }
+  | { ok: false; error: string };
+
 export function xpForLevel(level: number): number {
-  // Soft curve: 100 * level^1.45 roughly
-  return Math.floor(80 + level * 45 + Math.pow(level, 1.4) * 12);
+  return Math.floor(100 * Math.pow(level, 1.5));
 }
 
-/** Total XP needed to reach a given level */
-export function totalXpForLevel(level: number): number {
-  let total = 0;
-  for (let i = 1; i < level; i++) {
-    total += xpForLevel(i);
-  }
-  return total;
+export function xpProgress(xp: number, level: number): { current: number; needed: number; pct: number } {
+  const prev = level <= 1 ? 0 : xpForLevel(level - 1);
+  const next = xpForLevel(level);
+  const current = Math.max(0, xp - prev);
+  const needed = Math.max(1, next - prev);
+  return { current, needed, pct: Math.min(1, current / needed) };
 }

@@ -45,18 +45,21 @@ export async function rewardActiveBuddy(
   const previousLevel = active.level;
   let buddy = active;
 
+  let leveledUp = false;
   if (xp > 0) {
-    buddy = await addXp(db, active.id, xp);
+    const xpRes = await addXp(db, userId, active.id, xp);
+    buddy = xpRes.buddy;
+    leveledUp = xpRes.leveledUp;
   }
   if (bond > 0) {
-    buddy = await addBond(db, active.id, bond);
+    buddy = await addBond(db, userId, active.id, bond);
   }
 
   return {
     buddy,
     xpGained: xp,
     bondGained: bond,
-    leveledUp: buddy.level > previousLevel,
+    leveledUp,
     previousLevel,
   };
 }

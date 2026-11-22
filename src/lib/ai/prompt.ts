@@ -1,5 +1,6 @@
 import { formatForModel, getTimeZone } from '../dates';
 import type { UserBuddy } from '../buddy/types';
+import { buildPersonalityPrompt } from '../buddy/personality';
 import { getForm, getSpecies } from '../buddy/species';
 
 export type BuddyPromptContext = {
@@ -30,6 +31,8 @@ function buildBuddySection(ctx?: BuddyPromptContext): string {
       })
       .filter(Boolean) ?? [];
 
+  const personality = buildPersonalityPrompt(species);
+
   return `
 Active Buddy (ORBIT Companion):
 - Name: ${name}
@@ -37,17 +40,19 @@ Active Buddy (ORBIT Companion):
 - Form: ${form?.name ?? buddy.currentFormId} (stage ${form?.stage ?? 1}, ${form?.rarity ?? 'common'})
 - MBTI: ${mbti}
 - Element: ${element}
-- Level: ${buddy.level}  |  XP progress toward next level
+- Level: ${buddy.level}
 - Bond: ${buddy.bond}%
+- Mood: ${buddy.mood}
 - Personality notes: ${description}
+${personality ? `- ${personality.replace(/\n/g, '\n- ')}` : ''}
 ${nextForms.length > 0 ? `- Possible next evolutions: ${nextForms.join('; ')}` : '- No further evolutions available from current form.'}
 
 Buddy guidelines:
-- You can talk about the buddy naturally when the user asks about it, or when it fits the conversation (motivation, celebration after tasks, evolution readiness).
-- Reflect the buddy's MBTI and personality lightly in tone when relevant (e.g. a playful ENTP fox vs a calm INFJ owl).
-- If the buddy is close to evolving (level/bond near requirements), you may gently mention it.
-- Never invent buddy stats. Only use the numbers above.
-- Do not force the buddy into every reply. Keep it optional and natural.
+- Talk about the buddy naturally when relevant; do not force it into every reply.
+- Reflect the buddy's MBTI/personality in tone and suggestions when relevant.
+- If buddy is close to evolving, you may gently mention it.
+- Never invent buddy stats, evolution state, or completed actions.
+- For sensitive actions, ask for confirmation and respect permission results.
 `;
 }
 

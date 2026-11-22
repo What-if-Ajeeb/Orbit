@@ -7,7 +7,7 @@ export const DATABASE_NAME = 'orbit.db';
  * tasks and the agent conversation) lives in SQLite on the device.
  */
 export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
-  const DATABASE_VERSION = 10;
+  const DATABASE_VERSION = 11;
 
   const result = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
   let currentDbVersion = result?.user_version ?? 0;
@@ -532,6 +532,35 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
     `);
 
     currentDbVersion = 10;
+  }
+
+  if (currentDbVersion === 10) {
+    await db.execAsync(`
+      ALTER TABLE user_buddies ADD COLUMN mood TEXT NOT NULL DEFAULT 'calm';
+
+      CREATE TABLE IF NOT EXISTS buddy_activity_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        user_buddy_id TEXT NOT NULL,
+        activity TEXT NOT NULL,
+        xp_gained INTEGER NOT NULL DEFAULT 0,
+        bond_gained INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+        FOREIGN KEY (user_buddy_id) REFERENCES user_buddies (id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_buddy_activity_log_user
+        ON buddy_activity_log (user_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_buddy_activity_log_buddy
+        ON buddy_activity_log (user_buddy_id, created_at DESC);
+    `);
+
+    currentDbVersion = 11;
+  }
+
+  if (currentDbVersion !== DATABASE_VERSION) {
+    throw new Error(`Database migration ended at version ${currentDbVersion}, expected ${DATABASE_VERSION}.`);
   }
 
   await db.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);

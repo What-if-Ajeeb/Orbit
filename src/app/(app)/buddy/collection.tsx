@@ -111,7 +111,8 @@ export default function BuddyCollectionScreen() {
           renderItem={({ item: speciesId }) => {
             const species = getSpecies(speciesId)!;
             const ub = ownedMap.get(speciesId);
-            const form = ub ? getForm(ub.currentFormId) : getForm(species.baseFormId);
+            const defaultForm = species.forms.find((f) => f.isDefault) ?? species.forms[0];
+            const form = ub ? getForm(ub.currentFormId) : defaultForm;
             const ownedFlag = !!ub;
 
             return (

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 320" fill="none">
+  <!-- Expression reference for Kiko. Runtime uses layered state machine; this file documents expression shapes. -->
+  <g id="expression-happy"><path d="M145 172c5 8 10 10 15 10s10-2 15-10" stroke="#3A2A25" stroke-width="3.5" stroke-linecap="round"/></g>
+  <g id="expression-sad"><path d="M147 178c4-5 9-7 13-7s9 2 13 7" stroke="#3A2A25" stroke-width="3.5" stroke-linecap="round"/></g>
+  <g id="expression-angry"><path d="M148 176h24" stroke="#3A2A25" stroke-width="3.5" stroke-linecap="round"/></g>
+  <g id="expression-curious"><path d="M150 173c3 4 6 6 10 6s7-2 10-6" stroke="#3A2A25" stroke-width="3.5" stroke-linecap="round"/><circle cx="138" cy="129" r="3.2" fill="#FFFFFF"/><circle cx="188" cy="129" r="3.2" fill="#FFFFFF"/></g>
+  <g id="expression-thinking"><path d="M151 174c4 2 8 2 18 0" stroke="#3A2A25" stroke-width="3.5" stroke-linecap="round"/></g>
+  <g id="expression-speaking"><path d="M152 170c2 6 5 8 8 8s6-2 8-8c-2-4-5-6-8-6s-6 2-8 6z" fill="#7C2D12"/></g>
+  <g id="expression-sleeping"><path d="M126 138c4 4 8 4 20 0" stroke="#241B18" stroke-width="3.5" stroke-linecap="round"/><path d="M174 138c12 4 16 4 20 0" stroke="#241B18" stroke-width="3.5" stroke-linecap="round"/></g>
+</svg>

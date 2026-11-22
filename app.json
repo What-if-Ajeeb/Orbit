@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Orbit",
+    "name": "ORBIT",
     "slug": "orbit",
     "version": "1.10.5",
     "orientation": "portrait",
@@ -61,10 +61,14 @@
             "usesCleartextTraffic": true
           }
         }
-      ]
+      ],
+      "expo-asset"
     ],
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ]
   }
 }

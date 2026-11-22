@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 320" fill="none">
+  <!-- Kiko Mythical reference: Sylvia/Eclipseon inspired aura, clean no-glow styling -->
+  <defs>
+    <linearGradient id="kiko-myth-fur" x1="90" y1="70" x2="250" y2="290" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#E0E7FF"/><stop offset="1" stop-color="#6366F1"/>
+    </linearGradient>
+    <linearGradient id="kiko-myth-deep" x1="120" y1="140" x2="220" y2="290" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#818CF8"/><stop offset="1" stop-color="#4338CA"/>
+    </linearGradient>
+  </defs>
+  <g id="kiko-myth-root">
+    <ellipse cx="160" cy="286" rx="74" ry="14" fill="rgba(20,20,19,0.12)"/>
+    <path d="M160 34l10 20 22 3-16 15 4 22-20-11-20 11 4-22-16-15 22-3z" fill="#C7D2FE"/>
+    <path d="M222 220c35 2 61-16 66-41 3-15-4-27-16-32-14-6-29 2-33 15-3 10 1 18 8 22-10 12-28 18-48 11z" fill="url(#kiko-myth-fur)"/>
+    <path d="M112 176c0-29 22-50 48-50s48 21 48 50v47c0 27-21 46-48 46s-48-19-48-46v-47z" fill="url(#kiko-myth-deep)"/>
+    <path d="M160 72c40 0 70 28 70 66 0 35-25 64-70 64s-70-29-70-64c0-38 30-66 70-66z" fill="url(#kiko-myth-fur)"/>
+    <circle cx="136" cy="132" r="9" fill="#241B18"/><circle cx="184" cy="132" r="9" fill="#241B18"/>
+    <path d="M150 165c3 4 6 6 10 6s7-2 10-6" stroke="#3A2A25" stroke-width="3.5" stroke-linecap="round"/>
+    <path d="M118 188c10 10 25 16 42 16s32-6 42-16l-6 20c-9 8-22 12-36 12s-27-4-36-12l-6-20z" fill="#A5B4FC"/>
+  </g>
+</svg>

@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 320" fill="none">
+  <!-- Kiko animation reference. Production runtime is driven by React Native Animated state machine. -->
+  <g id="anim-idle" data-anim="breathing,blink,tail-sway,ear-twitch"/>
+  <g id="anim-walking" data-anim="paw-step,body-bob,tail-sway"/>
+  <g id="anim-jumping" data-anim="squash-stretch,bounce"/>
+  <g id="anim-sleeping" data-anim="slow-breathe,closed-eyes"/>
+  <g id="anim-speaking" data-anim="mouth-open-close,head-nod"/>
+  <g id="anim-happy" data-anim="smile,bounce,tail-fast"/>
+  <g id="anim-sad" data-anim="droop,slow-breathe"/>
+  <g id="anim-thinking" data-anim="look-up,pupil-shift"/>
+</svg>

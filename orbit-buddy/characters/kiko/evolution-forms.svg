@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 320" fill="none">
+  <!-- Kiko evolution line reference sheet: Kiko, Vulpixie, Aether Fox, Flareonix, Stormlynx, Sylvia, Eclipseon -->
+  <g id="kiko-stage1" transform="translate(0,0)"><rect width="137" height="320" fill="transparent"/><text x="68" y="300" text-anchor="middle" fill="#6B6A65" font-size="12">Kiko</text></g>
+  <g id="kiko-vulpixie" transform="translate(137,0)"><rect width="137" height="320" fill="transparent"/><text x="68" y="300" text-anchor="middle" fill="#6B6A65" font-size="12">Vulpixie</text></g>
+  <g id="kiko-aether" transform="translate(274,0)"><rect width="137" height="320" fill="transparent"/><text x="68" y="300" text-anchor="middle" fill="#6B6A65" font-size="12">Aether</text></g>
+  <g id="kiko-flareonix" transform="translate(411,0)"><rect width="137" height="320" fill="transparent"/><text x="68" y="300" text-anchor="middle" fill="#6B6A65" font-size="12">Flareonix</text></g>
+  <g id="kiko-stormlynx" transform="translate(548,0)"><rect width="137" height="320" fill="transparent"/><text x="68" y="300" text-anchor="middle" fill="#6B6A65" font-size="12">Stormlynx</text></g>
+  <g id="kiko-sylvia" transform="translate(685,0)"><rect width="137" height="320" fill="transparent"/><text x="68" y="300" text-anchor="middle" fill="#6B6A65" font-size="12">Sylvia</text></g>
+  <g id="kiko-eclipseon" transform="translate(822,0)"><rect width="138" height="320" fill="transparent"/><text x="69" y="300" text-anchor="middle" fill="#6B6A65" font-size="12">Eclipseon</text></g>
+</svg>
