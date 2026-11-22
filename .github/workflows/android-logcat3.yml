@@ -51,6 +51,8 @@ jobs:
       - name: Boot with progress
         timeout-minutes: 15
         run: |
+          sudo chmod 666 /dev/kvm
+          ls -l /dev/kvm >> diag-state.txt || true
           SDK_DIR="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
           export PATH="$SDK_DIR/emulator:$PATH"
           echo "sdk dir: $SDK_DIR emulator: $(command -v emulator)" >> diag-state.txt
