@@ -50,18 +50,6 @@ import {
 import { radius, spacing, palette } from '@/theme';
 
 
-function permissionLabel(state: NotificationPermissionState): string {
-  if (state === 'granted') {
-    return 'Reminders allowed';
-  }
-
-  if (state === 'denied') {
-    return 'Blocked in system settings';
-  }
-
-  return 'Not enabled yet';
-}
-
 const THEME_OPTIONS: { id: ThemeMode; label: string }[] = [
   { id: 'light', label: 'Light' },
   { id: 'dark', label: 'Dark' },
@@ -88,7 +76,6 @@ export default function SettingsScreen() {
   const [permission, setPermission] = useState<NotificationPermissionState>('undetermined');
   const [isSaving, setIsSaving] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
-  const [isSigningOut, setIsSigningOut] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -295,13 +282,7 @@ export default function SettingsScreen() {
         style: 'destructive',
         onPress: () => {
           void (async () => {
-            setIsSigningOut(true);
-
-            try {
-              await signOut();
-            } finally {
-              setIsSigningOut(false);
-            }
+            await signOut();
           })();
         },
       },
@@ -340,317 +321,310 @@ export default function SettingsScreen() {
           </View>
         ) : null}
 
-        <Text style={styles.sectionLabel}>APPEARANCE</Text>
-
-        <GlassView style={styles.card}>
-          <View style={styles.cardTitleRow}>
-            <View style={styles.cardTitleText}>
-              <Text style={styles.cardTitle}>Color mode</Text>
-              <Text style={styles.cardCaption}>Pick a look, or follow your phone’s setting.</Text>
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>Appearance</Text>
+          <GlassView style={styles.card}>
+            <View style={styles.settingRow}>
+              <View style={styles.settingIconWrap}>
+                <Ionicons name="color-palette-outline" size={18} color={colors.accent} />
+              </View>
+              <View style={styles.settingText}>
+                <Text style={styles.settingTitle}>Color mode</Text>
+                <Text style={styles.settingDescription}>Pick a look, or follow your device setting.</Text>
+              </View>
             </View>
-          </View>
 
-          <View accessibilityRole="radiogroup" style={styles.themeRow}>
-            {THEME_OPTIONS.map((option) => {
-              const active = mode === option.id;
-
-              return (
-                <Pressable
-                  key={option.id}
-                  accessibilityRole="radio"
-                  accessibilityLabel={`${option.label} color mode`}
-                  accessibilityState={{ selected: active }}
-                  onPress={() => setMode(option.id)}
-                  style={({ pressed }) => [styles.themeTile, pressed && { opacity: 0.8 }]}
-                >
-                  <View style={[styles.themePreview, active && styles.themePreviewActive]}>
-                    {PREVIEW_HALVES[option.id].map((half, index) => (
-                      <View key={index} style={[styles.themeHalf, { backgroundColor: half.bg }]}>
-                        <View style={[styles.themeBar, { backgroundColor: half.line, width: '75%' }]} />
-                        <View style={[styles.themeBar, { backgroundColor: half.line, width: '50%' }]} />
-                      </View>
-                    ))}
-                    <View style={styles.themeDot} />
-                  </View>
-                  <Text style={[styles.themeLabel, active && { color: colors.blue }]}>
-                    {option.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        </GlassView>
-
-        <Text style={styles.sectionLabel}>AI BRAIN</Text>
-
-        <GlassView style={styles.card}>
-          <View style={styles.cardTitleRow}>
-            <View style={styles.cardTitleText}>
-              <Text style={styles.cardTitle}>AI brain</Text>
-              <Text style={styles.cardCaption}>
-                {isLocalAi
-                  ? 'Connect to an OpenAI-compatible server on your network. No API key needed.'
-                  : 'Bring your own API key. Orbit has no shared server.'}
-              </Text>
+            <View accessibilityRole="radiogroup" style={styles.themeRow}>
+              {THEME_OPTIONS.map((option) => {
+                const active = mode === option.id;
+                return (
+                  <Pressable
+                    key={option.id}
+                    accessibilityRole="radio"
+                    accessibilityLabel={`${option.label} color mode`}
+                    accessibilityState={{ selected: active }}
+                    onPress={() => setMode(option.id)}
+                    style={({ pressed }) => [styles.themeTile, pressed && styles.pressed]}
+                  >
+                    <View style={[styles.themePreview, active && styles.themePreviewActive]}>
+                      {PREVIEW_HALVES[option.id].map((half, index) => (
+                        <View key={index} style={[styles.themeHalf, { backgroundColor: half.bg }]}>
+                          <View style={[styles.themeBar, { backgroundColor: half.line, width: '75%' }]} />
+                          <View style={[styles.themeBar, { backgroundColor: half.line, width: '50%' }]} />
+                        </View>
+                      ))}
+                      {active ? <View style={styles.themeDot} /> : null}
+                    </View>
+                    <Text style={[styles.themeLabel, active && styles.themeLabelActive]}>{option.label}</Text>
+                  </Pressable>
+                );
+              })}
             </View>
+          </GlassView>
+        </View>
+
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionLabel}>AI Connection</Text>
             <View style={[styles.badge, aiReady ? styles.badgeOn : styles.badgeOff]}>
-              <Text
-                style={[styles.badgeText, { color: aiReady ? colors.success : colors.textMuted }]}
-              >
-                {aiReady ? 'READY' : 'NOT SET'}
+              <Text style={[styles.badgeText, { color: aiReady ? colors.success : colors.textMuted }]}>
+                {aiReady ? 'Ready' : 'Not set'}
               </Text>
             </View>
           </View>
 
-          <View style={styles.modeRow} accessibilityRole="radiogroup">
-            {(
-              [
-                { id: 'cloud', label: 'Cloud' },
-                { id: 'local', label: 'Local server' },
-              ] as const
-            ).map((option) => {
-              const active = currentSettings.mode === option.id;
+          <GlassView style={styles.card}>
+            <View style={styles.settingRow}>
+              <View style={[styles.settingIconWrap, { backgroundColor: colors.accentSoft }]}>
+                <Ionicons name={isLocalAi ? 'server-outline' : 'cloud-outline'} size={18} color={colors.accent} />
+              </View>
+              <View style={styles.settingText}>
+                <Text style={styles.settingTitle}>{isLocalAi ? 'Local server' : 'Cloud provider'}</Text>
+                <Text style={styles.settingDescription}>
+                  {isLocalAi
+                    ? 'Connect to an OpenAI-compatible server on your network. No API key required.'
+                    : 'Bring your own API key. Orbit does not run a shared server.'}
+                </Text>
+              </View>
+            </View>
 
-              return (
-                <Pressable
-                  key={option.id}
-                  accessibilityRole="radio"
-                  accessibilityLabel={`${option.label} AI connection`}
-                  accessibilityState={{ selected: active }}
-                  onPress={() => selectMode(option.id)}
-                  style={[styles.modeChip, active && styles.modeChipActive]}
-                >
-                  <Text style={[styles.providerText, active && styles.providerTextActive]}>
-                    {option.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
+            <View style={styles.segmentedRow} accessibilityRole="radiogroup">
+              {([
+                { id: 'cloud' as const, label: 'Cloud', icon: 'cloud-outline' as const },
+                { id: 'local' as const, label: 'Local server', icon: 'server-outline' as const },
+              ]).map((option) => {
+                const active = currentSettings.mode === option.id;
+                return (
+                  <Pressable
+                    key={option.id}
+                    accessibilityRole="radio"
+                    accessibilityLabel={`${option.label} AI connection`}
+                    accessibilityState={{ selected: active }}
+                    onPress={() => selectMode(option.id)}
+                    style={[styles.segment, active && styles.segmentActive]}
+                  >
+                    <Ionicons name={option.icon} size={16} color={active ? colors.accent : colors.textMuted} />
+                    <Text style={[styles.segmentText, active && styles.segmentTextActive]}>{option.label}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
 
-          <View style={styles.providerRow}>
-            {providerOrder.map((provider) => {
-              const active = settings.provider === provider;
+            <View style={styles.divider} />
 
-              return (
-                <Pressable
-                  key={provider}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: active }}
-                  onPress={() => selectProvider(provider)}
-                  style={[styles.providerChip, active && styles.providerChipActive]}
-                >
-                  <Text style={[styles.providerText, active && styles.providerTextActive]}>
-                    {PROVIDER_PRESETS[provider].shortLabel}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
+            <Text style={styles.fieldLabel}>Provider</Text>
+            <View style={styles.providerRow}>
+              {providerOrder.map((provider) => {
+                const active = settings.provider === provider;
+                return (
+                  <Pressable
+                    key={provider}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${PROVIDER_PRESETS[provider].label} provider`}
+                    accessibilityState={{ selected: active }}
+                    onPress={() => selectProvider(provider)}
+                    style={[styles.providerChip, active && styles.providerChipActive]}
+                  >
+                    <Text style={[styles.providerText, active && styles.providerTextActive]}>
+                      {PROVIDER_PRESETS[provider].shortLabel}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
 
-          <Text style={styles.providerNote}>{preset.note}</Text>
+            <View style={styles.infoBox}>
+              <Ionicons name="information-circle-outline" size={16} color={colors.textMuted} />
+              <Text style={styles.infoBoxText}>{preset.note}</Text>
+            </View>
 
-          {preset.docsUrl ? (
-            <Pressable
-              accessibilityRole="link"
-              onPress={() => {
-                void Linking.openURL(preset.docsUrl);
-              }}
-              style={styles.docsLink}
-            >
-              <Text style={styles.docsLinkText}>
-                {isLocalAi ? 'Ollama setup' : 'Get an API key'}
-              </Text>
-              <Ionicons name="open-outline" size={13} color={colors.accent} />
-            </Pressable>
-          ) : null}
+            {preset.docsUrl ? (
+              <Pressable
+                accessibilityRole="link"
+                onPress={() => { void Linking.openURL(preset.docsUrl); }}
+                style={styles.docsLink}
+              >
+                <Text style={styles.docsLinkText}>{isLocalAi ? 'Ollama setup guide' : 'Get an API key'}</Text>
+                <Ionicons name="open-outline" size={14} color={colors.accent} />
+              </Pressable>
+            ) : null}
 
-          {isLocalAi ? (
-            <Text style={styles.localNote}>
-              Phone and computer must be on the same Wi-Fi. Use the LAN IP of the computer, not
-              localhost. For Ollama, bind the server to 0.0.0.0:11434.
-            </Text>
-          ) : null}
+            {isLocalAi ? (
+              <View style={[styles.infoBox, styles.infoBoxAccent]}>
+                <Ionicons name="wifi-outline" size={16} color={colors.accent} />
+                <Text style={styles.infoBoxText}>
+                  Phone and computer must be on the same Wi-Fi. Use your computer LAN IP, not localhost. For Ollama, start with <Text style={styles.infoCode}>OLLAMA_HOST=0.0.0.0:11434</Text>.
+                </Text>
+              </View>
+            ) : null}
 
-          <View style={styles.fields}>
-            <TextField
-              label={isLocalAi ? 'Server URL' : 'Base URL'}
-              value={settings.baseUrl}
-              onChangeText={(value) => update({ baseUrl: value })}
-              placeholder={
-                isLocalAi ? 'http://192.168.1.20:11434/v1' : 'https://api.openai.com/v1'
-              }
-              autoCapitalize="none"
-              autoCorrect={false}
-              keyboardType="url"
-              hint={isLocalAi ? 'Use http:// or https:// with the host IP and port.' : undefined}
-            />
-
-            <TextField
-              label="Model"
-              value={settings.model}
-              onChangeText={(value) => update({ model: value })}
-              placeholder={preset.model || 'model-name'}
-              autoCapitalize="none"
-              autoCorrect={false}
-              hint={isLocalAi ? 'Example: llama3.2, qwen2.5, mistral' : undefined}
-            />
-
-            {!isLocalAi ? (
+            <View style={styles.fields}>
               <TextField
-                label="API key"
-                value={settings.apiKey}
-                onChangeText={(value) => update({ apiKey: value })}
-                placeholder={preset.keyHint}
+                label={isLocalAi ? 'Server URL' : 'Base URL'}
+                value={settings.baseUrl}
+                onChangeText={(value) => update({ baseUrl: value })}
+                placeholder={isLocalAi ? 'http://192.168.1.20:11434/v1' : 'https://api.openai.com/v1'}
                 autoCapitalize="none"
                 autoCorrect={false}
-                secureTextEntry
-                hint="Key device ke encrypted SecureStore me save hoti hai."
+                keyboardType="url"
+                hint={isLocalAi ? 'Include http:// or https://, host IP, and port.' : undefined}
               />
+              <TextField
+                label="Model"
+                value={settings.model}
+                onChangeText={(value) => update({ model: value })}
+                placeholder={preset.model || 'model-name'}
+                autoCapitalize="none"
+                autoCorrect={false}
+                hint={isLocalAi ? 'Example: llama3.2, qwen2.5, mistral' : undefined}
+              />
+              {!isLocalAi ? (
+                <TextField
+                  label="API key"
+                  value={settings.apiKey}
+                  onChangeText={(value) => update({ apiKey: value })}
+                  placeholder={preset.keyHint}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  secureTextEntry
+                  hint="Stored in encrypted SecureStore on this device."
+                />
+              ) : null}
+            </View>
+
+            <View style={styles.buttonRow}>
+              <Button
+                label="Test connection"
+                variant="secondary"
+                onPress={() => { void testConnection(); }}
+                loading={isTesting}
+                disabled={isSaving}
+                style={styles.flexButton}
+              />
+              <Button
+                label="Save changes"
+                onPress={() => { void persist(true); }}
+                loading={isSaving}
+                disabled={isTesting}
+                style={styles.flexButton}
+              />
+            </View>
+
+            {!isLocalAi && settings.apiKey ? (
+              <Pressable accessibilityRole="button" onPress={confirmRemoveKey} style={styles.removeKey}>
+                <Ionicons name="trash-outline" size={14} color={colors.danger} />
+                <Text style={styles.removeKeyText}>Remove API key</Text>
+              </Pressable>
             ) : null}
-          </View>
 
-          <View style={styles.buttonRow}>
-            <Button
-              label="Save"
-              onPress={() => {
-                void persist(true);
-              }}
-              loading={isSaving}
-              disabled={isTesting}
-              style={styles.flexButton}
-            />
-            <Button
-              label="Test"
-              variant="secondary"
-              onPress={() => {
-                void testConnection();
-              }}
-              loading={isTesting}
-              disabled={isSaving}
-              style={styles.flexButton}
-            />
-          </View>
-
-          {!isLocalAi && settings.apiKey ? (
-            <Pressable
-              accessibilityRole="button"
-              onPress={confirmRemoveKey}
-              style={styles.removeKey}
-            >
-              <Ionicons name="trash-outline" size={13} color={colors.danger} />
-              <Text style={styles.removeKeyText}>Remove API key</Text>
-            </Pressable>
-          ) : null}
-
-          <Text style={styles.securityNote}>
-            {isLocalAi
-              ? 'Chat messages go to your local server. Nothing is sent to a cloud provider.'
-              : 'Chat messages go to your AI provider. Tasks, your account and your key stay on this phone.'}
-          </Text>
-        </GlassView>
+            <View style={styles.securityRow}>
+              <Ionicons name="shield-checkmark-outline" size={14} color={colors.textFaint} />
+              <Text style={styles.securityNote}>
+                {isLocalAi
+                  ? 'Chat messages go to your local server. Nothing is sent to a cloud provider.'
+                  : 'Chat messages go to your selected provider. Tasks, account data, and keys stay on this device.'}
+              </Text>
+            </View>
+          </GlassView>
+        </View>
 
         <Text style={styles.sectionLabel}>MCP TOOLS</Text>
 
-        <McpServersCard onNotice={setNotice} onError={setError} />
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>Integrations</Text>
+          <McpServersCard onNotice={setNotice} onError={setError} />
+        </View>
 
-        <Text style={styles.sectionLabel}>AGENT PERMISSIONS</Text>
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>Security</Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Open agent permissions"
+            onPress={() => router.push('/permissions' as Href)}
+            style={({ pressed }) => [pressed && styles.pressed]}
+          >
+            <GlassView style={styles.navCard}>
+              <View style={styles.settingIconWrap}>
+                <Ionicons name="shield-checkmark-outline" size={18} color={colors.accent} />
+              </View>
+              <View style={styles.settingText}>
+                <Text style={styles.settingTitle}>Agent permissions</Text>
+                <Text style={styles.settingDescription}>Approvals, saved grants, paired computers, and audit history.</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={colors.textFaint} />
+            </GlassView>
+          </Pressable>
+        </View>
 
-        <GlassView
-          style={styles.card}
-          accessibilityLabel="Open agent permissions"
-          onPress={() => router.push('/permissions' as Href)}
-        >
-          <View style={styles.linkRow}>
-            <View style={styles.linkIcon}>
-              <Ionicons name="finger-print" size={20} color={colors.accent} />
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>Reminders</Text>
+          <GlassView style={styles.card}>
+            <View style={styles.settingRow}>
+              <View style={styles.settingIconWrap}>
+                <Ionicons name="notifications-outline" size={18} color={colors.accent} />
+              </View>
+              <View style={styles.settingText}>
+                <Text style={styles.settingTitle}>Notifications</Text>
+                <Text style={styles.settingDescription}>Get alerted 15 minutes before a task is due.</Text>
+              </View>
             </View>
-            <View style={styles.linkText}>
-              <Text style={styles.cardTitle}>Control room</Text>
-              <Text style={styles.cardCaption}>
-                Approvals, saved grants, paired computers, emergency stop, and audit history.
+            <View style={styles.statusPill}>
+              <View
+                style={[
+                  styles.statusDot,
+                  {
+                    backgroundColor:
+                      permission === 'granted'
+                        ? colors.success
+                        : permission === 'denied'
+                          ? colors.danger
+                          : colors.warning,
+                  },
+                ]}
+              />
+              <Text style={styles.statusText}>
+                {permission === 'granted' ? 'Enabled' : permission === 'denied' ? 'Permission denied' : 'Not set up'}
               </Text>
             </View>
-            <Ionicons name="chevron-forward" size={17} color={colors.textFaint} />
-          </View>
-        </GlassView>
+            {permission !== 'granted' ? (
+              <Button label="Enable notifications" variant="secondary" onPress={() => { void enableNotifications(); }} />
+            ) : (
+              <Button label="Send test reminder" variant="secondary" onPress={() => { void testReminder(); }} />
+            )}
+          </GlassView>
+        </View>
 
-        <Text style={styles.sectionLabel}>REMINDERS</Text>
-
-        <GlassView style={styles.card}>
-          <View style={styles.statusRow}>
-            <View
-              style={[
-                styles.statusDot,
-                { backgroundColor: permission === 'granted' ? colors.success : colors.textFaint },
-              ]}
-            />
-            <Text style={styles.statusText}>{permissionLabel(permission)}</Text>
-          </View>
-
-          <Text style={styles.cardCaption}>
-            Due time ya reminder set karne par local notification aayega — app band ho tab bhi.
-          </Text>
-
-          <View style={styles.buttonRow}>
-            <Button
-              label={permission === 'granted' ? 'Send test' : 'Enable'}
-              variant="secondary"
-              onPress={() => {
-                void (permission === 'granted' ? testReminder() : enableNotifications());
-              }}
-              style={styles.flexButton}
-            />
-            {permission === 'denied' ? (
-              <Button
-                label="System settings"
-                variant="ghost"
-                onPress={() => {
-                  void Linking.openSettings();
-                }}
-                style={styles.flexButton}
-              />
-            ) : null}
-          </View>
-        </GlassView>
-
-        <Text style={styles.sectionLabel}>ACCOUNT</Text>
-
-        <GlassView style={styles.card}>
-          <View style={styles.profileRow}>
-            <View style={styles.profileAvatar}>
-              <Ionicons name="person" size={18} color={colors.accent} />
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>Account</Text>
+          <GlassView style={styles.card}>
+            <View style={styles.settingRow}>
+              <View style={styles.profileAvatar}>
+                <Ionicons name="person" size={20} color={colors.accent} />
+              </View>
+              <View style={styles.settingText}>
+                <Text style={styles.settingTitle}>{activeUser.name}</Text>
+                <Text style={styles.settingDescription}>{activeUser.email}</Text>
+              </View>
             </View>
-            <View style={styles.profileText}>
-              <Text style={styles.profileName}>{user.name}</Text>
-              <Text style={styles.profileEmail}>{user.email}</Text>
+            <Button label="Sign out" variant="danger" onPress={confirmSignOut} />
+          </GlassView>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>Data</Text>
+          <GlassView style={styles.card}>
+            <View style={styles.settingRow}>
+              <View style={styles.settingIconWrap}>
+                <Ionicons name="chatbubbles-outline" size={18} color={colors.accent} />
+              </View>
+              <View style={styles.settingText}>
+                <Text style={styles.settingTitle}>Chat history</Text>
+                <Text style={styles.settingDescription}>Clear agent conversations. Tasks and reminders are not affected.</Text>
+              </View>
             </View>
-          </View>
-
-          <Button
-            label="Sign out"
-            variant="danger"
-            onPress={confirmSignOut}
-            loading={isSigningOut}
-            style={styles.signOut}
-          />
-        </GlassView>
-
-        <Text style={styles.sectionLabel}>DATA</Text>
-
-        <GlassView style={styles.card}>
-          <Text style={styles.cardTitle}>Chat history</Text>
-          <Text style={styles.cardCaption}>
-            Clear agent conversations. Tasks and reminders are not affected.
-          </Text>
-
-          <Button
-            label="Clear chat history"
-            variant="secondary"
-            onPress={confirmClearChat}
-            style={styles.clearButton}
-          />
-        </GlassView>
+            <Button label="Clear chat history" variant="secondary" onPress={confirmClearChat} />
+          </GlassView>
+        </View>
 
         <Text style={styles.footer}>
           Orbit v{Constants.expoConfig?.version ?? '1.6.0'} · local-first · Android
@@ -662,313 +636,333 @@ export default function SettingsScreen() {
 
 const makeStyles = ({ colors, glass }: AppTheme) =>
   StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  loading: {
-    flex: 1,
-    backgroundColor: colors.background,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  content: {
-    flexGrow: 1,
-    paddingHorizontal: spacing.lg,
-  },
-  bannerWrap: {
-    marginTop: spacing.lg,
-  },
-  notice: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.sm,
-    backgroundColor: colors.successSoft,
-    borderWidth: 1,
-    borderColor: `${colors.success}47`,
-    borderTopColor: glass.borderBright,
-    borderRadius: radius.md,
-    paddingVertical: spacing.sm + 2,
-    paddingHorizontal: spacing.md,
-    marginTop: spacing.lg,
-  },
-  noticeText: {
-    flex: 1,
-    color: colors.success,
-    fontSize: 13,
-    lineHeight: 19,
-  },
-  sectionLabel: {
-    color: colors.textFaint,
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 1.6,
-    marginTop: spacing.xl,
-    marginBottom: spacing.xs,
-  },
-  card: {
-    padding: spacing.md + 2,
-    marginTop: spacing.sm,
-    gap: spacing.md,
-  },
-  cardTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.md,
-  },
-  cardTitleText: {
-    flex: 1,
-    gap: 4,
-  },
-  cardTitle: {
-    color: colors.text,
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  cardCaption: {
-    color: colors.textMuted,
-    fontSize: 13,
-    lineHeight: 19,
-  },
-  linkRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-  },
-  linkIcon: {
-    width: 42,
-    height: 42,
-    borderRadius: 14,
-    backgroundColor: colors.accentSoft,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  linkText: {
-    flex: 1,
-    gap: 3,
-  },
-  badge: {
-    borderRadius: radius.pill,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 4,
-  },
-  badgeOn: {
-    backgroundColor: colors.successSoft,
-  },
-  badgeOff: {
-    backgroundColor: colors.surfaceAlt,
-  },
-  badgeText: {
-    fontSize: 9,
-    fontWeight: '700',
-    letterSpacing: 0.9,
-  },
-  modeRow: {
-    flexDirection: 'row',
-    gap: spacing.xs,
-  },
-  modeChip: {
-    flex: 1,
-    minHeight: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: glass.border,
-    borderTopColor: glass.borderBright,
-    backgroundColor: glass.fillSoft,
-  },
-  modeChipActive: {
-    borderColor: colors.borderFocus,
-    backgroundColor: colors.accentSoft,
-  },
-  providerRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.xs,
-  },
-  themeChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    minWidth: 96,
-    justifyContent: 'center',
-  },
-  providerChip: {
-    minHeight: 44,
-    justifyContent: 'center',
-    borderRadius: radius.pill,
-    borderWidth: 1,
-    borderColor: glass.border,
-    borderTopColor: glass.borderBright,
-    backgroundColor: glass.fillSoft,
-    paddingHorizontal: spacing.sm + 4,
-    paddingVertical: 7,
-  },
-  providerChipActive: {
-    borderColor: colors.borderFocus,
-    backgroundColor: colors.accentSoft,
-  },
-  localNote: {
-    color: colors.textMuted,
-    fontSize: 12,
-    lineHeight: 18,
-    backgroundColor: colors.surfaceAlt,
-    borderRadius: radius.md,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-  },
-  providerText: {
-    color: colors.textMuted,
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  providerTextActive: {
-    color: colors.accent,
-  },
-  providerNote: {
-    color: colors.textFaint,
-    fontSize: 12,
-    lineHeight: 17,
-    marginTop: -4,
-  },
-  docsLink: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    marginTop: -6,
-  },
-  docsLinkText: {
-    color: colors.accent,
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  fields: {
-    gap: spacing.md,
-  },
-  buttonRow: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
-  flexButton: {
-    flex: 1,
-  },
-  removeKey: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 4,
-  },
-  removeKeyText: {
-    color: colors.danger,
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  securityNote: {
-    color: colors.textFaint,
-    fontSize: 11,
-    lineHeight: 16,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    paddingTop: spacing.sm,
-  },
-  statusRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  statusDot: {
-    width: 9,
-    height: 9,
-    borderRadius: 5,
-  },
-  statusText: {
-    color: colors.text,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  profileRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-  },
-  profileAvatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: colors.accentSoft,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  profileText: {
-    flex: 1,
-    gap: 2,
-  },
-  profileName: {
-    color: colors.text,
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  profileEmail: {
-    color: colors.textMuted,
-    fontSize: 13,
-  },
-  signOut: {
-    marginTop: spacing.xs,
-  },
-  clearButton: {
-    marginTop: spacing.xs,
-  },
-  footer: {
-    color: colors.textFaint,
-    fontSize: 12,
-    textAlign: 'center',
-    marginTop: spacing.xl,
-  },
-  themeRow: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    marginTop: spacing.xs,
-  },
-  themeTile: {
-    flex: 1,
-    alignItems: 'center',
-    gap: spacing.xs,
-  },
-  themePreview: {
-    width: '100%',
-    height: 76,
-    flexDirection: 'row',
-    borderRadius: radius.md,
-    overflow: 'hidden',
-    borderWidth: 2,
-    borderColor: colors.border,
-  },
-  themePreviewActive: {
-    borderColor: colors.blue,
-  },
-  themeHalf: {
-    flex: 1,
-    padding: 10,
-    gap: 5,
-  },
-  themeBar: {
-    height: 4,
-    borderRadius: 2,
-  },
-  themeDot: {
-    position: 'absolute',
-    right: 10,
-    bottom: 10,
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: palette.coral,
-  },
-  themeLabel: {
-    color: colors.textMuted,
-    fontSize: 14,
-    fontWeight: '600',
-  },
+    root: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    loading: {
+      flex: 1,
+      backgroundColor: colors.background,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    content: {
+      flexGrow: 1,
+      paddingHorizontal: spacing.lg,
+      gap: spacing.lg,
+    },
+    bannerWrap: {
+      marginTop: spacing.sm,
+    },
+    notice: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: spacing.sm,
+      backgroundColor: colors.successSoft,
+      borderWidth: 1,
+      borderColor: `${colors.success}47`,
+      borderRadius: radius.md,
+      paddingVertical: spacing.sm + 2,
+      paddingHorizontal: spacing.md,
+    },
+    noticeText: {
+      flex: 1,
+      color: colors.success,
+      fontSize: 13,
+      lineHeight: 19,
+    },
+    section: {
+      gap: spacing.sm,
+    },
+    sectionHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: spacing.sm,
+    },
+    sectionLabel: {
+      color: colors.textMuted,
+      fontSize: 13,
+      fontWeight: '600',
+      letterSpacing: 0.2,
+    },
+    card: {
+      padding: spacing.md,
+      gap: spacing.md,
+    },
+    navCard: {
+      padding: spacing.md,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.md,
+    },
+    settingRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.md,
+    },
+    settingIconWrap: {
+      width: 40,
+      height: 40,
+      borderRadius: 12,
+      backgroundColor: colors.surfaceAlt,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    settingText: {
+      flex: 1,
+      gap: 2,
+    },
+    settingTitle: {
+      color: colors.text,
+      fontSize: 15,
+      fontWeight: '600',
+    },
+    settingDescription: {
+      color: colors.textMuted,
+      fontSize: 13,
+      lineHeight: 18,
+    },
+    badge: {
+      borderRadius: radius.pill,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: 4,
+      borderWidth: 1,
+    },
+    badgeOn: {
+      backgroundColor: colors.successSoft,
+      borderColor: `${colors.success}33`,
+    },
+    badgeOff: {
+      backgroundColor: colors.surfaceAlt,
+      borderColor: colors.border,
+    },
+    badgeText: {
+      fontSize: 11,
+      fontWeight: '600',
+    },
+    segmentedRow: {
+      flexDirection: 'row',
+      gap: spacing.xs,
+      padding: 4,
+      borderRadius: radius.md,
+      backgroundColor: colors.surfaceAlt,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    segment: {
+      flex: 1,
+      minHeight: 44,
+      borderRadius: radius.sm,
+      alignItems: 'center',
+      justifyContent: 'center',
+      flexDirection: 'row',
+      gap: 6,
+      paddingHorizontal: spacing.sm,
+    },
+    segmentActive: {
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.borderFocus,
+    },
+    segmentText: {
+      color: colors.textMuted,
+      fontSize: 13,
+      fontWeight: '600',
+    },
+    segmentTextActive: {
+      color: colors.accent,
+    },
+    divider: {
+      height: 1,
+      backgroundColor: colors.border,
+    },
+    fieldLabel: {
+      color: colors.text,
+      fontSize: 13,
+      fontWeight: '600',
+    },
+    providerRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: spacing.xs,
+    },
+    providerChip: {
+      minHeight: 44,
+      justifyContent: 'center',
+      borderRadius: radius.pill,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+      paddingHorizontal: spacing.md,
+      paddingVertical: 8,
+    },
+    providerChipActive: {
+      borderColor: colors.borderFocus,
+      backgroundColor: colors.accentSoft,
+    },
+    providerText: {
+      color: colors.textMuted,
+      fontSize: 13,
+      fontWeight: '500',
+    },
+    providerTextActive: {
+      color: colors.accent,
+      fontWeight: '600',
+    },
+    infoBox: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: spacing.sm,
+      padding: spacing.sm + 2,
+      borderRadius: radius.md,
+      backgroundColor: colors.surfaceAlt,
+    },
+    infoBoxAccent: {
+      backgroundColor: colors.accentSoft,
+    },
+    infoBoxText: {
+      flex: 1,
+      color: colors.textMuted,
+      fontSize: 13,
+      lineHeight: 18,
+    },
+    infoCode: {
+      color: colors.text,
+      fontWeight: '600',
+    },
+    docsLink: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      alignSelf: 'flex-start',
+      paddingVertical: 4,
+    },
+    docsLinkText: {
+      color: colors.accent,
+      fontSize: 13,
+      fontWeight: '600',
+    },
+    fields: {
+      gap: spacing.md,
+    },
+    buttonRow: {
+      flexDirection: 'row',
+      gap: spacing.sm,
+    },
+    flexButton: {
+      flex: 1,
+    },
+    removeKey: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+      minHeight: 44,
+    },
+    removeKeyText: {
+      color: colors.danger,
+      fontSize: 13,
+      fontWeight: '600',
+    },
+    securityRow: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: spacing.sm,
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+      paddingTop: spacing.md,
+    },
+    securityNote: {
+      flex: 1,
+      color: colors.textFaint,
+      fontSize: 12,
+      lineHeight: 17,
+    },
+    statusPill: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      alignSelf: 'flex-start',
+      paddingHorizontal: spacing.sm + 2,
+      paddingVertical: 6,
+      borderRadius: radius.pill,
+      backgroundColor: colors.surfaceAlt,
+    },
+    statusDot: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+    },
+    statusText: {
+      color: colors.text,
+      fontSize: 13,
+      fontWeight: '500',
+    },
+    profileAvatar: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      backgroundColor: colors.accentSoft,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    themeRow: {
+      flexDirection: 'row',
+      gap: spacing.sm,
+    },
+    themeTile: {
+      flex: 1,
+      alignItems: 'center',
+      gap: spacing.xs,
+    },
+    themePreview: {
+      width: '100%',
+      height: 72,
+      flexDirection: 'row',
+      borderRadius: radius.md,
+      overflow: 'hidden',
+      borderWidth: 1.5,
+      borderColor: colors.border,
+    },
+    themePreviewActive: {
+      borderColor: colors.accent,
+    },
+    themeHalf: {
+      flex: 1,
+      padding: 10,
+      gap: 5,
+    },
+    themeBar: {
+      height: 4,
+      borderRadius: 2,
+    },
+    themeDot: {
+      position: 'absolute',
+      right: 8,
+      bottom: 8,
+      width: 10,
+      height: 10,
+      borderRadius: 5,
+      backgroundColor: colors.accent,
+    },
+    themeLabel: {
+      color: colors.textMuted,
+      fontSize: 13,
+      fontWeight: '500',
+    },
+    themeLabelActive: {
+      color: colors.accent,
+      fontWeight: '600',
+    },
+    footer: {
+      color: colors.textFaint,
+      fontSize: 12,
+      textAlign: 'center',
+      marginTop: spacing.sm,
+      marginBottom: spacing.sm,
+    },
+    pressed: {
+      opacity: 0.8,
+    },
   });
