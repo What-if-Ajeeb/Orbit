@@ -1,60 +1,51 @@
-# Android Release Readiness
+# Android Release / CI Status
 
-## Status (honest)
+## Environment diagnosis (this container)
 
-- **Phase 1 Android compatibility**: partially verified by static/code checks and Expo export in this Linux container. No physical Android device available here.
-- **Phase 2 RN testing**: Jest/RN harness configured; KikoAvatar + BuddyAvatar component tests pass locally; Buddy Room interaction tests still limited.
-- **Phase 3 Build system**: Android Gradle config inspected/updated for signing env vars; debug/release/AAB build commands documented. **No Android SDK/JDK installed in this environment**, so APK/AAB were not built here.
-- **Phase 4 Real device validation**: **NOT PERFORMED**. Physical device unavailable. Emulator unavailable (no Android SDK). Do not claim device validation.
-- **Phase 5 All 16 buddies**: not complete. Kiko is reference; remaining 15 original SVG buddies not fully produced/QA'd.
-- **Phase 6 GitHub release automation**: CI/build workflows added; release publication should remain manual/authorized.
+- OS: Linux container; `java`, `javac`, `adb`, Android SDK, Gradle not installed. `JAVA_HOME` unset.
+- Expo SDK: `~58.0.26`, React Native: `0.88.1`, `react-native-svg`: `15.16.0` (from `package.json`).
+- Android config present: `android/` project, Gradle wrapper `9.4.1`, `android.enableMinifyInReleaseBuilds=true`, Hermes/new arch enabled, package `com.orbit.app`.
+- **Conclusion**: Local Android APK/AAB builds are **not supported in this environment**. Android builds must run in GitHub Actions (or a machine with JDK 17 + Android SDK).
 
-## Required checks before calling ready
+## GitHub Actions workflows
 
-- [ ] `npx tsc --noEmit`
-- [ ] `npx expo lint`
-- [ ] `npx vitest run`
-- [ ] `npx jest --runInBand`
-- [ ] `npx expo export --platform android --no-bytecode --output-dir /tmp/opencode/orbit-export`
-- [ ] Android debug APK builds
-- [ ] Android release APK builds
-- [ ] Android AAB builds
-- [ ] Install/start on emulator
-- [ ] Install/start on real Android device
-- [ ] Kiko SVG/animations/touch/voice/background/battery-saver/reduced-motion validated on device
-- [ ] No critical startup crashes
-- [ ] Release signing secrets configured in GitHub/CI, not committed
+- `.github/workflows/ci.yml` - JS validation on push/PR: `npm ci`, `tsc`, `expo lint`, `vitest`, `jest`.
+- `.github/workflows/android-ci.yml` - consolidated Android workflow on push to `main`, PR to `main`, tag `v*`, and manual dispatch. It runs JS checks, sets up JDK 17 + Android SDK, prebuilds, builds debug APK, builds release APK+AAB, uploads artifacts. On `v*` tags it attaches artifacts to the GitHub Release.
+- `.github/workflows/android-release.yml` was removed to avoid conflicting duplicate release workflows.
+- `.github/workflows/android-logcat3.yml` remains diagnostic-only; it does not publish production releases.
 
-## Build commands
+## Required GitHub secrets (for real signed release)
 
-```bash
-# JS checks
-npx tsc --noEmit
-npx expo lint
-npx vitest run
-npx jest --runInBand
+Configure in GitHub repo secrets only; never commit:
 
-# Android project
-npx expo prebuild --platform android --no-install
-cd android
-./gradlew assembleDebug
-./gradlew assembleRelease
-./gradlew bundleRelease
-```
-
-## Signing
-
-Release signing reads env vars when present:
-
-- `ORBIT_RELEASE_STORE_FILE` - path to keystore (CI decodes base64 secret to `android/app/release.keystore`)
+- `ORBIT_RELEASE_STORE_FILE` - base64-encoded keystore file
 - `ORBIT_RELEASE_STORE_PASSWORD`
 - `ORBIT_RELEASE_KEY_ALIAS`
 - `ORBIT_RELEASE_KEY_PASSWORD`
 
-Never commit keystores, passwords, or secrets. Debug signing remains default for local debug builds.
+If secrets are missing, workflow still builds APK/AAB but release artifacts are debug-signed fallback; `artifacts/build-info.txt` records this.
 
-## Known blockers in this environment
+## Artifact names
 
-- No Java/Android SDK/adb/emulator installed.
-- No physical Android device connected.
-- Remaining 15 buddy SVG asset sets not produced.
+- `ORBIT-debug.apk`
+- `ORBIT-release.apk`
+- `ORBIT-release.aab`
+- `build-info.txt`
+
+## Validation status
+
+- Local JS checks: passed before push (`tsc`, `expo lint`, `vitest`, `jest`).
+- GitHub Actions Android run: **not claimed as passed until an actual run completes successfully**. After pushing workflow, inspect Actions run logs/artifacts.
+
+## Device testing
+
+- Physical Android device: **NOT TESTED** in this environment.
+- Emulator: **NOT AVAILABLE** in this environment.
+- Kiko/Buddy Room/SVG/gestures/animation/evolution confirmation need real device or emulator validation.
+
+## Remaining blockers
+
+- No local Android SDK/JDK - cannot produce local APK/AAB here.
+- Signed release pending until GitHub secrets are configured.
+- Real device/emulator validation pending.
+- Remaining 15 original Buddy SVG packs not started (intentionally deferred until Kiko validation).
