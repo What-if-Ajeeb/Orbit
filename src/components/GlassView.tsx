@@ -1,14 +1,7 @@
-import { BlurView } from 'expo-blur';
 import type { PropsWithChildren } from 'react';
-import {
-  Pressable,
-  StyleSheet,
-  View,
-  type StyleProp,
-  type ViewStyle,
-} from 'react-native';
+import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 
-import { useAppTheme, useStyles, type AppTheme } from '@/context/theme';
+import { useStyles, type AppTheme } from '@/context/theme';
 import { radius } from '@/theme';
 
 type GlassVariant = 'card' | 'panel' | 'pill' | 'bar';
@@ -16,8 +9,10 @@ type GlassVariant = 'card' | 'panel' | 'pill' | 'bar';
 type GlassViewProps = PropsWithChildren<{
   style?: StyleProp<ViewStyle>;
   variant?: GlassVariant;
+  /** Kept for backwards compatibility; the surface is flat now. */
   intensity?: number;
   bordered?: boolean;
+  /** Kept for backwards compatibility; no highlight is drawn. */
   highlight?: boolean;
   onPress?: () => void;
   disabled?: boolean;
@@ -25,44 +20,20 @@ type GlassViewProps = PropsWithChildren<{
 }>;
 
 /**
- * Frosted surface used for large UI blocks. Children sit above the blur, so
- * existing padding, gaps, and layout styles keep working unchanged.
+ * Flat rounded surface used for cards and panels. (The name is historical —
+ * there is no glass or blur any more, which also makes lists much cheaper.)
  */
 export function GlassView({
   children,
   style,
   variant = 'card',
-  intensity,
   bordered = true,
-  highlight = true,
   onPress,
   disabled = false,
   accessibilityLabel,
 }: GlassViewProps) {
-  const { glass } = useAppTheme();
   const styles = useStyles(makeStyles);
-
-  const layers = (
-    <>
-      <BlurView
-        intensity={intensity ?? glass.intensity}
-        tint={glass.tint}
-        blurMethod={glass.blurMethod}
-        blurReductionFactor={glass.blurReductionFactor}
-        pointerEvents="none"
-        style={StyleSheet.absoluteFill}
-      />
-      {highlight ? <View pointerEvents="none" style={styles.highlight} /> : null}
-      {children}
-    </>
-  );
-
-  const surfaceStyle = [
-    styles.base,
-    styles[variant],
-    bordered && styles.bordered,
-    style,
-  ];
+  const surfaceStyle = [styles.base, styles[variant], bordered && styles.bordered, style];
 
   if (onPress) {
     return (
@@ -74,49 +45,39 @@ export function GlassView({
         onPress={onPress}
         style={({ pressed }) => [...surfaceStyle, pressed && styles.pressed]}
       >
-        {layers}
+        {children}
       </Pressable>
     );
   }
 
-  return <View style={surfaceStyle}>{layers}</View>;
+  return <View style={surfaceStyle}>{children}</View>;
 }
 
-const makeStyles = ({ glass, glassShadow }: AppTheme) =>
+const makeStyles = ({ colors }: AppTheme) =>
   StyleSheet.create({
     base: {
-      ...glassShadow,
       overflow: 'hidden',
     },
     card: {
       borderRadius: radius.lg,
-      backgroundColor: glass.fill,
+      backgroundColor: colors.surface,
     },
     panel: {
       borderRadius: radius.xl,
-      backgroundColor: glass.fillStrong,
+      backgroundColor: colors.surface,
     },
     pill: {
       borderRadius: radius.pill,
-      backgroundColor: glass.fillSoft,
+      backgroundColor: colors.surfaceAlt,
     },
     bar: {
-      backgroundColor: glass.fillStrong,
+      backgroundColor: colors.surface,
     },
     bordered: {
-      borderWidth: 1,
-      borderColor: glass.border,
-      borderTopColor: glass.borderBright,
-    },
-    highlight: {
-      position: 'absolute',
-      top: 0,
-      left: '12%',
-      right: '12%',
-      height: 1,
-      backgroundColor: glass.highlight,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
     },
     pressed: {
-      opacity: 0.82,
+      opacity: 0.85,
     },
   });

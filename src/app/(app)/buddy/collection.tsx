@@ -13,7 +13,6 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { GlassBackdrop } from '@/components/GlassBackdrop';
-import { GlassView } from '@/components/GlassView';
 import { useSession } from '@/context/auth';
 import { useAppTheme, useStyles, type AppTheme } from '@/context/theme';
 import {

@@ -1,7 +1,6 @@
 import { useAppTheme, useStyles, type AppTheme } from '@/context/theme';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { BlurTargetView, BlurView } from 'expo-blur';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useEffect, useRef, useState, type ComponentRef } from 'react';
 import {
@@ -20,10 +19,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Brand } from '@/components/Brand';
 import { ChatBubble } from '@/components/ChatBubble';
-import { GlassBackdrop } from '@/components/GlassBackdrop';
 import { ChatHistoryPanel } from '@/components/ChatHistoryPanel';
 import { FormError } from '@/components/FormError';
-import { ScreenHeader } from '@/components/ScreenHeader';
 import { SidebarButton } from '@/components/SidebarButton';
 import { useSession } from '@/context/auth';
 import { useSidebar } from '@/context/sidebar';
@@ -35,7 +32,7 @@ import {
   type Conversation,
 } from '@/lib/chat';
 import { MASTER_AGENT } from '@/lib/permissions';
-import { radius, spacing } from '@/theme';
+import { fonts, radius, spacing } from '@/theme';
 
 
 const SUGGESTIONS = [
@@ -49,12 +46,20 @@ export default function ChatScreen() {
   const styles = useStyles(makeStyles);
   const db = useSQLiteContext();
   const store = getChatStore(db);
+  const {
+    prompt,
+    t: promptStamp,
+    c: conversationParam,
+    n: newParam,
+    h: historyParam,
+  } = useLocalSearchParams<{ prompt?: string; t?: string; c?: string; n?: string; h?: string }>();
+  const handledPromptRef = useRef<string | null>(null);
+  const handledNavRef = useRef<string | null>(null);
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { user } = useSession();
   const { open: openSidebar } = useSidebar();
   const scrollRef = useRef<ComponentRef<typeof ScrollView>>(null);
-  const blurTargetRef = useRef<ComponentRef<typeof View> | null>(null);
   const activeIdRef = useRef<number | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeId, setActiveId] = useState<number | null>(null);
@@ -63,7 +68,6 @@ export default function ChatScreen() {
   const [isSending, setIsSending] = useState(false);
   const [aiReady, setAiReady] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [composerHeight, setComposerHeight] = useState(0);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [creatorMode, setCreatorMode] = useState(false);
 
@@ -103,6 +107,78 @@ export default function ChatScreen() {
       void load();
     }, [load])
   );
+
+  // Quick actions on Home open the chat with the composer pre-filled (not auto-sent).
+  useEffect(() => {
+    if (typeof prompt !== 'string' || prompt.length === 0) {
+      return;
+    }
+
+    const key = `${promptStamp ?? ''}:${prompt}`;
+
+    if (handledPromptRef.current === key) {
+      return;
+    }
+
+    handledPromptRef.current = key;
+    setInput(prompt);
+  }, [prompt, promptStamp]);
+
+  // The drawer links here with ?c=<id> (open a chat), ?n=1 (new chat) or ?h=1 (history).
+  useEffect(() => {
+    if (!user || (!conversationParam && !newParam && !historyParam)) {
+      return;
+    }
+
+    const key = `${promptStamp ?? ''}|${conversationParam ?? ''}|${newParam ?? ''}|${historyParam ?? ''}`;
+
+    if (handledNavRef.current === key) {
+      return;
+    }
+
+    handledNavRef.current = key;
+    const userId = user.id;
+
+    if (historyParam) {
+      setHistoryOpen(true);
+      return;
+    }
+
+    if (conversationParam) {
+      const id = Number(conversationParam);
+
+      if (!Number.isFinite(id)) {
+        return;
+      }
+
+      activeIdRef.current = id;
+      setActiveId(id);
+
+      void (async () => {
+        try {
+          setMessages(await store.listMessages(userId, id, 200));
+        } catch (openError) {
+          console.warn('Could not open that chat.', openError);
+        }
+      })();
+      return;
+    }
+
+    void (async () => {
+      try {
+        const list = await store.listConversations(userId);
+        const empty = list.find((item) => item.messageCount === 0 && item.title === 'New chat');
+        const target = empty ?? (await store.createConversation(userId));
+
+        activeIdRef.current = target.id;
+        setActiveId(target.id);
+        setMessages([]);
+        setConversations(empty ? list : [target, ...list]);
+      } catch (createError) {
+        console.warn('Could not start a new chat.', createError);
+      }
+    })();
+  }, [conversationParam, historyParam, newParam, promptStamp, store, user]);
 
   useEffect(() => {
     const subscription = Keyboard.addListener('keyboardDidShow', () => {
@@ -198,7 +274,7 @@ export default function ChatScreen() {
       setError(
         sendError instanceof Error
           ? sendError.message
-          : 'Kuch galat ho gaya. Dobara try karo.'
+          : 'Something went wrong. Please try again.'
       );
     } finally {
       setIsSending(false);
@@ -228,7 +304,7 @@ export default function ChatScreen() {
       setMessages([]);
     } catch (createError) {
       setError(
-        createError instanceof Error ? createError.message : 'New chat nahi ban payi.'
+        createError instanceof Error ? createError.message : 'Could not start a new chat.'
       );
     }
   }
@@ -248,7 +324,7 @@ export default function ChatScreen() {
       setMessages(await store.listMessages(activeUser.id, conversation.id, 200));
     } catch (selectError) {
       setError(
-        selectError instanceof Error ? selectError.message : 'Chat load nahi ho payi.'
+        selectError instanceof Error ? selectError.message : 'Could not load that chat.'
       );
     }
   }
@@ -279,7 +355,7 @@ export default function ChatScreen() {
       setConversations(list);
     } catch (deleteError) {
       setError(
-        deleteError instanceof Error ? deleteError.message : 'Chat delete nahi ho payi.'
+        deleteError instanceof Error ? deleteError.message : 'Could not delete that chat.'
       );
     }
   }
@@ -287,7 +363,7 @@ export default function ChatScreen() {
   function confirmDeleteConversation(conversation: Conversation) {
     Alert.alert(
       'Delete chat?',
-      `“${conversation.title}” aur uske messages permanently delete ho jayenge.`,
+      `“${conversation.title}” and all its messages will be permanently deleted.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -301,62 +377,57 @@ export default function ChatScreen() {
     );
   }
 
+  const activeTitle = conversations.find((item) => item.id === activeId)?.title ?? 'New chat';
+  const canSend = !isSending && input.trim().length > 0;
+  const firstName = activeUser.name.split(/\s+/)[0] ?? activeUser.name;
+
   return (
     <KeyboardAvoidingView style={styles.root} behavior="padding">
-      <GlassBackdrop />
+      <View style={styles.flex}>
+        <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
+          <View style={styles.headerRow}>
+            <SidebarButton onPress={openSidebar} />
 
-      <BlurTargetView ref={blurTargetRef} style={styles.flex}>
-        <View style={[styles.header, { paddingTop: insets.top + spacing.md }]}>
-          <ScreenHeader
-            eyebrow="ORBIT AGENT"
-            title="Chat"
-            subtitle="Tasks aur reminders, ek hi jagah."
-            left={<SidebarButton onPress={openSidebar} style={styles.menuButton} />}
-            right={
-              <View style={styles.headerActions}>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Open chat history"
-                  onPress={openHistory}
-                  style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
-                >
-                  <Ionicons name="time-outline" size={19} color={colors.textMuted} />
-                  {conversations.length > 0 ? (
-                    <View style={styles.historyBadge}>
-                      <Text style={styles.historyBadgeText}>
-                        {conversations.length > 9 ? '9+' : conversations.length}
-                      </Text>
-                    </View>
-                  ) : null}
-                </Pressable>
+            <Text accessibilityRole="header" numberOfLines={1} style={styles.headerTitle}>
+              {activeTitle}
+            </Text>
 
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="AI settings"
-                  onPress={() => router.push('/settings')}
-                  style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
-                >
-                  <Ionicons name="settings-outline" size={19} color={colors.textMuted} />
-                </Pressable>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={creatorMode ? 'Disable creator mode' : 'Enable creator mode'}
-                  onPress={() => setCreatorMode((prev) => !prev)}
-                  style={({ pressed }) => [
-                    styles.iconButton,
-                    creatorMode && { backgroundColor: colors.accentSoft },
-                    pressed && styles.pressed,
-                  ]}
-                >
-                  <Ionicons
-                    name={creatorMode ? 'construct' : 'construct-outline'}
-                    size={19}
-                    color={creatorMode ? colors.accent : colors.textMuted}
-                  />
-                </Pressable>
-              </View>
-            }
-          />
+            <View style={styles.headerActions}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Open chat history"
+                onPress={openHistory}
+                style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
+              >
+                <Ionicons name="time-outline" size={21} color={colors.text} />
+                {conversations.length > 0 ? (
+                  <View style={styles.historyBadge}>
+                    <Text style={styles.historyBadgeText}>
+                      {conversations.length > 9 ? '9+' : conversations.length}
+                    </Text>
+                  </View>
+                ) : null}
+              </Pressable>
+
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={creatorMode ? 'Disable creator mode' : 'Enable creator mode'}
+                accessibilityState={{ selected: creatorMode }}
+                onPress={() => setCreatorMode((prev) => !prev)}
+                style={({ pressed }) => [
+                  styles.iconButton,
+                  creatorMode && { backgroundColor: colors.accentSoft },
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Ionicons
+                  name={creatorMode ? 'construct' : 'construct-outline'}
+                  size={20}
+                  color={creatorMode ? colors.accent : colors.text}
+                />
+              </Pressable>
+            </View>
+          </View>
 
           {aiReady === false ? (
             <Pressable
@@ -364,11 +435,11 @@ export default function ChatScreen() {
               onPress={() => router.push('/settings')}
               style={({ pressed }) => [styles.modeBanner, pressed && styles.pressed]}
             >
-              <Ionicons name="key-outline" size={15} color={colors.accent} />
+              <Ionicons name="key-outline" size={16} color={colors.accent} />
               <Text style={styles.modeBannerText}>
-                Local mode — basic commands. Full AI chat ke liye key add karo.
+                Local mode — basic commands only. Add an API key for full AI chat.
               </Text>
-              <Ionicons name="chevron-forward" size={14} color={colors.textFaint} />
+              <Ionicons name="chevron-forward" size={16} color={colors.textFaint} />
             </Pressable>
           ) : null}
           {creatorMode ? (
@@ -377,9 +448,9 @@ export default function ChatScreen() {
               onPress={() => setCreatorMode(false)}
               style={({ pressed }) => [styles.modeBanner, pressed && styles.pressed]}
             >
-              <Ionicons name="construct" size={15} color={colors.accent} />
+              <Ionicons name="construct" size={16} color={colors.accent} />
               <Text style={styles.modeBannerText}>Creator mode — cordis tools active</Text>
-              <Ionicons name="chevron-back" size={14} color={colors.textFaint} />
+              <Ionicons name="close" size={16} color={colors.textFaint} />
             </Pressable>
           ) : null}
         </View>
@@ -387,21 +458,20 @@ export default function ChatScreen() {
         <ScrollView
           ref={scrollRef}
           style={styles.flex}
-          contentContainerStyle={[
-            styles.messageContent,
-            { paddingBottom: spacing.lg + composerHeight },
-          ]}
+          contentContainerStyle={styles.messageContent}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
           onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
         >
           {messages.length === 0 ? (
             <View style={styles.empty}>
-              <Brand size={54} />
-              <Text style={styles.emptyTitle}>Kya karna hai?</Text>
+              <Brand size={48} />
+              <Text accessibilityRole="header" style={styles.emptyTitle}>
+                What’s on your plate, {firstName}?
+              </Text>
               <Text style={styles.emptyText}>
-                Natural language me likho — main task bana dunga, reminder laga dunga, aur
-                pending list bhi dikha dunga.
+                Write in plain language — I’ll create tasks, set reminders and show what’s pending.
+                English and Hinglish both work.
               </Text>
 
               <View style={styles.suggestions}>
@@ -415,7 +485,7 @@ export default function ChatScreen() {
                     style={({ pressed }) => [styles.suggestion, pressed && styles.pressed]}
                   >
                     <Text style={styles.suggestionText}>{suggestion}</Text>
-                    <Ionicons name="arrow-up-circle-outline" size={15} color={colors.accent} />
+                    <Ionicons name="arrow-up" size={16} color={colors.textMuted} />
                   </Pressable>
                 ))}
               </View>
@@ -425,74 +495,75 @@ export default function ChatScreen() {
           )}
 
           {isSending ? (
-            <View style={styles.typing}>
+            <View style={styles.typing} accessibilityLiveRegion="polite">
               <ActivityIndicator size="small" color={colors.accent} />
-              <Text style={styles.typingText}>Orbit soch raha hai…</Text>
+              <Text style={styles.typingText}>Orbit is thinking…</Text>
             </View>
           ) : null}
         </ScrollView>
-      </BlurTargetView>
+      </View>
 
-      <View
-        style={[styles.composerShell, composerHeight > 0 ? { marginTop: -composerHeight } : null]}
-        onLayout={(event) => {
-          const next = Math.round(event.nativeEvent.layout.height);
-          setComposerHeight((current) => (current === next ? current : next));
-        }}
-      >
-        <BlurView
-          blurTarget={blurTargetRef}
-          blurMethod="dimezisBlurViewSdk31Plus"
-          blurReductionFactor={6}
-          intensity={48}
-          tint="dark"
-          pointerEvents="none"
-          style={StyleSheet.absoluteFill}
-        />
-        <View pointerEvents="none" style={styles.glassTint} />
-        <View pointerEvents="none" style={styles.glassHighlight} />
+      <View style={[styles.composerWrap, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
+        {error ? (
+          <View style={styles.errorWrap}>
+            <FormError message={error} onDismiss={() => setError(null)} />
+          </View>
+        ) : null}
 
         <View style={styles.composer}>
-          {error ? (
-            <View style={styles.errorWrap}>
-              <FormError message={error} />
-            </View>
-          ) : null}
+          <TextInput
+            value={input}
+            onChangeText={setInput}
+            placeholder="Chat with Orbit"
+            accessibilityLabel="Message Orbit"
+            placeholderTextColor={colors.textFaint}
+            selectionColor={colors.accent}
+            style={styles.input}
+            multiline
+            maxLength={1500}
+            editable={!isSending}
+          />
 
-          <View style={styles.inputRow}>
-            <TextInput
-              value={input}
-              onChangeText={setInput}
-              placeholder="Ask Orbit…"
-              placeholderTextColor={colors.textFaint}
-              selectionColor={colors.accent}
-              style={styles.input}
-              multiline
-              maxLength={1500}
-              editable={!isSending}
-            />
+          <View style={styles.composerRow}>
+            {aiReady !== null ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={aiReady ? 'Cloud AI is on. Open settings' : 'Local mode. Open settings'}
+                onPress={() => router.push('/settings')}
+                style={({ pressed }) => [styles.modePill, pressed && styles.pressed]}
+              >
+                <Ionicons
+                  name={aiReady ? 'sparkles' : 'hardware-chip-outline'}
+                  size={15}
+                  color={aiReady ? colors.accent : colors.textMuted}
+                />
+                <Text style={styles.modePillText}>{aiReady ? 'Cloud AI' : 'Local mode'}</Text>
+              </Pressable>
+            ) : (
+              <View />
+            )}
 
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Send message"
-              disabled={isSending || input.trim().length === 0}
+              disabled={!canSend}
               onPress={() => {
                 void send();
               }}
               style={({ pressed }) => [
                 styles.sendButton,
-                (isSending || input.trim().length === 0) && styles.sendDisabled,
+                canSend ? styles.sendEnabled : styles.sendDisabled,
                 pressed && styles.pressed,
               ]}
             >
-              <Ionicons name="arrow-up" size={19} color={colors.white} />
+              <Ionicons name="arrow-up" size={22} color={canSend ? colors.white : colors.textFaint} />
             </Pressable>
           </View>
-
-          <Text style={styles.disclaimer}>
-            Chat provider ko jaati hai · tasks yahin device par rehte hain
-          </Text>
         </View>
+
+        <Text style={styles.disclaimer}>
+          Messages go to your AI provider · tasks stay on this device
+        </Text>
       </View>
 
       <ChatHistoryPanel
@@ -513,218 +584,204 @@ export default function ChatScreen() {
   );
 }
 
-const makeStyles = ({ colors, glass }: AppTheme) =>
+const makeStyles = ({ colors }: AppTheme) =>
   StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  flex: {
-    flex: 1,
-  },
-  header: {
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.sm,
-  },
-  headerActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    marginTop: 18,
-  },
-  menuButton: {
-    marginTop: 16,
-  },
-  iconButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: glass.fillStrong,
-    borderWidth: 1,
-    borderColor: glass.border,
-    borderTopColor: glass.borderBright,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  historyBadge: {
-    position: 'absolute',
-    top: -3,
-    right: -3,
-    minWidth: 16,
-    height: 16,
-    borderRadius: 8,
-    paddingHorizontal: 4,
-    backgroundColor: colors.accentStrong,
-    borderWidth: 1,
-    borderColor: colors.background,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  historyBadgeText: {
-    color: colors.white,
-    fontSize: 8,
-    fontWeight: '700',
-  },
-  modeBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    backgroundColor: 'rgba(109, 139, 255, 0.10)',
-    borderWidth: 1,
-    borderColor: 'rgba(109, 139, 255, 0.28)',
-    borderTopColor: glass.borderBright,
-    borderRadius: radius.md,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    marginTop: spacing.md,
-  },
-  modeBannerText: {
-    flex: 1,
-    color: colors.textMuted,
-    fontSize: 12,
-    lineHeight: 17,
-  },
-  messageContent: {
-    flexGrow: 1,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.lg,
-    gap: spacing.md,
-  },
-  empty: {
-    flex: 1,
-    justifyContent: 'center',
-    paddingVertical: spacing.xl,
-    gap: spacing.sm,
-  },
-  emptyTitle: {
-    color: colors.text,
-    fontSize: 24,
-    fontWeight: '700',
-    letterSpacing: -0.4,
-    marginTop: spacing.md,
-  },
-  emptyText: {
-    color: colors.textMuted,
-    fontSize: 14,
-    lineHeight: 21,
-    maxWidth: 340,
-  },
-  suggestions: {
-    gap: spacing.sm,
-    marginTop: spacing.md,
-  },
-  suggestion: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.md,
-    backgroundColor: glass.fill,
-    borderWidth: 1,
-    borderColor: glass.border,
-    borderTopColor: glass.borderBright,
-    borderRadius: radius.md,
-    paddingVertical: spacing.sm + 3,
-    paddingHorizontal: spacing.md,
-  },
-  suggestionText: {
-    flex: 1,
-    color: colors.text,
-    fontSize: 13,
-    lineHeight: 18,
-  },
-  typing: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    paddingLeft: 2,
-  },
-  typingText: {
-    color: colors.textMuted,
-    fontSize: 13,
-    fontStyle: 'italic',
-  },
-  composerShell: {
-    overflow: 'hidden',
-    borderTopLeftRadius: radius.lg,
-    borderTopRightRadius: radius.lg,
-    borderTopWidth: 1,
-    borderTopColor: glass.borderBright,
-    backgroundColor: 'rgba(7, 11, 20, 0.48)',
-    shadowColor: '#000000',
-    shadowOpacity: 0.35,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: -8 },
-    elevation: 16,
-  },
-  glassTint: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    bottom: 0,
-    left: 0,
-    backgroundColor: 'rgba(7, 11, 20, 0.32)',
-  },
-  glassHighlight: {
-    position: 'absolute',
-    top: 0,
-    left: '10%',
-    right: '10%',
-    height: 1,
-    backgroundColor: 'rgba(255, 255, 255, 0.18)',
-  },
-  composer: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm + 2,
-    paddingBottom: spacing.sm,
-    gap: spacing.xs,
-  },
-  errorWrap: {
-    marginBottom: spacing.xs,
-  },
-  inputRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: spacing.sm,
-  },
-  input: {
-    flex: 1,
-    color: colors.text,
-    fontSize: 15,
-    lineHeight: 21,
-    maxHeight: 120,
-    minHeight: 48,
-    backgroundColor: 'rgba(255, 255, 255, 0.06)',
-    borderWidth: 1,
-    borderColor: glass.border,
-    borderTopColor: glass.borderBright,
-    borderRadius: radius.lg,
-    paddingHorizontal: spacing.md,
-    paddingTop: 13,
-    paddingBottom: 13,
-  },
-  sendButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: colors.accentStrong,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: colors.accent,
-    shadowOpacity: 0.45,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 6,
-  },
-  sendDisabled: {
-    opacity: 0.4,
-  },
-  disclaimer: {
-    color: colors.textFaint,
-    fontSize: 10,
-    textAlign: 'center',
-  },
-  pressed: {
-    opacity: 0.8,
-  },
+    root: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    flex: {
+      flex: 1,
+    },
+    header: {
+      paddingHorizontal: spacing.md,
+      paddingBottom: spacing.sm,
+    },
+    headerRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+    },
+    headerTitle: {
+      flex: 1,
+      color: colors.text,
+      fontSize: 17,
+      fontWeight: '700',
+      textAlign: 'center',
+    },
+    headerActions: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.xs,
+    },
+    iconButton: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      backgroundColor: colors.surface,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    historyBadge: {
+      position: 'absolute',
+      top: 2,
+      right: 2,
+      minWidth: 17,
+      height: 17,
+      borderRadius: 9,
+      paddingHorizontal: 4,
+      backgroundColor: colors.accent,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    historyBadgeText: {
+      color: colors.onInverse,
+      fontSize: 10,
+      fontWeight: '700',
+    },
+    modeBanner: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      backgroundColor: colors.surface,
+      borderRadius: radius.md,
+      paddingVertical: spacing.sm + 2,
+      paddingHorizontal: spacing.md,
+      marginTop: spacing.sm,
+    },
+    modeBannerText: {
+      flex: 1,
+      color: colors.textMuted,
+      fontSize: 13,
+      lineHeight: 18,
+    },
+    messageContent: {
+      flexGrow: 1,
+      paddingHorizontal: spacing.lg,
+      paddingTop: spacing.md,
+      paddingBottom: spacing.lg,
+      gap: spacing.lg,
+    },
+    empty: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: spacing.xl,
+      gap: spacing.sm,
+    },
+    emptyTitle: {
+      color: colors.text,
+      fontFamily: fonts.serif,
+      fontSize: 28,
+      fontWeight: '600',
+      letterSpacing: -0.3,
+      textAlign: 'center',
+      marginTop: spacing.md,
+    },
+    emptyText: {
+      color: colors.textMuted,
+      fontSize: 15,
+      lineHeight: 22,
+      textAlign: 'center',
+      maxWidth: 330,
+    },
+    suggestions: {
+      alignSelf: 'stretch',
+      gap: spacing.sm,
+      marginTop: spacing.lg,
+    },
+    suggestion: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: spacing.md,
+      backgroundColor: colors.surface,
+      borderRadius: radius.lg,
+      minHeight: 52,
+      paddingVertical: spacing.sm + 2,
+      paddingHorizontal: spacing.md,
+    },
+    suggestionText: {
+      flex: 1,
+      color: colors.text,
+      fontSize: 15,
+      lineHeight: 21,
+    },
+    typing: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+    },
+    typingText: {
+      color: colors.textMuted,
+      fontSize: 14,
+    },
+    composerWrap: {
+      paddingHorizontal: spacing.md,
+      paddingTop: spacing.xs,
+      gap: spacing.xs,
+    },
+    errorWrap: {
+      marginBottom: spacing.xs,
+    },
+    composer: {
+      backgroundColor: colors.surface,
+      borderRadius: radius.xl,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
+      paddingHorizontal: spacing.md,
+      paddingTop: spacing.xs,
+      paddingBottom: spacing.sm,
+    },
+    input: {
+      color: colors.text,
+      fontSize: 17,
+      lineHeight: 24,
+      maxHeight: 140,
+      minHeight: 48,
+      paddingTop: spacing.sm,
+      paddingBottom: spacing.sm,
+      paddingHorizontal: spacing.xs,
+    },
+    composerRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+    },
+    modePill: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.xs,
+      height: 44,
+      paddingHorizontal: spacing.md,
+      borderRadius: radius.pill,
+      backgroundColor: colors.surfaceAlt,
+    },
+    modePillText: {
+      color: colors.text,
+      fontSize: 14,
+      fontWeight: '600',
+    },
+    sendButton: {
+      width: 48,
+      height: 48,
+      borderRadius: 24,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    sendEnabled: {
+      backgroundColor: colors.accent,
+    },
+    sendDisabled: {
+      backgroundColor: colors.surfaceAlt,
+    },
+    disclaimer: {
+      color: colors.textFaint,
+      fontSize: 12,
+      textAlign: 'center',
+      paddingBottom: 2,
+    },
+    pressed: {
+      opacity: 0.8,
+    },
   });

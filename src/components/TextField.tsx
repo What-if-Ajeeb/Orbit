@@ -59,34 +59,29 @@ export function TextField({ label, hint, secureTextEntry, onFocus, onBlur, ...pr
   );
 }
 
-const makeStyles = ({ colors, glass }: AppTheme) =>
+const makeStyles = ({ colors }: AppTheme) =>
   StyleSheet.create({
   field: {
     gap: spacing.xs + 2,
   },
   label: {
     color: colors.textMuted,
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '600',
-    letterSpacing: 0.4,
-    textTransform: 'uppercase',
   },
   inputWrap: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    backgroundColor: glass.fill,
+    backgroundColor: colors.surfaceAlt,
     borderWidth: 1,
-    borderColor: glass.border,
-    borderTopColor: glass.borderBright,
+    borderColor: 'transparent',
     borderRadius: radius.md,
     paddingHorizontal: spacing.md,
     minHeight: 54,
   },
   inputWrapFocused: {
     borderColor: colors.borderFocus,
-    borderTopColor: colors.borderFocus,
-    backgroundColor: glass.fillStrong,
   },
   input: {
     flex: 1,
@@ -95,8 +90,8 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
     paddingVertical: spacing.sm + 4,
   },
   toggle: {
-    color: colors.accent,
-    fontSize: 13,
+    color: colors.blue,
+    fontSize: 14,
     fontWeight: '600',
   },
   hint: {

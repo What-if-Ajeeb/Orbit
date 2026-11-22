@@ -2,7 +2,7 @@ import { useStyles, type AppTheme } from '@/context/theme';
 import type { ReactNode } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { spacing } from '@/theme';
+import { fonts, spacing } from '@/theme';
 
 
 type ScreenHeaderProps = {
@@ -13,14 +13,15 @@ type ScreenHeaderProps = {
   right?: ReactNode;
 };
 
-export function ScreenHeader({ eyebrow, title, subtitle, left, right }: ScreenHeaderProps) {
+export function ScreenHeader({ title, subtitle, left, right }: ScreenHeaderProps) {
   const styles = useStyles(makeStyles);
   return (
     <View style={styles.row}>
       {left ? <View style={styles.left}>{left}</View> : null}
       <View style={styles.textBlock}>
-        {eyebrow ? <Text style={styles.eyebrow}>{eyebrow}</Text> : null}
-        <Text style={styles.title}>{title}</Text>
+        <Text accessibilityRole="header" style={styles.title}>
+          {title}
+        </Text>
         {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
       </View>
       {right ? <View>{right}</View> : null}
@@ -32,13 +33,11 @@ const makeStyles = ({ colors }: AppTheme) =>
   StyleSheet.create({
   row: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     justifyContent: 'space-between',
     gap: spacing.md,
   },
-  left: {
-    paddingTop: 2,
-  },
+  left: {},
   textBlock: {
     flex: 1,
   },
@@ -51,9 +50,10 @@ const makeStyles = ({ colors }: AppTheme) =>
   },
   title: {
     color: colors.text,
+    fontFamily: fonts.serif,
     fontSize: 30,
-    fontWeight: '700',
-    letterSpacing: -0.6,
+    fontWeight: '600',
+    letterSpacing: -0.3,
   },
   subtitle: {
     color: colors.textMuted,

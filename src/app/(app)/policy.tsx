@@ -17,15 +17,30 @@ import { ScreenHeader } from '@/components/ScreenHeader';
 import { SidebarButton } from '@/components/SidebarButton';
 import { useSidebar } from '@/context/sidebar';
 import { policyEngine, type PolicyDecision, type ToolPolicyRule } from '@/lib/policy';
-import { colors, radius, spacing } from '@/theme';
+import { radius, spacing } from '@/theme';
+import { useAppTheme, useStyles, type AppTheme } from '@/context/theme';
 
-const DECISION_META: Record<PolicyDecision, { label: string; color: string }> = {
-  allow: { label: 'ALLOW', color: colors.success },
-  deny: { label: 'DENY', color: colors.danger },
-  ask: { label: 'ASK', color: colors.accent },
+type Tone = 'success' | 'danger' | 'accent';
+
+const DECISION_META: Record<PolicyDecision, { label: string; tone: Tone }> = {
+  allow: { label: 'ALLOW', tone: 'success' },
+  deny: { label: 'DENY', tone: 'danger' },
+  ask: { label: 'ASK', tone: 'accent' },
 };
 
 export default function PolicyScreen() {
+  const { colors } = useAppTheme();
+  const styles = useStyles(makeStyles);
+  const toneColor: Record<Tone, string> = {
+    success: colors.success,
+    danger: colors.danger,
+    accent: colors.accent,
+  };
+  const toneSoft: Record<Tone, string> = {
+    success: colors.successSoft,
+    danger: colors.dangerSoft,
+    accent: colors.accentSoft,
+  };
   const insets = useSafeAreaInsets();
   const { open: openSidebar } = useSidebar();
   const [rules, setRules] = useState<ToolPolicyRule[]>([]);
@@ -141,31 +156,19 @@ export default function PolicyScreen() {
                       <Text style={styles.ruleDesc}>{rule.description}</Text>
                     </View>
                     <View style={styles.ruleRight}>
-                      <View
+                    <View
                       style={[
                         styles.decisionChip,
                         {
-                          backgroundColor:
-                            DECISION_META[rule.decision].color === colors.success
-                              ? colors.successSoft
-                              : DECISION_META[rule.decision].color ===
-                                colors.danger
-                              ? colors.dangerSoft
-                              : colors.accentSoft,
-                          borderColor:
-                            DECISION_META[rule.decision].color === colors.success
-                              ? 'rgba(62, 224, 161, 0.35)'
-                              : DECISION_META[rule.decision].color ===
-                                colors.danger
-                              ? 'rgba(255, 107, 122, 0.35)'
-                              : 'rgba(109, 139, 255, 0.35)',
+                          backgroundColor: toneSoft[DECISION_META[rule.decision].tone],
+                          borderColor: toneColor[DECISION_META[rule.decision].tone],
                         },
                       ]}
                     >
                       <Text
                         style={[
                           styles.decisionText,
-                          { color: DECISION_META[rule.decision].color },
+                          { color: toneColor[DECISION_META[rule.decision].tone] },
                         ]}
                       >
                         {DECISION_META[rule.decision].label}
@@ -177,9 +180,9 @@ export default function PolicyScreen() {
                         onValueChange={(enabled) => toggleRule(rule.id, enabled)}
                         trackColor={{
                           false: colors.border,
-                          true: 'rgba(62, 224, 161, 0.4)',
+                          true: colors.blue,
                         }}
-                        thumbColor={rule.enabled ? colors.success : colors.textMuted}
+                        thumbColor={colors.white}
                         ios_backgroundColor={colors.border}
                       />
                     </View>
@@ -199,7 +202,8 @@ export default function PolicyScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = ({ colors }: AppTheme) =>
+  StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: colors.background,
@@ -223,7 +227,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     backgroundColor: colors.accentSoft,
     borderWidth: 1,
-    borderColor: 'rgba(109, 139, 255, 0.3)',
+    borderColor: colors.border,
     borderRadius: radius.md,
     paddingVertical: spacing.sm + 2,
     paddingHorizontal: spacing.md,
@@ -243,7 +247,7 @@ const styles = StyleSheet.create({
     minHeight: 44,
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: 'rgba(109, 139, 255, 0.3)',
+    borderColor: colors.border,
     backgroundColor: colors.accentSoft,
     paddingHorizontal: spacing.md,
     marginTop: spacing.md,

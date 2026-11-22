@@ -111,11 +111,11 @@ export function McpServersCard({ onNotice, onError }: McpServersCardProps) {
           const failed = result.statuses.find((status) => !status.ok);
 
           if (failed) {
-            onError(`${failed.serverName}: ${failed.error ?? 'connect nahi hua.'}`);
+            onError(`${failed.serverName}: ${failed.error ?? 'could not connect.'}`);
           } else if (result.toolCount > 0) {
             onNotice(`MCP sync complete · ${toolLabel(result.toolCount)} available.`);
           } else {
-            onNotice('MCP sync complete — koi tool nahi mila.');
+            onNotice('MCP sync complete — no tools found.');
           }
         }
 
@@ -123,7 +123,7 @@ export function McpServersCard({ onNotice, onError }: McpServersCardProps) {
       } catch (syncError) {
         if (announce) {
           onError(
-            syncError instanceof Error ? syncError.message : 'MCP sync fail ho gaya.'
+            syncError instanceof Error ? syncError.message : 'MCP sync failed.'
           );
         }
 
@@ -193,11 +193,11 @@ export function McpServersCard({ onNotice, onError }: McpServersCardProps) {
         if (status?.ok) {
           onNotice(`${config.name} connected · ${toolLabel(status.toolCount)} available.`);
         } else if (status) {
-          onError(`${config.name}: ${status.error ?? 'connect nahi hua.'}`);
+          onError(`${config.name}: ${status.error ?? 'could not connect.'}`);
         }
       }
     } catch {
-      setFormError('Server save nahi hua. Dobara try karo.');
+      setFormError('Could not save the server. Please try again.');
     } finally {
       setIsSaving(false);
     }
@@ -214,10 +214,10 @@ export function McpServersCard({ onNotice, onError }: McpServersCardProps) {
         setDraft(null);
       }
 
-      onNotice(`${server.name} remove ho gaya.`);
+      onNotice(`${server.name} removed.`);
       await syncServers(saved, false);
     } catch {
-      onError('Server remove nahi ho paya.');
+      onError('Could not remove the server.');
     }
   }
 
@@ -259,14 +259,14 @@ export function McpServersCard({ onNotice, onError }: McpServersCardProps) {
         if (status?.ok) {
           onNotice(`${server.name} enabled · ${toolLabel(status.toolCount)} available.`);
         } else if (status) {
-          onError(`${server.name}: ${status.error ?? 'connect nahi hua.'}`);
+          onError(`${server.name}: ${status.error ?? 'could not connect.'}`);
         }
       } else if (!enabled) {
         onNotice(`${server.name} disabled.`);
       }
     } catch {
       setServers(previous);
-      onError('Server update nahi hua.');
+      onError('Could not update the server.');
     }
   }
 
@@ -276,8 +276,7 @@ export function McpServersCard({ onNotice, onError }: McpServersCardProps) {
         <View style={styles.headerText}>
           <Text style={styles.title}>MCP servers</Text>
           <Text style={styles.caption}>
-            External tools connect karo — mail, files, PDFs. Agent unhe zarurat par
-            use karega.
+            Connect external tools — mail, files, PDFs. The agent uses them when needed.
           </Text>
         </View>
 
@@ -301,7 +300,7 @@ export function McpServersCard({ onNotice, onError }: McpServersCardProps) {
             color={colors.textFaint}
           />
           <Text style={styles.emptyText}>
-            Koi server add nahi kiya. Endpoint URL aur optional bearer token chahiye.
+            No servers added yet. You need an endpoint URL and an optional bearer token.
           </Text>
         </View>
       ) : (
@@ -357,8 +356,8 @@ export function McpServersCard({ onNotice, onError }: McpServersCardProps) {
                   onValueChange={(value) => {
                     void toggleServer(server, value);
                   }}
-                  trackColor={{ false: colors.border, true: 'rgba(62, 224, 161, 0.4)' }}
-                  thumbColor={server.enabled ? colors.success : colors.textMuted}
+                  trackColor={{ false: colors.border, true: colors.blue }}
+                  thumbColor={colors.white}
                   ios_backgroundColor={colors.border}
                 />
               </View>
@@ -417,8 +416,8 @@ export function McpServersCard({ onNotice, onError }: McpServersCardProps) {
               accessibilityLabel="Server enabled"
               value={draft.enabled}
               onValueChange={(value) => updateDraft({ enabled: value })}
-              trackColor={{ false: colors.border, true: 'rgba(62, 224, 161, 0.4)' }}
-              thumbColor={draft.enabled ? colors.success : colors.textMuted}
+              trackColor={{ false: colors.border, true: colors.blue }}
+              thumbColor={colors.white}
               ios_backgroundColor={colors.border}
             />
           </View>
@@ -617,7 +616,7 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
     fontWeight: '500',
   },
   editor: {
-    borderColor: 'rgba(109, 139, 255, 0.35)',
+    borderColor: colors.border,
     borderRadius: radius.md,
     padding: spacing.md,
     gap: spacing.md,
@@ -680,7 +679,7 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
     borderWidth: 1,
     borderStyle: 'dashed',
     borderColor: colors.borderFocus,
-    backgroundColor: 'rgba(109, 139, 255, 0.14)',
+    backgroundColor: colors.accentSoft,
     borderTopColor: glass.borderBright,
   },
   addText: {

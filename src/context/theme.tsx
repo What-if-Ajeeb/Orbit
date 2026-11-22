@@ -1,5 +1,5 @@
 import * as SecureStore from 'expo-secure-store';
-import { Platform } from 'react-native';
+import { Platform, useColorScheme } from 'react-native';
 import {
   createContext,
   useCallback,
@@ -22,10 +22,14 @@ import {
   type AppShadow,
 } from '@/theme';
 
-export type ThemeMode = 'dark' | 'light';
+/** 'system' follows the phone's light/dark setting. */
+export type ThemeMode = 'system' | 'dark' | 'light';
 
 type ThemeContextValue = {
+  /** The saved preference (may be 'system'). */
   mode: ThemeMode;
+  /** What is actually on screen right now. */
+  resolvedMode: 'dark' | 'light';
   isLight: boolean;
   setMode: (mode: ThemeMode) => void;
   toggleMode: () => void;
@@ -47,11 +51,12 @@ function getWebStorage(): WebStorage | null {
 }
 
 function isThemeMode(value: string | null): value is ThemeMode {
-  return value === 'dark' || value === 'light';
+  return value === 'system' || value === 'dark' || value === 'light';
 }
 
 export function ThemeProvider({ children }: PropsWithChildren) {
-  const [mode, setModeState] = useState<ThemeMode>('dark');
+  const systemScheme = useColorScheme();
+  const [mode, setModeState] = useState<ThemeMode>('system');
 
   useEffect(() => {
     let active = true;
@@ -93,10 +98,13 @@ export function ThemeProvider({ children }: PropsWithChildren) {
   }, []);
 
   const value = useMemo<ThemeContextValue>(() => {
-    const isLight = mode === 'light';
+    const resolvedMode: 'dark' | 'light' =
+      mode === 'system' ? (systemScheme === 'light' ? 'light' : 'dark') : mode;
+    const isLight = resolvedMode === 'light';
 
     return {
       mode,
+      resolvedMode,
       isLight,
       setMode,
       toggleMode: () => setMode(isLight ? 'dark' : 'light'),
@@ -104,7 +112,7 @@ export function ThemeProvider({ children }: PropsWithChildren) {
       glass: isLight ? lightGlass : darkGlass,
       glassShadow: isLight ? lightGlassShadow : darkGlassShadow,
     };
-  }, [mode, setMode]);
+  }, [mode, setMode, systemScheme]);
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }

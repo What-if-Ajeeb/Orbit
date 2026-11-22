@@ -76,7 +76,7 @@ export function buildHarnessSnapshot(input: HarnessBuildInput): HarnessSnapshot 
       detail: active
         ? aiReady
           ? `${PROVIDER_PRESETS[ai.provider].label} · ${ai.model}`
-          : 'API key add karo Settings me'
+          : 'Add an API key in Settings'
         : undefined,
     });
   }

@@ -1,6 +1,5 @@
 import { useAppTheme, useStyles, type AppTheme } from '@/context/theme';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { BlurView } from 'expo-blur';
 import { useEffect, useState } from 'react';
 import {
   Animated,
@@ -146,14 +145,6 @@ export function ChatHistoryPanel({
       accessibilityViewIsModal={visible}
     >
       <Animated.View style={[styles.backdrop, { opacity: backdropOpacity }]}>
-        <BlurView
-          intensity={22}
-          tint={glass.tint}
-          blurMethod={glass.blurMethod}
-          blurReductionFactor={glass.blurReductionFactor}
-          pointerEvents="none"
-          style={StyleSheet.absoluteFill}
-        />
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Close chat history"
@@ -173,14 +164,6 @@ export function ChatHistoryPanel({
           },
         ]}
       >
-        <BlurView
-          intensity={82}
-          tint={glass.tint}
-          blurMethod={glass.blurMethod}
-          blurReductionFactor={glass.blurReductionFactor}
-          pointerEvents="none"
-          style={StyleSheet.absoluteFill}
-        />
         <View pointerEvents="none" style={styles.glow} />
 
         <View style={styles.header}>
@@ -233,9 +216,9 @@ export function ChatHistoryPanel({
           ListEmptyComponent={
             <View style={styles.empty}>
               <Ionicons name="chatbubbles-outline" size={32} color={colors.textFaint} />
-              <Text style={styles.emptyTitle}>Koi chat nahi hai</Text>
+              <Text style={styles.emptyTitle}>No chats yet</Text>
               <Text style={styles.emptyText}>
-                New chat se shuru karo — conversation yahin save hogi.
+                Start a new chat — your conversations are saved here.
               </Text>
             </View>
           }
@@ -277,7 +260,7 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
     top: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(9, 15, 27, 0.62)',
+    backgroundColor: glass.fillStrong,
     borderTopLeftRadius: radius.xl,
     borderBottomLeftRadius: radius.xl,
     borderLeftWidth: 1,
@@ -377,7 +360,7 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
   },
   rowActive: {
     backgroundColor: colors.accentSoft,
-    borderColor: 'rgba(109, 139, 255, 0.28)',
+    borderColor: colors.border,
   },
   rowIcon: {
     width: 34,
@@ -388,7 +371,7 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
     justifyContent: 'center',
   },
   rowIconActive: {
-    backgroundColor: 'rgba(109, 139, 255, 0.18)',
+    backgroundColor: colors.accentSoft,
   },
   rowText: {
     flex: 1,

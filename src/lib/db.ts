@@ -7,7 +7,7 @@ export const DATABASE_NAME = 'orbit.db';
  * tasks and the agent conversation) lives in SQLite on the device.
  */
 export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
-  const DATABASE_VERSION = 8;
+  const DATABASE_VERSION = 9;
 
   const result = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
   let currentDbVersion = result?.user_version ?? 0;
@@ -455,6 +455,45 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
     `);
 
     currentDbVersion = 8;
+  }
+
+  if (currentDbVersion === 8) {
+    // Workflows: saved, reusable instructions the agent can run on demand.
+    await db.execAsync(`
+      CREATE TABLE IF NOT EXISTS workflows (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        instruction TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_workflows_user_updated
+        ON workflows (user_id, updated_at DESC);
+
+      CREATE TABLE IF NOT EXISTS workflow_runs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        workflow_id INTEGER NOT NULL,
+        conversation_id INTEGER,
+        status TEXT NOT NULL DEFAULT 'running',
+        started_at INTEGER NOT NULL,
+        finished_at INTEGER,
+        summary TEXT NOT NULL DEFAULT '',
+        traces TEXT NOT NULL DEFAULT '[]',
+        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+        FOREIGN KEY (workflow_id) REFERENCES workflows (id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_workflow_runs_user_started
+        ON workflow_runs (user_id, started_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_workflow_runs_workflow
+        ON workflow_runs (workflow_id, id DESC);
+    `);
+
+    currentDbVersion = 9;
   }
 
   await db.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);
