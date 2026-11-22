@@ -1,5 +1,5 @@
 import { aiProviderRegistry, type AiProviderAdapter } from './provider-registry';
-import { PROVIDER_PRESETS, type AiSettings } from './settings';
+import { isAiConfigured, PROVIDER_PRESETS, type AiSettings } from './settings';
 import type { LlmMessage, LlmToolDefinition, LlmToolCall, LlmTurn } from './types';
 
 const REQUEST_TIMEOUT_MS = 45_000;
@@ -159,14 +159,15 @@ async function openAiCompletion(
     body.tool_choice = 'auto';
   }
 
-  const data = await postJson(
-    buildUrl(settings.baseUrl, '/chat/completions'),
-    {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${settings.apiKey}`,
-    },
-    body
-  );
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  const apiKey = settings.apiKey.trim();
+
+  // Never leak a saved cloud key to a local endpoint.
+  if (apiKey && settings.mode !== 'local') {
+    headers.Authorization = `Bearer ${apiKey}`;
+  }
+
+  const data = await postJson(buildUrl(settings.baseUrl, '/chat/completions'), headers, body);
 
   const choices = Array.isArray(data.choices) ? data.choices : [];
   const choice = asRecord(choices[0]);
@@ -436,8 +437,8 @@ export async function requestCompletion(
   messages: LlmMessage[],
   tools: LlmToolDefinition[]
 ): Promise<LlmTurn> {
-  if (!settings.baseUrl.trim() || !settings.model.trim() || !settings.apiKey.trim()) {
-    throw new AiError('AI is not configured yet. Add your provider and key in Settings → AI.');
+  if (!isAiConfigured(settings)) {
+    throw new AiError('AI is not configured yet. Check your provider details in Settings → AI.');
   }
 
   const adapterId = PROVIDER_PRESETS[settings.provider]?.adapterId ?? 'openai-compatible';

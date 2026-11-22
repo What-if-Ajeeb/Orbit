@@ -28,12 +28,15 @@ import { useSession } from '@/context/auth';
 import { useSidebar } from '@/context/sidebar';
 import { pingAi } from '@/lib/ai/providers';
 import {
+  applyConnectionMode,
   applyProviderPreset,
+  CLOUD_PROVIDER_ORDER,
   isAiConfigured,
   loadAiSettings,
-  PROVIDER_ORDER,
+  LOCAL_PROVIDER_ORDER,
   PROVIDER_PRESETS,
   saveAiSettings,
+  type AiConnectionMode,
   type AiProvider,
   type AiSettings,
 } from '@/lib/ai/settings';
@@ -127,6 +130,8 @@ export default function SettingsScreen() {
   const currentSettings = settings;
   const preset = PROVIDER_PRESETS[currentSettings.provider];
   const aiReady = isAiConfigured(settings);
+  const isLocalAi = currentSettings.mode === 'local';
+  const providerOrder = isLocalAi ? LOCAL_PROVIDER_ORDER : CLOUD_PROVIDER_ORDER;
 
   function update(patch: Partial<AiSettings>) {
     setNotice(null);
@@ -140,6 +145,12 @@ export default function SettingsScreen() {
     setSettings((current) => (current ? applyProviderPreset(current, provider) : current));
   }
 
+  function selectMode(mode: AiConnectionMode) {
+    setNotice(null);
+    setError(null);
+    setSettings((current) => (current ? applyConnectionMode(current, mode) : current));
+  }
+
   async function persist(showNotice: boolean): Promise<AiSettings | null> {
     const baseUrl = currentSettings.baseUrl.trim();
     const model = currentSettings.model.trim();
@@ -147,6 +158,11 @@ export default function SettingsScreen() {
 
     if (!baseUrl || !model) {
       setError('Base URL and model are both required.');
+      return null;
+    }
+
+    if (currentSettings.mode === 'local' && !/^https?:\/\//i.test(baseUrl)) {
+      setError('Local server URL must start with http:// or https://.');
       return null;
     }
 
@@ -158,7 +174,11 @@ export default function SettingsScreen() {
       setSettings(saved);
 
       if (showNotice) {
-        setNotice('AI settings saved. The agent now runs in full AI mode.');
+        setNotice(
+          saved.mode === 'local'
+            ? 'Local AI server saved. The agent will use it for chat.'
+            : 'AI settings saved. The agent now runs in full AI mode.'
+        );
       }
 
       return saved;
@@ -182,7 +202,11 @@ export default function SettingsScreen() {
     }
 
     if (!isAiConfigured(saved)) {
-      setError('Enter an API key to run the test.');
+      setError(
+        saved.mode === 'local'
+          ? 'Add a valid local server URL and model to run the test.'
+          : 'Add an API key to run the test.'
+      );
       return;
     }
 
@@ -191,7 +215,7 @@ export default function SettingsScreen() {
 
     try {
       const reply = await pingAi(saved);
-      setNotice(`Connection successful ✅ Provider ne reply kiya: “${reply.slice(0, 40)}”`);
+      setNotice(`Connection successful. Provider replied: "${reply.slice(0, 40)}"`);
     } catch (testError) {
       setError(
         testError instanceof Error
@@ -362,9 +386,11 @@ export default function SettingsScreen() {
         <GlassView style={styles.card}>
           <View style={styles.cardTitleRow}>
             <View style={styles.cardTitleText}>
-              <Text style={styles.cardTitle}>Cloud AI</Text>
+              <Text style={styles.cardTitle}>AI brain</Text>
               <Text style={styles.cardCaption}>
-                Bring your own API key. Orbit has no shared server.
+                {isLocalAi
+                  ? 'Connect to an OpenAI-compatible server on your network. No API key needed.'
+                  : 'Bring your own API key. Orbit has no shared server.'}
               </Text>
             </View>
             <View style={[styles.badge, aiReady ? styles.badgeOn : styles.badgeOff]}>
@@ -376,8 +402,34 @@ export default function SettingsScreen() {
             </View>
           </View>
 
+          <View style={styles.modeRow} accessibilityRole="radiogroup">
+            {(
+              [
+                { id: 'cloud', label: 'Cloud' },
+                { id: 'local', label: 'Local server' },
+              ] as const
+            ).map((option) => {
+              const active = currentSettings.mode === option.id;
+
+              return (
+                <Pressable
+                  key={option.id}
+                  accessibilityRole="radio"
+                  accessibilityLabel={`${option.label} AI connection`}
+                  accessibilityState={{ selected: active }}
+                  onPress={() => selectMode(option.id)}
+                  style={[styles.modeChip, active && styles.modeChipActive]}
+                >
+                  <Text style={[styles.providerText, active && styles.providerTextActive]}>
+                    {option.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+
           <View style={styles.providerRow}>
-            {PROVIDER_ORDER.map((provider) => {
+            {providerOrder.map((provider) => {
               const active = settings.provider === provider;
 
               return (
@@ -406,20 +458,32 @@ export default function SettingsScreen() {
               }}
               style={styles.docsLink}
             >
-              <Text style={styles.docsLinkText}>Get an API key</Text>
+              <Text style={styles.docsLinkText}>
+                {isLocalAi ? 'Ollama setup' : 'Get an API key'}
+              </Text>
               <Ionicons name="open-outline" size={13} color={colors.accent} />
             </Pressable>
           ) : null}
 
+          {isLocalAi ? (
+            <Text style={styles.localNote}>
+              Phone and computer must be on the same Wi-Fi. Use the LAN IP of the computer, not
+              localhost. For Ollama, bind the server to 0.0.0.0:11434.
+            </Text>
+          ) : null}
+
           <View style={styles.fields}>
             <TextField
-              label="Base URL"
+              label={isLocalAi ? 'Server URL' : 'Base URL'}
               value={settings.baseUrl}
               onChangeText={(value) => update({ baseUrl: value })}
-              placeholder="https://api.openai.com/v1"
+              placeholder={
+                isLocalAi ? 'http://192.168.1.20:11434/v1' : 'https://api.openai.com/v1'
+              }
               autoCapitalize="none"
               autoCorrect={false}
               keyboardType="url"
+              hint={isLocalAi ? 'Use http:// or https:// with the host IP and port.' : undefined}
             />
 
             <TextField
@@ -429,18 +493,21 @@ export default function SettingsScreen() {
               placeholder={preset.model || 'model-name'}
               autoCapitalize="none"
               autoCorrect={false}
+              hint={isLocalAi ? 'Example: llama3.2, qwen2.5, mistral' : undefined}
             />
 
-            <TextField
-              label="API key"
-              value={settings.apiKey}
-              onChangeText={(value) => update({ apiKey: value })}
-              placeholder={preset.keyHint}
-              autoCapitalize="none"
-              autoCorrect={false}
-              secureTextEntry
-              hint="Key device ke encrypted SecureStore me save hoti hai."
-            />
+            {!isLocalAi ? (
+              <TextField
+                label="API key"
+                value={settings.apiKey}
+                onChangeText={(value) => update({ apiKey: value })}
+                placeholder={preset.keyHint}
+                autoCapitalize="none"
+                autoCorrect={false}
+                secureTextEntry
+                hint="Key device ke encrypted SecureStore me save hoti hai."
+              />
+            ) : null}
           </View>
 
           <View style={styles.buttonRow}>
@@ -465,7 +532,7 @@ export default function SettingsScreen() {
             />
           </View>
 
-          {settings.apiKey ? (
+          {!isLocalAi && settings.apiKey ? (
             <Pressable
               accessibilityRole="button"
               onPress={confirmRemoveKey}
@@ -477,7 +544,9 @@ export default function SettingsScreen() {
           ) : null}
 
           <Text style={styles.securityNote}>
-            Chat messages go to your AI provider. Tasks, your account and your key stay on this phone.
+            {isLocalAi
+              ? 'Chat messages go to your local server. Nothing is sent to a cloud provider.'
+              : 'Chat messages go to your AI provider. Tasks, your account and your key stay on this phone.'}
           </Text>
         </GlassView>
 
@@ -694,6 +763,25 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
     fontWeight: '700',
     letterSpacing: 0.9,
   },
+  modeRow: {
+    flexDirection: 'row',
+    gap: spacing.xs,
+  },
+  modeChip: {
+    flex: 1,
+    minHeight: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: glass.border,
+    borderTopColor: glass.borderBright,
+    backgroundColor: glass.fillSoft,
+  },
+  modeChipActive: {
+    borderColor: colors.borderFocus,
+    backgroundColor: colors.accentSoft,
+  },
   providerRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -707,6 +795,8 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
     justifyContent: 'center',
   },
   providerChip: {
+    minHeight: 44,
+    justifyContent: 'center',
     borderRadius: radius.pill,
     borderWidth: 1,
     borderColor: glass.border,
@@ -718,6 +808,15 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
   providerChipActive: {
     borderColor: colors.borderFocus,
     backgroundColor: colors.accentSoft,
+  },
+  localNote: {
+    color: colors.textMuted,
+    fontSize: 12,
+    lineHeight: 18,
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: radius.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
   },
   providerText: {
     color: colors.textMuted,

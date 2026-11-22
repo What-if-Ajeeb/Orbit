@@ -54,7 +54,14 @@ The base URL and model are editable. The key is stored in encrypted SecureStore 
 the device and sent only to the provider you choose. Chat messages go to that
 provider; tasks and account data stay local.
 
-Without a key, the agent runs in local mode and understands commands like:
+For a keyless local LLM, switch **AI BRAIN → Local server**, choose Ollama or Custom,
+and enter the OpenAI-compatible endpoint. On a phone, use the computer's LAN IP
+(for example `http://192.168.1.20:11434/v1`), not `localhost`. Start Ollama with
+`OLLAMA_HOST=0.0.0.0:11434` and keep both devices on the same Wi-Fi. The Android
+build allows cleartext HTTP only for this local connection flow.
+
+If no provider or local server is configured, the agent runs in offline local mode
+and understands commands like:
 
 ```text
 Add task pay electricity bill tomorrow 5pm

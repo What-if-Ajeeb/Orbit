@@ -12,8 +12,12 @@ export type AiProvider =
   | 'openrouter'
   | 'custom';
 
+/** Cloud providers need a key; a local server is reachable by URL alone. */
+export type AiConnectionMode = 'cloud' | 'local';
+
 export type AiSettings = {
   provider: AiProvider;
+  mode: AiConnectionMode;
   baseUrl: string;
   model: string;
   apiKey: string;
@@ -30,6 +34,8 @@ export type ProviderPreset = {
   keyHint: string;
   docsUrl: string;
   note: string;
+  /** Cloud presets need a key; local presets work with just a URL and model. */
+  requiresApiKey: boolean;
 };
 
 export const PROVIDER_PRESETS: Record<AiProvider, ProviderPreset> = {
@@ -43,6 +49,7 @@ export const PROVIDER_PRESETS: Record<AiProvider, ProviderPreset> = {
     keyHint: 'sk-...',
     docsUrl: 'https://platform.openai.com/api-keys',
     note: 'OpenAI ke official models. Key platform.openai.com se milegi.',
+    requiresApiKey: true,
   },
   gemini: {
     id: 'gemini',
@@ -54,6 +61,7 @@ export const PROVIDER_PRESETS: Record<AiProvider, ProviderPreset> = {
     keyHint: 'AIza...',
     docsUrl: 'https://aistudio.google.com/apikey',
     note: 'Free tier available. Key Google AI Studio se milegi.',
+    requiresApiKey: true,
   },
   openrouter: {
     id: 'openrouter',
@@ -65,6 +73,7 @@ export const PROVIDER_PRESETS: Record<AiProvider, ProviderPreset> = {
     keyHint: 'sk-or-...',
     docsUrl: 'https://openrouter.ai/keys',
     note: 'Ek key se kai providers/models — sabse flexible.',
+    requiresApiKey: true,
   },
   custom: {
     id: 'custom',
@@ -76,6 +85,7 @@ export const PROVIDER_PRESETS: Record<AiProvider, ProviderPreset> = {
     keyHint: 'provider key',
     docsUrl: '',
     note: 'Groq, Together, LM Studio ya koi bhi OpenAI-compatible endpoint.',
+    requiresApiKey: true,
   },
   deepseek: {
     id: 'deepseek',
@@ -87,6 +97,7 @@ export const PROVIDER_PRESETS: Record<AiProvider, ProviderPreset> = {
     keyHint: 'sk-...',
     docsUrl: 'https://platform.deepseek.com/api-keys',
     note: 'DeepSeek-V4 compatible models. Recommended for Orbit.',
+    requiresApiKey: true,
   },
   anthropic: {
     id: 'anthropic',
@@ -98,6 +109,7 @@ export const PROVIDER_PRESETS: Record<AiProvider, ProviderPreset> = {
     keyHint: 'sk-ant-...',
     docsUrl: 'https://console.anthropic.com/',
     note: 'Claude models via OpenAI-compatible proxy (e.g. LiteLLM).',
+    requiresApiKey: true,
   },
   mistral: {
     id: 'mistral',
@@ -109,6 +121,7 @@ export const PROVIDER_PRESETS: Record<AiProvider, ProviderPreset> = {
     keyHint: '...',
     docsUrl: 'https://console.mistral.ai/',
     note: 'Mistral AI ke models via OpenAI-compatible endpoint.',
+    requiresApiKey: true,
   },
   huggingface: {
     id: 'huggingface',
@@ -120,6 +133,7 @@ export const PROVIDER_PRESETS: Record<AiProvider, ProviderPreset> = {
     keyHint: 'hf_...',
     docsUrl: 'https://huggingface.co/docs/huggingface_hub/v0.14.0/package_reference/inference_client#huggingface_hub.InferenceClient.chat_completion',
     note: 'Hugging Face Inference API. Model naam manually दें।',
+    requiresApiKey: true,
   },
   ollama: {
     id: 'ollama',
@@ -130,7 +144,8 @@ export const PROVIDER_PRESETS: Record<AiProvider, ProviderPreset> = {
     model: 'llama3',
     keyHint: 'optional',
     docsUrl: 'https://github.com/ollama/ollama/blob/main/docs/api.md',
-    note: 'लोकल Ollama इंस्टेंस। URL अपने इंस्टेंस के मुताबिक बदलें।',
+    note: 'Local Ollama server. No API key needed; use your computer IP on the phone.',
+    requiresApiKey: false,
   },
 };
 
@@ -145,6 +160,12 @@ export const PROVIDER_ORDER: AiProvider[] = [
   'openrouter',
   'custom',
 ];
+
+export const CLOUD_PROVIDER_ORDER: AiProvider[] = PROVIDER_ORDER.filter(
+  (provider) => provider !== 'ollama'
+);
+
+export const LOCAL_PROVIDER_ORDER: AiProvider[] = ['ollama', 'custom'];
 
 const SETTINGS_KEY = 'orbit.ai.settings.v1';
 
@@ -163,6 +184,7 @@ function emptySettings(): AiSettings {
 
   return {
     provider: 'openai',
+    mode: 'cloud',
     baseUrl: preset.baseUrl,
     model: preset.model,
     apiKey: '',
@@ -173,9 +195,15 @@ function normalizeSettings(value: Partial<AiSettings> | null): AiSettings {
   const provider =
     value?.provider && value.provider in PROVIDER_PRESETS ? value.provider : 'openai';
   const preset = PROVIDER_PRESETS[provider];
+  // Older builds stored Ollama without a mode; treat it as a local server.
+  const mode: AiConnectionMode =
+    provider === 'ollama' || (value?.mode === 'local' && LOCAL_PROVIDER_ORDER.includes(provider))
+      ? 'local'
+      : 'cloud';
 
   return {
     provider,
+    mode,
     baseUrl: (value?.baseUrl ?? preset.baseUrl).trim(),
     model: (value?.model ?? preset.model).trim(),
     apiKey: (value?.apiKey ?? '').trim(),
@@ -220,20 +248,47 @@ export async function clearAiSettings(): Promise<void> {
 }
 
 export function isAiConfigured(settings: AiSettings): boolean {
-  return (
-    settings.apiKey.trim().length > 0 &&
-    settings.model.trim().length > 0 &&
-    settings.baseUrl.trim().length > 0
-  );
+  const baseUrl = settings.baseUrl.trim();
+
+  if (!baseUrl || !settings.model.trim()) {
+    return false;
+  }
+
+  if (settings.mode === 'local') {
+    return /^https?:\/\//i.test(baseUrl);
+  }
+
+  return !PROVIDER_PRESETS[settings.provider].requiresApiKey || settings.apiKey.trim().length > 0;
 }
 
 export function applyProviderPreset(settings: AiSettings, provider: AiProvider): AiSettings {
   const preset = PROVIDER_PRESETS[provider];
 
   return {
+    ...settings,
     provider,
     baseUrl: preset.baseUrl,
     model: preset.model,
-    apiKey: settings.apiKey,
   };
+}
+
+export function applyConnectionMode(
+  settings: AiSettings,
+  mode: AiConnectionMode
+): AiSettings {
+  if (mode === settings.mode) {
+    return settings;
+  }
+
+  let provider = settings.provider;
+
+  if (mode === 'local' && !LOCAL_PROVIDER_ORDER.includes(provider)) {
+    provider = 'ollama';
+  }
+
+  if (mode === 'cloud' && provider === 'ollama') {
+    provider = 'openai';
+  }
+
+  return { ...applyProviderPreset(settings, provider), mode };
 }

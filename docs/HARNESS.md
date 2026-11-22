@@ -52,8 +52,9 @@ plugins. The agent only knows the registries.
 ```text
 chat.tsx
   └─ runAgent()                        src/lib/ai/agent.ts
-       ├─ local mode (no API key)      src/lib/ai/local-agent.ts
-       └─ cloud mode
+       ├─ offline local mode           src/lib/ai/local-agent.ts
+       │    (no provider configured)
+       └─ configured provider (cloud or local server)
             ├─ ensureMcpTools()        src/lib/mcp/registry.ts
             │    └─ Streamable HTTP    src/lib/mcp/client.ts
             ├─ buildSystemPrompt()     src/lib/ai/prompt.ts
@@ -96,9 +97,9 @@ settings change; adding a protocol is a one-file plugin.
 ## Model-agnostic routing
 
 Orbit does not tie itself to a single model family. Every provider speaks the
-same OpenAI-compatible wire protocol (`POST /v1/chat/completions` with Bearer
-token auth), so adding a new provider is just a preset with a base URL and
-default model:
+same OpenAI-compatible wire protocol (`POST /v1/chat/completions`); the Bearer
+token is added only when a key is configured, so local servers work without one.
+Adding a new provider is just a preset with a base URL and default model:
 
 | Provider | Default model | Endpoint | Notes |
 | --- | --- | --- | --- |
@@ -112,12 +113,15 @@ default model:
 | OpenRouter | `openai/gpt-4.1-mini` | `https://openrouter.ai/api/v1` | One key, many models. |
 | Custom | your model | any URL | Any OpenAI-compatible endpoint. |
 
-The base URL and model are editable in **Settings → AI BRAIN**, so you can point
-Orbit at a self-hosted LiteLLM, vLLM, or any other OpenAI-compatible server.
-Chat messages go only to the provider you choose; tasks and account data stay
-local on the device.
+The base URL and model are editable in **Settings → AI BRAIN**. The **Local server**
+mode stores `mode: 'local'` with the settings, skips the API key requirement, and
+allows cleartext HTTP on Android through `expo-build-properties`. A phone must use
+the host computer's LAN IP instead of `localhost` when connecting to Ollama or
+LM Studio. Chat messages go only to the provider you choose; tasks and account
+data stay local on the device.
 
-Without a key, the agent runs in local mode and understands commands like:
+If no provider or local server is configured, the agent runs in offline local mode
+and understands commands like:
 
 ```text
 Add task pay electricity bill tomorrow 5pm
