@@ -36,6 +36,9 @@ EOF
   exit 1
 fi
 
+root="$(git rev-parse --show-toplevel)"
+cd "$root"
+
 if ! gh auth status >/dev/null 2>&1; then
   echo "✖ gh is not authenticated. Run: gh auth login" >&2
   exit 1

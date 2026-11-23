@@ -223,6 +223,7 @@ jobs:
           name: ORBIT-android
           path: artifacts/*
           if-no-files-found: error
+          overwrite: true
           retention-days: 14
 
       - name: Cleanup keystore
