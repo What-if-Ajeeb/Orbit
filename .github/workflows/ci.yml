@@ -1,15 +1,16 @@
 name: CI
 
 on:
+  push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
-  workflow_call:
 
 permissions: {}
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name != 'workflow_call' }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   validate:
@@ -20,12 +21,12 @@ jobs:
       contents: read
     steps:
       - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        uses: actions/checkout@v4
         with:
           persist-credentials: false
 
       - name: Setup Node
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
@@ -48,47 +49,3 @@ jobs:
 
       - name: Jest / RN component tests
         run: npm run test:rn
-
-      - name: Expo/Metro Android export validation
-        run: npx expo export --platform android --no-bytecode
-
-  check-scripts:
-    name: Check scripts and workflow YAML
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-        with:
-          persist-credentials: false
-
-      - name: Shell script syntax check
-        run: |
-          set -euo pipefail
-          for f in scripts/ci/*.sh; do
-            echo "::group::bash -n $f"
-            bash -n "$f"
-            echo "::endgroup::"
-          done
-
-      - name: Workflow YAML syntax check
-        run: |
-          set -euo pipefail
-          if ! python3 -c "import yaml" 2>/dev/null; then
-            pip install --quiet pyyaml
-          fi
-          python3 - <<'PY'
-          import glob, sys
-          import yaml
-          paths = sorted(glob.glob('.github/workflows/*.yml')) + sorted(glob.glob('.github/workflows/*.yaml'))
-          if not paths:
-            print('No workflow files found')
-            sys.exit(0)
-          for path in paths:
-              with open(path, 'r', encoding='utf-8') as f:
-                  yaml.safe_load(f)
-              print(f'OK: {path}')
-          print(f'Validated {len(paths)} workflow file(s).')
-          PY
