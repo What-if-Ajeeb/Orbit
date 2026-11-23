@@ -48,7 +48,8 @@ export default function BuddyScreen() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [anim, setAnim] = useState<BuddyAnimationState>('idle');
-  const [speaking, setSpeaking] = useState(false);
+  const [speakingToken, setSpeakingToken] = useState<string | null>(null);
+  const speaking = speakingToken !== null;
   const loadedRef = useRef(false);
 
   const load = useCallback(async () => {
@@ -89,15 +90,21 @@ export default function BuddyScreen() {
   const onVoice = () => {
     if (!buddy || !personality) return;
     const text = `${personality.greeting} I am feeling ${buddy.mood} today.`;
-    setSpeaking(true);
-    setAnim('speaking');
+    const token = `${Date.now()}:${Math.random()}`;
+    const finish = () => setSpeakingToken((current) => (current === token ? null : current));
+    setSpeakingToken(null);
     Speech.stop();
     Speech.speak(text, {
       rate: 0.95,
       pitch: 1.0,
-      onDone: () => { setSpeaking(false); setAnim('idle'); },
-      onStopped: () => { setSpeaking(false); setAnim('idle'); },
-      onError: () => { setSpeaking(false); setAnim('idle'); },
+      // Only animate the mouth once the platform confirms speech actually started.
+      onStart: () => {
+        setSpeakingToken((current) => (current === null || current === token ? token : current));
+        setAnim('speaking');
+      },
+      onDone: finish,
+      onStopped: finish,
+      onError: finish,
     });
   };
 

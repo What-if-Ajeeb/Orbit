@@ -44,6 +44,7 @@ export function KikoAvatar({ formId = 'fox_base', size = 280, state = 'idle', sp
   const [loadError, setLoadError] = useState<string | null>(null);
   const [local, setLocal] = useState<BuddyAnimationState>(state);
   const [blinkClosed, setBlinkClosed] = useState(false);
+  const [talkOpen, setTalkOpen] = useState(false);
   const [reducedMotion, setReducedMotion] = useState(false);
   const [batterySaver, setBatterySaver] = useState(false);
   const [paused, setPaused] = useState(AppState.currentState !== 'active');
@@ -148,6 +149,12 @@ export function KikoAvatar({ formId = 'fox_base', size = 280, state = 'idle', sp
   }, [paused, reducedMotion]);
 
   useEffect(() => {
+    if (!speaking || reducedMotion || paused) return;
+    const id = setInterval(() => setTalkOpen((open) => !open), 150);
+    return () => clearInterval(id);
+  }, [paused, reducedMotion, speaking]);
+
+  useEffect(() => {
     if (!animateAllowed) { walk.setValue(0); return; }
     if (local === 'walking') {
       const loop = Animated.loop(Animated.sequence([Animated.timing(walk, { toValue: 1, duration: 260, useNativeDriver: true }), Animated.timing(walk, { toValue: -1, duration: 260, useNativeDriver: true })]));
@@ -190,7 +197,12 @@ export function KikoAvatar({ formId = 'fox_base', size = 280, state = 'idle', sp
     return parsed;
   }, [xml, formId]);
 
-  const headXml = useMemo(() => parts?.head ? wrapSvg(applyStateToHead(parts.head, local, speaking, blinkClosed), parts.defs) : null, [parts, local, speaking, blinkClosed]);
+  const headXml = useMemo(() => {
+    if (!parts?.head) return null;
+    const talkingOpen = speaking && talkOpen;
+    const expressionState = local === 'speaking' && speaking && !talkOpen ? 'idle' : local;
+    return wrapSvg(applyStateToHead(parts.head, expressionState, talkingOpen, blinkClosed), parts.defs);
+  }, [parts, local, speaking, talkOpen, blinkClosed]);
   const tailXml = useMemo(() => parts?.tail ? wrapSvg(parts.tail, parts.defs) : null, [parts]);
   const bodyXml = useMemo(() => parts ? wrapSvg(`${parts.shadow}${parts.body}`, parts.defs) : null, [parts]);
   const earsXml = useMemo(() => parts?.ears ? wrapSvg(parts.ears, parts.defs) : null, [parts]);

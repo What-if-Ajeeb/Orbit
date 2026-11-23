@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 320" fill="none">
+<defs>
+  <linearGradient id="fur" x1="80" y1="60" x2="250" y2="300" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#B7AA9B"/><stop offset="1" stop-color="#7C6B5B"/></linearGradient>
+  <linearGradient id="belly" x1="120" y1="140" x2="210" y2="290" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#F5EDE4"/><stop offset="1" stop-color="#E7D9C9"/></linearGradient>
+  <linearGradient id="accent" x1="110" y1="170" x2="220" y2="280" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#EC4899"/><stop offset="1" stop-color="#BE185D"/></linearGradient>
+</defs>
+<g id="animation-layers">
+<ellipse id="shadow" cx="160" cy="288" rx="74" ry="14" fill="rgba(20,20,19,0.10)"/>
+<g opacity="0.22"><g id="body-group">
+<path d="M118 168c0-30 18-50 42-50s42 20 42 50v58c0 28-18 48-42 48s-42-20-42-48z" fill="url(#fur)"/>
+<path d="M140 182c0-20 9-34 20-34s20 14 20 34v42c0 18-9 30-20 30s-20-12-20-30z" fill="url(#belly)"/>
+<path d="M130 266c0-6 5-11 10-11s10 5 10 11v8c0 6-5 10-10 10s-10-4-10-10z" fill="#6B5A4B"/>
+<path d="M170 266c0-6 5-11 10-11s10 5 10 11v8c0 6-5 10-10 10s-10-4-10-10z" fill="#6B5A4B"/>
+</g><g id="head-group"><g id="ear-left-group"><path d="M124 96l-18-48 46 28z" fill="url(#fur)"/><path d="M123 90l-9-25 24 14z" fill="#F2C9B8"/></g>
+<g id="ear-right-group"><path d="M196 96l18-48-46 28z" fill="url(#fur)"/><path d="M197 90l9-25-24 14z" fill="#F2C9B8"/></g><path d="M160 66c34 0 58 24 58 54 0 34-24 56-58 56s-58-22-58-56c0-30 24-54 58-54z" fill="url(#fur)"/>
+<path d="M160 128c18 0 32 8 38 22-6 16-20 26-38 26s-32-10-38-26c6-14 20-22 38-22z" fill="url(#belly)"/>
+<path d="M160 142c5 0 9 3 9 7s-4 7-9 7-9-3-9-7 4-7 9-7z" fill="#E58A9A"/>
+<path d="M112 144h28M112 154h26M208 144h-28M208 154h-26" stroke="#F5EDE4" stroke-width="2" stroke-linecap="round" opacity="0.8"/>
+<g id="eyes-group">
+  <g id="eyes-open"><path d="M130 118c4-10 12-10 16 0-4 10 -12 10 -16 0z" fill="#3BA55D"/><circle cx="136" cy="115" r="2" fill="#FFFFFF"/><path d="M174 118c4-10 12-10 16 0-4 10 -12 10 -16 0z" fill="#3BA55D"/><circle cx="180" cy="115" r="2" fill="#FFFFFF"/></g>
+  <g id="eyes-closed" display="none"><path d="M130 118c4 5 12 5 16 0" stroke="#3BA55D" stroke-width="4" stroke-linecap="round" fill="none"/><path d="M174 118c4 5 12 5 16 0" stroke="#3BA55D" stroke-width="4" stroke-linecap="round" fill="none"/></g>
+  <g id="eyes-thinking" display="none"><ellipse cx="140" cy="118" rx="8" ry="10" fill="#3BA55D"/><ellipse cx="184" cy="118" rx="8" ry="10" fill="#3BA55D"/><circle cx="136" cy="115" r="2" fill="#FFFFFF"/><circle cx="180" cy="115" r="2" fill="#FFFFFF"/></g>
+</g><g id="mouth-idle"><path d="M150 160c4 4 7 6 10 6s6-2 10-6" stroke="#3A2A25" stroke-width="3.5" stroke-linecap="round" fill="none"/></g>
+<g id="mouth-happy" display="none"><path d="M146 158c5 10 10 13 14 13s9-3 14-13" stroke="#3A2A25" stroke-width="3.5" stroke-linecap="round" fill="none"/><path d="M153 163c3 4 7 5 7 5s4-1 7-5" fill="#F87171"/></g>
+<g id="mouth-sad" display="none"><path d="M150 167c4-6 7-8 10-8s6 2 10 8" stroke="#3A2A25" stroke-width="3.5" stroke-linecap="round" fill="none"/></g>
+<g id="mouth-angry" display="none"><path d="M148 164h24" stroke="#3A2A25" stroke-width="3.5" stroke-linecap="round"/></g>
+<g id="mouth-thinking" display="none"><circle cx="160" cy="162" r="4" fill="#3A2A25"/></g>
+<g id="mouth-curious" display="none"><ellipse cx="160" cy="162" rx="5" ry="6" fill="#3A2A25"/></g>
+<g id="mouth-speaking" display="none"><ellipse cx="160" cy="164" rx="8" ry="10" fill="#6B2D2D"/><ellipse cx="160" cy="168" rx="5" ry="3" fill="#F87171"/></g>
+<g id="mouth-sleep" display="none"><path d="M152 163c4 3 8 3 12 0" stroke="#3A2A25" stroke-width="3" stroke-linecap="round" fill="none" opacity="0.7"/></g><g id="expression-blush" display="none"><ellipse cx="112" cy="150" rx="14" ry="8" fill="#F87171" opacity="0.35"/><ellipse cx="208" cy="150" rx="14" ry="8" fill="#F87171" opacity="0.35"/></g>
+<g id="expression-sweat" display="none"><path d="M276 108c8 10 12 16 12 22a12 12 0 1 1-24 0c0-6 4-12 12-22z" fill="#7DD3FC" opacity="0.9"/></g>
+<g id="expression-sparkle" display="none"><path d="M92 72l5 13 13 5-13 5-5 13-5-13-13-5 13-5z" fill="#FDE68A"/><path d="M244 86l3 8 8 3-8 3-3 8-3-8-8-3 8-3z" fill="#FDE68A"/></g></g></g>
+<g id="tail-group"><path d="M204 238c28 6 42 28 34 50-6 16-22 20-34 10-8-8-8-20 0-26-8-10-10-22-6-32z" fill="url(#fur)"/><path d="M232 280c8 4 10 12 6 18-6-2-10-6-12-12z" fill="#7C6B5B"/></g>
+</g>
+</svg>

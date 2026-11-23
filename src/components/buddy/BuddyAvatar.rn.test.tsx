@@ -9,7 +9,9 @@ jest.mock('./renderer', () => ({
   renderCharacter: ({ speciesId }: any) =>
     speciesId === 'fox'
       ? require('react').createElement(require('react-native').View, { testID: 'kiko-render' })
-      : null,
+      : speciesId === 'raven'
+        ? require('react').createElement(require('react-native').View, { testID: 'rig-render' })
+        : null,
 }));
 
 jest.mock('react-native-svg', () => {
@@ -33,14 +35,25 @@ describe('BuddyAvatar', () => {
     jest.useRealTimers();
   });
 
-  it('uses character renderer for registered species', async () => {
+  it('uses the bespoke Kiko renderer for fox', async () => {
     const view = await render(<BuddyAvatar speciesId="fox" />);
     expect(view.getByTestId('kiko-render')).toBeTruthy();
   });
 
-  it('falls back to generic avatar for unregistered species', async () => {
+  it('uses the shared rig renderer for registered non-Kiko species', async () => {
+    const view = await render(<BuddyAvatar speciesId="raven" />);
+    expect(view.getByTestId('rig-render')).toBeTruthy();
+  });
+
+  it('falls back to the generic avatar only for unknown species', async () => {
+    const view = await render(<BuddyAvatar speciesId="not-a-real-species" />);
+    await act(async () => {});
+    expect(view.getByTestId('buddy-generic-avatar')).toBeTruthy();
+  });
+
+  it('does not render a generic placeholder for a registered rig species', async () => {
     const view = await render(<BuddyAvatar speciesId="raven" />);
     await act(async () => {});
-    expect(view.toJSON()).toBeTruthy();
+    expect(view.queryByTestId('buddy-generic-avatar')).toBeNull();
   });
 });

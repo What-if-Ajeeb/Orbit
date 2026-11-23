@@ -136,7 +136,7 @@ function GenericBuddyAvatar({ speciesId, size = 220, state = 'idle', onStateChan
   const trigger = (next: BuddyAnimationState) => { setInternal(next); onStateChange?.(next); };
 
   return (
-    <Pressable disabled={!interactive} onPress={() => trigger('tapped')} onLongPress={() => trigger('long-pressed')} style={{ width: size, height: size }}>
+    <Pressable testID="buddy-generic-avatar" disabled={!interactive} onPress={() => trigger('tapped')} onLongPress={() => trigger('long-pressed')} style={{ width: size, height: size }}>
       {/* eslint-disable react-hooks/refs -- stable Animated interpolation refs */}
       <Animated.View style={{ flex: 1, transform: [{ translateY: Animated.add(floatY, bounce) }, { scale: Animated.multiply(breathe, moodScale) }, { rotate: sway as any }] }}>
       {/* eslint-enable react-hooks/refs */}

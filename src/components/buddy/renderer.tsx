@@ -1,7 +1,10 @@
 import React from 'react';
 
-import { KikoAvatar } from './kiko/KikoAvatar';
+import { getCharacterRig } from '@/lib/buddy/characters/rigs';
 import type { BuddyAnimationState } from '@/lib/buddy/types';
+
+import { RigCharacterAvatar } from './character/RigCharacterAvatar';
+import { KikoAvatar } from './kiko/KikoAvatar';
 
 export type CharacterRendererProps = {
   speciesId: string;
@@ -19,13 +22,19 @@ const registry: Record<string, CharacterRendererComponent> = {
   fox: KikoAvatar,
 };
 
-// Reusable pipeline: register asset-driven character rigs here as they are built.
-export function registerCharacterRenderer(speciesId: string, component: CharacterRendererComponent) {
-  registry[speciesId] = component;
+/**
+ * Special-case renderers live in `registry` (Kiko has bespoke evolution
+ * branches). Every other species is resolved from the shared asset-driven rig
+ * registry, so no Buddy duplicates the full renderer.
+ */
+export function getCharacterRenderer(speciesId: string): CharacterRendererComponent | null {
+  const registered = registry[speciesId];
+  if (registered) return registered;
+  return getCharacterRig(speciesId) ? RigCharacterAvatar : null;
 }
 
-export function getCharacterRenderer(speciesId: string): CharacterRendererComponent | null {
-  return registry[speciesId] ?? null;
+export function registerCharacterRenderer(speciesId: string, component: CharacterRendererComponent) {
+  registry[speciesId] = component;
 }
 
 export function renderCharacter(props: CharacterRendererProps) {
