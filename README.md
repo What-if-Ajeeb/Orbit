@@ -231,9 +231,9 @@ npx expo start --tunnel
 
 ## Installable APK (GitHub Releases)
 
-Android builds run automatically for `main` pushes and `v*` tags, but they only
-upload CI artifacts. Publishing a public GitHub Release is **manual-only** and
-requires an explicitly confirmed workflow run.
+Android builds run automatically for pull requests, `main` pushes, and `v*` tags,
+but they only upload CI artifacts. Publishing a public GitHub Release is
+**manual-only** and requires an explicitly confirmed workflow run.
 
 To publish a release:
 
