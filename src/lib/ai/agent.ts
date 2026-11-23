@@ -43,6 +43,10 @@ export type AgentInput = {
    * write, install, and mount new plugins or UI overlays live.
    */
   creatorMode?: boolean;
+  /** Receives streamed text from providers that support token streaming. */
+  onTextDelta?: (delta: string) => void;
+  /** Aborts the in-flight completion when the user stops or leaves the screen. */
+  signal?: AbortSignal;
 };
 
 export type AgentResult = {
@@ -90,6 +94,8 @@ export async function runAgent(input: AgentInput): Promise<AgentResult> {
     projectId,
     projectLabel,
     creatorMode,
+    onTextDelta,
+    signal,
   } = input;
 
   const agent = requestedAgent ?? MASTER_AGENT;
@@ -209,6 +215,10 @@ export async function runAgent(input: AgentInput): Promise<AgentResult> {
 
   try {
     for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
+      if (signal?.aborted) {
+        throw new Error('AI request cancelled.');
+      }
+
       await emit('step_started', { round });
 
       const requestTokens = messages.reduce(
@@ -217,7 +227,10 @@ export async function runAgent(input: AgentInput): Promise<AgentResult> {
       );
       await emit('ai_request', { tokensIn: requestTokens, messageCount: messages.length });
 
-      const turn = await requestCompletion(settings, messages, toolDefinitions);
+      const turn = await requestCompletion(settings, messages, toolDefinitions, {
+        onTextDelta,
+        signal,
+      });
 
       await emit('ai_response', { tokensOut: estimateTokens(turn.text ?? ''), replyLength: turn.text?.length ?? 0 });
 

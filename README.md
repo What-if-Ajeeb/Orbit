@@ -47,7 +47,7 @@ Open **Settings → AI BRAIN**, pick a provider, paste a key, and tap **Test**:
 | Anthropic | `claude-3-5-sonnet-20241022` | https://console.anthropic.com/ |
 | Mistral | `mistral-large-latest` | https://console.mistral.ai/ |
 | Hugging Face | your model | https://huggingface.co/settings/tokens |
-| Ollama | `qwen2.5:0.5b` | (local — no key needed) |
+| Ollama | discovered at runtime | (local — no key needed) |
 | OpenRouter | `openai/gpt-4.1-mini` | https://openrouter.ai/keys |
 | Custom | your model | any OpenAI-compatible endpoint |
 
@@ -55,16 +55,37 @@ The base URL and model are editable. The key is stored in encrypted SecureStore 
 the device and sent only to the provider you choose. Chat messages go to that
 provider; tasks and account data stay local.
 
-By default Orbit links to Ollama running on the same device/container at
-`http://127.0.0.1:11434/v1` with `qwen2.5:0.5b` — no key needed. If you already
-saved other AI settings, tap **Connect on-device Ollama** in **Settings → AI BRAIN**
-to switch back in one tap, then **Test connection** to verify.
+### On-device Ollama
 
-For a keyless local LLM on another machine, switch **AI BRAIN → Local server**,
-choose Ollama or Custom, and enter the OpenAI-compatible endpoint using that
-machine's LAN IP (for example `http://192.168.1.20:11434/v1`). Start Ollama with
-`OLLAMA_HOST=0.0.0.0:11434` and keep both devices on the same Wi-Fi. The Android
-build allows cleartext HTTP only for this local connection flow.
+Fresh installs point at the **native** Ollama API on the same physical phone:
+
+```text
+http://127.0.0.1:11434
+```
+
+There is deliberately no hardcoded model. Tap **Connect on-device Ollama** in
+**Settings → AI BRAIN** and Orbit will:
+
+1. Call `GET /api/tags` to discover the models actually installed on the phone.
+2. Show connection status, retry controls, and a picker of discovered models.
+3. Auto-select the first installed model on one-tap connect.
+4. Use `POST /api/chat` for chat — `stream:false` for quick checks and
+   `stream:true` for live token output in the Chat screen. The **Stop** button
+   cancels an in-flight generation.
+
+The active Ollama model receives the same system prompt as cloud providers,
+including the active Buddy/Kiko personality. Existing cloud providers and manual
+switching are preserved.
+
+`127.0.0.1` means **the phone running Orbit**, not your laptop or the emulator
+host. Android's network security config permits cleartext HTTP only for
+`127.0.0.1` / `localhost`; all other cleartext traffic is denied. Do not expose
+Ollama to your LAN or the public internet. A remote Ollama server needs HTTPS or
+a custom scoped build — it is not enabled by default.
+
+Native Android changes (the manifest `INTERNET` permission and the network
+security resource) require a **new APK build and install**. An OTA JS update
+cannot change native Android configuration.
 
 If no provider or local server is configured, the agent runs in offline local mode
 and understands commands like:
@@ -141,7 +162,8 @@ is the set of registries behind that idea — no Cordis runtime and no harness
 dependency, just explicit seams:
 
 - **Provider plugin** — `src/lib/ai/provider-registry.ts`. Presets in
-  `settings.ts` point at an `adapterId`; `requestCompletion` resolves it.
+  `settings.ts` point at an `adapterId` (`ollama-native` for the native Ollama
+  API); `requestCompletion` resolves it and forwards streaming/cancel options.
 - **Tool plugin** — `src/lib/ai/tool-registry.ts`. Built-in task tools live in
   `task-tools.ts`; the agent reads `listAgentTools()` every run.
 - **Storage plugin** — `src/lib/chat.ts` registers chat stores; SQLite is the
@@ -223,9 +245,11 @@ To publish a release:
    successful build, then creates the release.
 
 Tag pushes and normal `main` builds never create, edit, or overwrite a release.
-The release contains `ORBIT-debug.apk`, `ORBIT-release.apk`,
-`ORBIT-release.aab`, and `build-info.txt`. Download the APK on your phone and
-install it (allow "Install unknown apps" for your browser/file manager).
+They only upload CI artifacts. The public release contains `ORBIT-release.apk`,
+`ORBIT-release.aab`, `SHA256SUMS.txt`, and `build-info.txt`; `ORBIT-debug.apk`
+is kept as a CI artifact only and is never attached to a public release.
+Download the release APK on your phone and install it (allow "Install unknown
+apps" for your browser/file manager).
 
 Releases page:
 
@@ -273,7 +297,8 @@ src/
     ai/
       agent.ts            # tool-calling loop (max 6 rounds)
       provider-registry.ts # provider plugin seam
-      providers.ts        # OpenAI-compatible + Gemini adapters
+      providers.ts        # OpenAI-compatible, Gemini and native Ollama adapters
+      ollama.ts           # /api/tags discovery, /api/chat + NDJSON streaming
       tool-registry.ts    # tool plugin seam
       task-tools.ts       # built-in task tools
       tools.ts            # registers built-ins + agent-facing helpers

@@ -1,0 +1,313 @@
+name: Android build
+description: Prebuild, sign-configure, build, verify, and collect Orbit Android artifacts
+
+inputs:
+  sign:
+    description: "'true' for release signing, 'false' for CI/debug signing"
+    required: true
+  version-code:
+    description: Monotonic Android versionCode
+    required: true
+  keystore-base64:
+    description: Base64-encoded release keystore
+    required: false
+    default: ''
+  store-password:
+    description: Release keystore password
+    required: false
+    default: ''
+  key-alias:
+    description: Release key alias
+    required: false
+    default: ''
+  key-password:
+    description: Release key password
+    required: false
+    default: ''
+  cert-sha256:
+    description: Expected release certificate SHA-256
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - name: Setup Node
+      uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      with:
+        node-version: 22
+        cache: npm
+
+    - name: Setup Java
+      uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
+      with:
+        distribution: temurin
+        java-version: 17
+
+    - name: Setup Android SDK
+      uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3.2.2
+      with:
+        packages: platform-tools
+
+    - name: Setup Gradle
+      uses: gradle/actions/setup-gradle@4c125117fe7c5aed11272ec4213f602f012f89f2 # v5.0.1
+      with:
+        cache-read-only: ${{ github.event_name == 'pull_request' }}
+
+    - name: Install dependencies
+      shell: bash
+      run: npm ci
+
+    - name: Validate version metadata
+      shell: bash
+      env:
+        EXPECTED_VERSION_CODE: ${{ inputs.version-code }}
+      run: |
+        set -euo pipefail
+        APP_VERSION="$(node -p "require('./app.json').expo.version")"
+        PKG_VERSION="$(node -p "require('./package.json').version")"
+        if [ "$APP_VERSION" != "$PKG_VERSION" ]; then
+          echo "::error::app.json version ($APP_VERSION) != package.json version ($PKG_VERSION)"
+          exit 1
+        fi
+        if ! printf '%s' "$APP_VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+          echo "::error::Version must be MAJOR.MINOR.PATCH: $APP_VERSION"
+          exit 1
+        fi
+        IFS=. read -r major minor patch <<< "$APP_VERSION"
+        VC=$(( major * 1000000 + minor * 1000 + patch ))
+        if [ "$VC" != "$EXPECTED_VERSION_CODE" ]; then
+          echo "::error::versionCode mismatch: expected $EXPECTED_VERSION_CODE, computed $VC"
+          exit 1
+        fi
+        echo "ORBIT_APP_VERSION=$APP_VERSION" >> "$GITHUB_ENV"
+        echo "ORBIT_VERSION_CODE=$VC" >> "$GITHUB_ENV"
+
+    - name: Configure signing material
+      id: signing
+      shell: bash
+      env:
+        SIGN: ${{ inputs.sign }}
+        ORBIT_KEYSTORE_BASE64: ${{ inputs.keystore-base64 }}
+        ORBIT_RELEASE_STORE_PASSWORD: ${{ inputs.store-password }}
+        ORBIT_RELEASE_KEY_ALIAS: ${{ inputs.key-alias }}
+        ORBIT_RELEASE_KEY_PASSWORD: ${{ inputs.key-password }}
+      run: |
+        set -euo pipefail
+        if [ "$SIGN" = "true" ]; then
+          if [ -z "$ORBIT_KEYSTORE_BASE64" ] || [ -z "$ORBIT_RELEASE_STORE_PASSWORD" ] || [ -z "$ORBIT_RELEASE_KEY_ALIAS" ] || [ -z "$ORBIT_RELEASE_KEY_PASSWORD" ]; then
+            echo "::error::Signed release requested but ORBIT_KEYSTORE_BASE64/ORBIT_RELEASE_STORE_PASSWORD/ORBIT_RELEASE_KEY_ALIAS/ORBIT_RELEASE_KEY_PASSWORD are missing. Configure the release environment secrets."
+            exit 1
+          fi
+          mkdir -p android-signing
+          echo "$ORBIT_KEYSTORE_BASE64" | base64 -d > android-signing/release.keystore
+          chmod 600 android-signing/release.keystore
+          KEYSTORE="$GITHUB_WORKSPACE/android-signing/release.keystore"
+          if [ ! -s "$KEYSTORE" ]; then
+            echo "::error::Decoded release keystore is empty. ORBIT_KEYSTORE_BASE64 may be corrupt or missing."
+            exit 1
+          fi
+          # Confirm the keystore decrypts with the store password (validates store file + password together,
+          # without printing any secret values).
+          if ! keytool -list -keystore "$KEYSTORE" -storepass "$ORBIT_RELEASE_STORE_PASSWORD" >/dev/null 2>&1; then
+            echo "::error::Release keystore could not be opened with ORBIT_RELEASE_STORE_PASSWORD."
+            exit 1
+          fi
+          echo "ORBIT_KEYSTORE_PATH=$GITHUB_WORKSPACE/android-signing/release.keystore" >> "$GITHUB_ENV"
+          echo "ORBIT_RELEASE_STORE_PASSWORD=$ORBIT_RELEASE_STORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "ORBIT_RELEASE_KEY_ALIAS=$ORBIT_RELEASE_KEY_ALIAS" >> "$GITHUB_ENV"
+          echo "ORBIT_RELEASE_KEY_PASSWORD=$ORBIT_RELEASE_KEY_PASSWORD" >> "$GITHUB_ENV"
+          echo "ORBIT_REQUIRE_RELEASE_SIGNING=1" >> "$GITHUB_ENV"
+          echo "HAS_RELEASE_SIGNING=true" >> "$GITHUB_ENV"
+          echo "signed=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "ORBIT_REQUIRE_RELEASE_SIGNING=0" >> "$GITHUB_ENV"
+          echo "HAS_RELEASE_SIGNING=false" >> "$GITHUB_ENV"
+          echo "signed=false" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Expo prebuild (Android)
+      shell: bash
+      run: npx expo prebuild --platform android --no-install
+
+    - name: Enable Gradle build cache
+      shell: bash
+      run: |
+        set -euo pipefail
+        mkdir -p ~/.gradle
+        touch ~/.gradle/gradle.properties
+        grep -q '^org.gradle.caching=' ~/.gradle/gradle.properties || echo 'org.gradle.caching=true' >> ~/.gradle/gradle.properties
+
+    - name: Build debug APK
+      shell: bash
+      run: |
+        set -euo pipefail
+        cd android
+        chmod +x gradlew
+        ./gradlew assembleDebug --no-daemon
+
+    - name: Build release APK and AAB
+      shell: bash
+      env:
+        ORBIT_RELEASE_STORE_PASSWORD: ${{ inputs.store-password }}
+        ORBIT_RELEASE_KEY_ALIAS: ${{ inputs.key-alias }}
+        ORBIT_RELEASE_KEY_PASSWORD: ${{ inputs.key-password }}
+      run: |
+        set -euo pipefail
+        cd android
+        chmod +x gradlew
+        ./gradlew assembleRelease bundleRelease --no-daemon
+
+    - name: Verify release signing certificate, AAB certificate, and app ID
+      shell: bash
+      env:
+        SIGN: ${{ inputs.sign }}
+        EXPECTED_CERT_SHA256: ${{ inputs.cert-sha256 }}
+      run: |
+        set -euo pipefail
+        APK="android/app/build/outputs/apk/release/app-release.apk"
+        AAB="android/app/build/outputs/bundle/release/app-release.aab"
+        for f in "$APK" "$AAB"; do
+          if [ ! -s "$f" ]; then
+            echo "::error::Missing or empty artifact: $f"
+            exit 1
+          fi
+        done
+
+        APKSIGNER="$(find "${ANDROID_SDK_ROOT:-$ANDROID_HOME}/build-tools" -name apksigner -type f | sort -V | tail -n1)"
+        AAPT2="$(find "${ANDROID_SDK_ROOT:-$ANDROID_HOME}/build-tools" -name aapt2 -type f | sort -V | tail -n1)"
+        if [ -z "$APKSIGNER" ] || [ -z "$AAPT2" ]; then
+          echo "::error::apksigner/aapt2 not found in Android SDK build-tools"
+          exit 1
+        fi
+
+        # Verify the expected application ID from the APK.
+        APP_ID="$("$AAPT2" dump badging "$APK" | sed -n "s/^package: name='\([^']*\)'.*/\1/p" | head -n1)"
+        if [ "$APP_ID" != "com.orbit.app" ]; then
+          echo "::error::Unexpected application ID: $APP_ID (expected com.orbit.app)"
+          exit 1
+        fi
+        echo "Application ID verified: $APP_ID"
+
+        # Parse a certificate SHA-256 digest from apksigner --print-certs output.
+        parse_cert_sha() {
+          local line="$1"
+          printf '%s' "$line" | sed -E 's/.*([0-9a-fA-F]{64}|([0-9a-fA-F]{2}:){31}[0-9a-fA-F]{2}).*/\1/' | tr '[:upper:]' '[:lower:]' | tr -d ':'
+        }
+
+        # Release APK certificate.
+        CERT_LINE="$("$APKSIGNER" verify --print-certs "$APK" | grep -i 'Signer #1 certificate SHA-256 digest' | head -n1 || true)"
+        ACTUAL_SHA="$(parse_cert_sha "$CERT_LINE")"
+        if [ -z "$ACTUAL_SHA" ]; then
+          echo "::error::Could not parse release APK certificate SHA-256"
+          "$APKSIGNER" verify --print-certs "$APK" || true
+          exit 1
+        fi
+        echo "ACTUAL_RELEASE_CERT_SHA256=$ACTUAL_SHA" >> "$GITHUB_ENV"
+
+        # AAB certificate: verify the embedded base.apk signs with the same certificate.
+        TMP_DIR="$(mktemp -d)"
+        if ! unzip -o -q "$AAB" "base/base.apk" -d "$TMP_DIR" 2>/dev/null; then
+          unzip -o -q "$AAB" "*.apk" -d "$TMP_DIR"
+        fi
+        BASE_APK="$(find "$TMP_DIR" -name '*.apk' | head -n1 || true)"
+        if [ -z "$BASE_APK" ]; then
+          echo "::error::No base APK found inside AAB"
+          rm -rf "$TMP_DIR"
+          exit 1
+        fi
+        AAB_CERT_LINE="$("$APKSIGNER" verify --print-certs "$BASE_APK" | grep -i 'Signer #1 certificate SHA-256 digest' | head -n1 || true)"
+        AAB_SHA="$(parse_cert_sha "$AAB_CERT_LINE")"
+        if [ -z "$AAB_SHA" ]; then
+          echo "::error::Could not parse AAB embedded APK certificate SHA-256"
+          rm -rf "$TMP_DIR"
+          exit 1
+        fi
+        if [ "$AAB_SHA" != "$ACTUAL_SHA" ]; then
+          echo "::error::AAB signing certificate ($AAB_SHA) does not match APK certificate ($ACTUAL_SHA)"
+          rm -rf "$TMP_DIR"
+          exit 1
+        fi
+        echo "AAB certificate verified and matches APK certificate."
+        rm -rf "$TMP_DIR"
+
+        # Reject the Android debug certificate for any artifact.
+        DEBUG_SHA="$(keytool -list -v -keystore android/app/debug.keystore -alias androiddebugkey -storepass android -keypass android 2>/dev/null | grep -i 'SHA256:' | head -n1 | sed -E 's/.*SHA256: *([0-9A-F:]+).*/\1/' | tr '[:upper:]' '[:lower:]' | tr -d ':' || true)"
+        if [ -n "$DEBUG_SHA" ] && [ "$ACTUAL_SHA" = "$DEBUG_SHA" ]; then
+          if [ "$SIGN" = "true" ]; then
+            echo "::error::Release APK is signed with the Android debug certificate. Refusing to treat as signed release."
+            exit 1
+          fi
+          echo "CI artifact is debug-signed (expected for non-release builds)."
+        fi
+
+        if [ "$SIGN" = "true" ]; then
+          if [ -z "$EXPECTED_CERT_SHA256" ]; then
+            echo "::error::ORBIT_RELEASE_CERT_SHA256 repository variable is missing. Set it to the release signing certificate SHA-256."
+            exit 1
+          fi
+          EXPECTED_NORM="$(printf '%s' "$EXPECTED_CERT_SHA256" | tr '[:upper:]' '[:lower:]' | tr -d ':[:space:]')"
+          if [ "$ACTUAL_SHA" != "$EXPECTED_NORM" ]; then
+            echo "::error::Release APK certificate SHA-256 ($ACTUAL_SHA) does not match ORBIT_RELEASE_CERT_SHA256 ($EXPECTED_NORM)."
+            exit 1
+          fi
+          echo "Release APK certificate verified against ORBIT_RELEASE_CERT_SHA256."
+        else
+          echo "CI build: release artifact is not signed with the release key (signed=false)."
+        fi
+
+    - name: Collect artifacts
+      shell: bash
+      env:
+        SIGN: ${{ inputs.sign }}
+        RELEASE_TAG: ${{ github.event.inputs.release_tag || '' }}
+      run: |
+        set -euo pipefail
+        mkdir -p artifacts symbols
+        cp android/app/build/outputs/apk/debug/app-debug.apk artifacts/ORBIT-debug.apk
+        cp android/app/build/outputs/apk/release/app-release.apk artifacts/ORBIT-release.apk
+        cp android/app/build/outputs/bundle/release/app-release.aab artifacts/ORBIT-release.aab
+        for f in ORBIT-debug.apk ORBIT-release.apk ORBIT-release.aab; do
+          if [ ! -s "artifacts/$f" ]; then
+            echo "::error::Artifact missing or empty: $f"
+            exit 1
+          fi
+        done
+        # Verify ZIP integrity of every artifact (APKs and AAB are ZIP-based).
+        unzip -tq artifacts/ORBIT-debug.apk >/dev/null
+        unzip -tq artifacts/ORBIT-release.apk >/dev/null
+        unzip -tq artifacts/ORBIT-release.aab >/dev/null
+        (cd artifacts && sha256sum ORBIT-release.apk ORBIT-release.aab ORBIT-debug.apk > SHA256SUMS.txt)
+        if [ -f android/app/build/outputs/mapping/release/mapping.txt ]; then
+          cp android/app/build/outputs/mapping/release/mapping.txt symbols/mapping.txt
+        fi
+        if [ -d android/app/build/generated/sourcemaps/react/release ]; then
+          cp -R android/app/build/generated/sourcemaps/react/release symbols/hermes-sourcemaps
+        fi
+        {
+          echo "commit=$GITHUB_SHA"
+          echo "ref=$GITHUB_REF"
+          echo "event=$GITHUB_EVENT_NAME"
+          echo "run_id=$GITHUB_RUN_ID"
+          echo "app_version=${ORBIT_APP_VERSION}"
+          echo "version_code=${ORBIT_VERSION_CODE}"
+          echo "built_at_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo "signed=$([ "$SIGN" = "true" ] && echo true || echo false)"
+          echo "release_cert_sha256=${ACTUAL_RELEASE_CERT_SHA256:-unknown}"
+          if [ "$SIGN" != "true" ]; then
+            echo "signing_note=CI artifact; not signed with the release key."
+          fi
+          if [ -n "$RELEASE_TAG" ]; then
+            echo "requested_release_tag=$RELEASE_TAG"
+          fi
+        } > artifacts/build-info.txt
+        ls -la artifacts
+        cat artifacts/build-info.txt
+        ls -la symbols || true
+
+    - name: Delete decoded keystore
+      if: always()
+      shell: bash
+      run: |
+        rm -f "$GITHUB_WORKSPACE/android-signing/release.keystore"
+        rm -rf "$GITHUB_WORKSPACE/android-signing"

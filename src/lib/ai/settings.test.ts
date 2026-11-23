@@ -45,25 +45,39 @@ describe('AI settings', () => {
     setWebStorage(memoryStorage());
   });
 
-  it('links fresh installs to the on-device Ollama server', async () => {
+  it('defaults fresh installs to native Ollama without inventing a model', async () => {
     const settings = await loadAiSettings();
 
     expect(settings).toEqual(onDeviceOllamaSettings());
     expect(settings.provider).toBe('ollama');
     expect(settings.mode).toBe('local');
-    expect(settings.baseUrl).toBe('http://127.0.0.1:11434/v1');
-    expect(settings.model).toBe('qwen2.5:0.5b');
+    expect(settings.baseUrl).toBe('http://127.0.0.1:11434');
+    expect(settings.model).toBe('');
     expect(settings.apiKey).toBe('');
-    expect(isAiConfigured(settings)).toBe(true);
+    expect(isAiConfigured(settings)).toBe(false);
   });
 
-  it('uses the same endpoint and model for the Ollama preset', () => {
+  it('uses the native adapter for the Ollama preset', () => {
     const preset = PROVIDER_PRESETS.ollama;
     const defaults = onDeviceOllamaSettings();
 
+    expect(preset.adapterId).toBe('ollama-native');
     expect(preset.baseUrl).toBe(defaults.baseUrl);
-    expect(preset.model).toBe(defaults.model);
+    expect(preset.model).toBe('');
     expect(preset.requiresApiKey).toBe(false);
+  });
+
+  it('migrates the old /v1 Ollama URL to the native API', async () => {
+    const saved = await saveAiSettings({
+      provider: 'ollama',
+      mode: 'local',
+      baseUrl: 'http://127.0.0.1:11434/v1',
+      model: 'discovered-model',
+      apiKey: '',
+    });
+
+    expect(saved.baseUrl).toBe('http://127.0.0.1:11434');
+    expect((await loadAiSettings()).baseUrl).toBe('http://127.0.0.1:11434');
   });
 
   it('persists custom settings and can switch back to Ollama', async () => {
@@ -78,7 +92,7 @@ describe('AI settings', () => {
 
     const local = await saveAiSettings(applyConnectionMode(saved, 'local'));
     expect(local.provider).toBe('ollama');
-    expect(local.baseUrl).toBe('http://127.0.0.1:11434/v1');
-    expect((await loadAiSettings()).model).toBe('qwen2.5:0.5b');
+    expect(local.baseUrl).toBe('http://127.0.0.1:11434');
+    expect(local.model).toBe('');
   });
 });

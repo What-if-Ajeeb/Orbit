@@ -3,7 +3,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import Constants from 'expo-constants';
 import { router, useFocusEffect, type Href } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -27,6 +27,11 @@ import { SidebarButton } from '@/components/SidebarButton';
 import { TextField } from '@/components/TextField';
 import { useSession } from '@/context/auth';
 import { useSidebar } from '@/context/sidebar';
+import {
+  listOllamaModels,
+  OLLAMA_DISCOVERY_TIMEOUT_MS,
+  type OllamaModel,
+} from '@/lib/ai/ollama';
 import { pingAi } from '@/lib/ai/providers';
 import {
   applyConnectionMode,
@@ -58,6 +63,9 @@ const THEME_OPTIONS: { id: ThemeMode; label: string }[] = [
   { id: 'system', label: 'System' },
 ];
 
+type DiscoveryStatus = 'idle' | 'loading' | 'success' | 'error';
+type DiscoveryResult = { models: OllamaModel[]; selectedModel: string };
+
 export default function SettingsScreen() {
   const { colors, mode, setMode } = useAppTheme();
   const styles = useStyles(makeStyles);
@@ -71,6 +79,63 @@ export default function SettingsScreen() {
   const [isTesting, setIsTesting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [ollamaModels, setOllamaModels] = useState<OllamaModel[]>([]);
+  const [discoveryStatus, setDiscoveryStatus] = useState<DiscoveryStatus>('idle');
+  const [discoveryError, setDiscoveryError] = useState<string | null>(null);
+  const discoveryRef = useRef<AbortController | null>(null);
+
+  const discoverOllamaModels = useCallback(
+    async (target: AiSettings, autoSelect = false): Promise<DiscoveryResult | null> => {
+      discoveryRef.current?.abort();
+      const controller = new AbortController();
+      discoveryRef.current = controller;
+      setDiscoveryStatus('loading');
+      setDiscoveryError(null);
+
+      try {
+        const models = await listOllamaModels(target.baseUrl, {
+          signal: controller.signal,
+          timeoutMs: OLLAMA_DISCOVERY_TIMEOUT_MS,
+          retries: 1,
+        });
+        const selectedModel =
+          models.find((model) => model.name === target.model)?.name ?? models[0]?.name ?? '';
+
+        setOllamaModels(models);
+        setDiscoveryStatus('success');
+
+        if (autoSelect && selectedModel && selectedModel !== target.model) {
+          const saved = await saveAiSettings({
+            ...target,
+            provider: 'ollama',
+            mode: 'local',
+            model: selectedModel,
+          });
+          setSettings(saved);
+        }
+
+        return { models, selectedModel };
+      } catch (discoverError) {
+        if (controller.signal.aborted) {
+          return null;
+        }
+
+        setOllamaModels([]);
+        setDiscoveryStatus('error');
+        setDiscoveryError(
+          discoverError instanceof Error
+            ? discoverError.message
+            : 'Could not reach Ollama. Check that the app is running on this device.'
+        );
+        return null;
+      } finally {
+        if (discoveryRef.current === controller) {
+          discoveryRef.current = null;
+        }
+      }
+    },
+    []
+  );
 
   useFocusEffect(
     useCallback(() => {
@@ -85,13 +150,23 @@ export default function SettingsScreen() {
         if (active) {
           setSettings(nextSettings);
           setPermission(nextPermission);
+
+          if (nextSettings.provider === 'ollama' && nextSettings.mode === 'local') {
+            void discoverOllamaModels(nextSettings);
+          } else {
+            discoveryRef.current?.abort();
+            setOllamaModels([]);
+            setDiscoveryStatus('idle');
+            setDiscoveryError(null);
+          }
         }
       })();
 
       return () => {
         active = false;
+        discoveryRef.current?.abort();
       };
-    }, [])
+    }, [discoverOllamaModels])
   );
 
   if (!user) {
@@ -111,30 +186,63 @@ export default function SettingsScreen() {
   const preset = PROVIDER_PRESETS[currentSettings.provider];
   const aiReady = isAiConfigured(settings);
   const isLocalAi = currentSettings.mode === 'local';
+  const isOllamaLocal = isLocalAi && currentSettings.provider === 'ollama';
   const providerOrder = isLocalAi ? LOCAL_PROVIDER_ORDER : CLOUD_PROVIDER_ORDER;
+  const discoveryTitle =
+    discoveryStatus === 'loading'
+      ? 'Discovering Ollama models…'
+      : discoveryStatus === 'success'
+        ? `Ollama online · ${ollamaModels.length} model${ollamaModels.length === 1 ? '' : 's'}`
+        : discoveryStatus === 'error'
+          ? 'Ollama unreachable'
+          : 'Ollama not checked yet';
+  const discoveryDetail =
+    discoveryStatus === 'error'
+      ? discoveryError ?? 'Could not reach the native Ollama API.'
+      : discoveryStatus === 'success' && ollamaModels.length === 0
+        ? 'Server is reachable, but no models are installed yet. Pull one in Ollama and retry.'
+        : isOllamaLocal
+          ? 'Models are discovered from GET /api/tags on this device.'
+          : '';
 
   function update(patch: Partial<AiSettings>) {
     setNotice(null);
     setError(null);
+
+    if (patch.baseUrl !== undefined) {
+      discoveryRef.current?.abort();
+      setOllamaModels([]);
+      setDiscoveryStatus('idle');
+      setDiscoveryError(null);
+    }
+
     setSettings((current) => (current ? { ...current, ...patch } : current));
   }
 
   function selectProvider(provider: AiProvider) {
     setNotice(null);
     setError(null);
+    setOllamaModels([]);
+    setDiscoveryStatus('idle');
+    setDiscoveryError(null);
     setSettings((current) => (current ? applyProviderPreset(current, provider) : current));
   }
 
   function selectMode(mode: AiConnectionMode) {
     setNotice(null);
     setError(null);
+    setOllamaModels([]);
+    setDiscoveryStatus('idle');
+    setDiscoveryError(null);
     setSettings((current) => (current ? applyConnectionMode(current, mode) : current));
   }
 
   async function persist(showNotice: boolean): Promise<AiSettings | null> {
     const baseUrl = currentSettings.baseUrl.trim();
-    const model = currentSettings.model.trim();
     const apiKey = currentSettings.apiKey.trim();
+    const model =
+      currentSettings.model.trim() ||
+      (currentSettings.provider === 'ollama' ? ollamaModels[0]?.name ?? '' : '');
 
     if (!baseUrl || !model) {
       setError('Base URL and model are both required.');
@@ -171,29 +279,46 @@ export default function SettingsScreen() {
   }
 
   async function testConnection() {
-    if (isTesting) {
+    if (isTesting || isSaving) {
       return;
     }
 
-    const saved = await persist(false);
+    setError(null);
+    setIsTesting(true);
 
-    if (!saved) {
-      return;
-    }
+    if (currentSettings.provider === 'ollama' && currentSettings.mode === 'local') {
+      const result = await discoverOllamaModels(currentSettings);
 
-    if (!isAiConfigured(saved)) {
-      setError(
-        saved.mode === 'local'
-          ? 'Add a valid local server URL and model to run the test.'
-          : 'Add an API key to run the test.'
+      setIsTesting(false);
+
+      if (!result) {
+        return;
+      }
+
+      setNotice(
+        result.models.length > 0
+          ? `Ollama is reachable. ${result.models.length} installed model${result.models.length === 1 ? '' : 's'} found.`
+          : 'Ollama is reachable, but no models are installed. Pull a model in Ollama, then retry.'
       );
       return;
     }
 
-    setIsTesting(true);
-    setError(null);
-
     try {
+      const saved = await persist(false);
+
+      if (!saved) {
+        return;
+      }
+
+      if (!isAiConfigured(saved)) {
+        setError(
+          saved.mode === 'local'
+            ? 'Add a valid local server URL and model to run the test.'
+            : 'Add an API key to run the test.'
+        );
+        return;
+      }
+
       const reply = await pingAi(saved);
       setNotice(`Connection successful. Provider replied: "${reply.slice(0, 40)}"`);
     } catch (testError) {
@@ -217,9 +342,23 @@ export default function SettingsScreen() {
     setNotice(null);
 
     try {
-      const saved = await saveAiSettings(onDeviceOllamaSettings());
+      const target = onDeviceOllamaSettings();
+      const saved = await saveAiSettings(target);
       setSettings(saved);
-      setNotice(`Connected to on-device Ollama (${saved.model}).`);
+      const result = await discoverOllamaModels(saved, true);
+
+      if (!result) {
+        return;
+      }
+
+      if (result.models.length === 0) {
+        setError(
+          'Ollama is reachable but no models are installed. Pull a model in Ollama, then tap Retry.'
+        );
+        return;
+      }
+
+      setNotice(`Connected to on-device Ollama with ${result.selectedModel}.`);
     } catch {
       setError('Could not save the on-device Ollama settings. Please try again.');
     } finally {
@@ -383,9 +522,11 @@ export default function SettingsScreen() {
               <View style={styles.settingText}>
                 <Text style={styles.settingTitle}>{isLocalAi ? 'Local server' : 'Cloud provider'}</Text>
                 <Text style={styles.settingDescription}>
-                  {isLocalAi
-                    ? 'Connect to an OpenAI-compatible server on your network. No API key required.'
-                    : 'Bring your own API key. Orbit does not run a shared server.'}
+                  {isOllamaLocal
+                    ? 'Discover installed models from Ollama running on this device. No API key required.'
+                    : isLocalAi
+                      ? 'Connect to an OpenAI-compatible server on your network. No API key required.'
+                      : 'Bring your own API key. Orbit does not run a shared server.'}
                 </Text>
               </View>
             </View>
@@ -439,12 +580,81 @@ export default function SettingsScreen() {
               </Pressable>
             ) : null}
 
-            {isLocalAi ? (
+            {isOllamaLocal ? (
               <View style={[styles.infoBox, styles.infoBoxAccent]}>
                 <Ionicons name="wifi-outline" size={16} color={colors.accent} />
                 <Text style={styles.infoBoxText}>
-                  Ollama on this device uses <Text style={styles.infoCode}>http://127.0.0.1:11434/v1</Text>. For a server on another machine, use its LAN IP and start Ollama with <Text style={styles.infoCode}>OLLAMA_HOST=0.0.0.0:11434</Text>.
+                  Native API base URL: <Text style={styles.infoCode}>http://127.0.0.1:11434</Text> — no <Text style={styles.infoCode}>/v1</Text>. Plain HTTP is allowed only for this loopback address in the Android build. Do not expose Ollama on your LAN or the public internet.
                 </Text>
+              </View>
+            ) : null}
+
+            {isOllamaLocal ? (
+              <View style={styles.discoveryBox}>
+                <View style={styles.settingIconWrap}>
+                  {discoveryStatus === 'loading' ? (
+                    <ActivityIndicator size="small" color={colors.accent} />
+                  ) : (
+                    <Ionicons
+                      name={
+                        discoveryStatus === 'success'
+                          ? 'checkmark-circle'
+                          : discoveryStatus === 'error'
+                            ? 'alert-circle'
+                            : 'radio-outline'
+                      }
+                      size={18}
+                      color={
+                        discoveryStatus === 'success'
+                          ? colors.success
+                          : discoveryStatus === 'error'
+                            ? colors.danger
+                            : colors.textMuted
+                      }
+                    />
+                  )}
+                </View>
+                <View style={styles.discoveryText}>
+                  <Text style={styles.discoveryTitle}>{discoveryTitle}</Text>
+                  {discoveryDetail ? (
+                    <Text style={styles.discoveryDetail}>{discoveryDetail}</Text>
+                  ) : null}
+                </View>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Retry Ollama model discovery"
+                  disabled={discoveryStatus === 'loading'}
+                  onPress={() => { void discoverOllamaModels(currentSettings); }}
+                  style={({ pressed }) => [styles.retryButton, pressed && styles.pressed]}
+                >
+                  <Ionicons name="refresh-outline" size={18} color={colors.accent} />
+                </Pressable>
+              </View>
+            ) : null}
+
+            {isOllamaLocal && ollamaModels.length > 0 ? (
+              <View>
+                <Text style={styles.fieldLabel}>Installed models</Text>
+                <View style={styles.providerRow}>
+                  {ollamaModels.map((model) => {
+                    const active = currentSettings.model === model.name;
+
+                    return (
+                      <Pressable
+                        key={model.name}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Use ${model.name}`}
+                        accessibilityState={{ selected: active }}
+                        onPress={() => update({ model: model.name })}
+                        style={[styles.modelChip, active && styles.providerChipActive]}
+                      >
+                        <Text style={[styles.providerText, active && styles.providerTextActive]}>
+                          {model.name}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
               </View>
             ) : null}
 
@@ -453,7 +663,7 @@ export default function SettingsScreen() {
               variant="secondary"
               onPress={() => { void connectOnDeviceOllama(); }}
               loading={isSaving}
-              disabled={isTesting}
+              disabled={isTesting || discoveryStatus === 'loading'}
             />
 
             <View style={styles.fields}>
@@ -461,20 +671,36 @@ export default function SettingsScreen() {
                 label={isLocalAi ? 'Server URL' : 'Base URL'}
                 value={settings.baseUrl}
                 onChangeText={(value) => update({ baseUrl: value })}
-                placeholder={isLocalAi ? 'http://127.0.0.1:11434/v1' : 'https://api.openai.com/v1'}
+                placeholder={
+                  isOllamaLocal
+                    ? 'http://127.0.0.1:11434'
+                    : isLocalAi
+                      ? 'http://192.168.1.10:11434'
+                      : 'https://api.openai.com/v1'
+                }
                 autoCapitalize="none"
                 autoCorrect={false}
                 keyboardType="url"
-                hint={isLocalAi ? 'Include http:// or https://, host IP, and port.' : undefined}
+                hint={
+                  isOllamaLocal
+                    ? 'Native Ollama API URL. The /v1 suffix is removed automatically.'
+                    : isLocalAi
+                      ? 'Include http:// or https://, host IP, and port.'
+                      : undefined
+                }
               />
               <TextField
                 label="Model"
                 value={settings.model}
                 onChangeText={(value) => update({ model: value })}
-                placeholder={preset.model || 'model-name'}
+                placeholder={isOllamaLocal ? 'Select a discovered model' : preset.model || 'model-name'}
                 autoCapitalize="none"
                 autoCorrect={false}
-                hint={isLocalAi ? 'Example: qwen2.5:0.5b, llama3.2, mistral' : undefined}
+                hint={
+                  isOllamaLocal
+                    ? 'Pick an installed model above, or enter one that is pulled in Ollama.'
+                    : undefined
+                }
               />
               {!isLocalAi ? (
                 <TextField
@@ -827,6 +1053,48 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
     infoCode: {
       color: colors.text,
       fontWeight: '600',
+    },
+    discoveryBox: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      padding: spacing.sm + 2,
+      borderRadius: radius.md,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surfaceAlt,
+    },
+    discoveryText: {
+      flex: 1,
+      gap: 2,
+    },
+    discoveryTitle: {
+      color: colors.text,
+      fontSize: 13,
+      fontWeight: '600',
+    },
+    discoveryDetail: {
+      color: colors.textMuted,
+      fontSize: 12,
+      lineHeight: 17,
+    },
+    retryButton: {
+      width: 40,
+      height: 40,
+      borderRadius: radius.pill,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.surface,
+    },
+    modelChip: {
+      minHeight: 40,
+      justifyContent: 'center',
+      borderRadius: radius.md,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+      paddingHorizontal: spacing.md,
+      paddingVertical: 6,
     },
     docsLink: {
       flexDirection: 'row',

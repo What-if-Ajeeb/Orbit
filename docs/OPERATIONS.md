@@ -107,6 +107,17 @@ Note: The default Hermes bytecode export may fail in this container (`hermesc` S
 | `tsc --noEmit` | No output, exit code 0 |
 | `expo lint` | No output (or only pre-existing warnings), exit code 0 |
 | `expo export` | `Exported: /tmp/opencode/orbit-export` and a `.js` bundle listed |
+| GitHub Actions CI | `ci.yml` runs `npm ci`, TypeScript, ESLint, Vitest, Jest, Expo Android export, and workflow/config syntax checks on every PR and via `android-ci.yml` on `main`/`v*` pushes. |
+
+## 5.1 Continuous Integration
+
+CI runs the same checks as the local loop, plus Android builds:
+
+- `ci.yml` — dependency installation (`npm ci`), TypeScript, ESLint, Vitest, Jest, Expo/Metro Android export, Expo Doctor (non-blocking), shell-script syntax, workflow YAML validation. Runs on pull requests and is reused by `android-ci.yml`.
+- `android-ci.yml` — on `main` pushes and `v*` tag pushes: validation, Android build (debug APK, release APK, AAB), artifact validation (existence, non-empty, ZIP integrity, application ID `com.orbit.app`, signing certificate), artifact upload. `v*` tag pushes never publish a release.
+- Manual release — strictly `workflow_dispatch` on `main` with `publish_release=true`, `confirm_public_release=true`, and a matching `release_tag`. Requires a successful signed build, certificate check, artifact validation, and (optionally) the emulator smoke test. Never runs automatically.
+
+None of these workflows publish a release or push tags/branches automatically. The isolated release job is the only job with `contents: write`.
 
 ## 6. Iterating on Failures
 

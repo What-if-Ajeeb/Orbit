@@ -12,10 +12,17 @@ export type ProviderCompletionRequest = {
   tools: LlmToolDefinition[];
 };
 
+export type CompletionOptions = {
+  /** Called with each text fragment when the wire protocol supports streaming. */
+  onTextDelta?: (delta: string) => void;
+  /** Aborts an in-flight request when the user stops generation or navigates away. */
+  signal?: AbortSignal;
+};
+
 export type AiProviderAdapter = {
   id: string;
   label: string;
-  complete: (request: ProviderCompletionRequest) => Promise<LlmTurn>;
+  complete: (request: ProviderCompletionRequest, options?: CompletionOptions) => Promise<LlmTurn>;
 };
 
 type RegisterOptions = {
