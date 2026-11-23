@@ -10,9 +10,29 @@
 ## GitHub Actions workflows
 
 - `.github/workflows/ci.yml` - JS validation on push/PR: `npm ci`, `tsc`, `expo lint`, `vitest`, `jest`.
-- `.github/workflows/android-ci.yml` - consolidated Android workflow on push to `main`, PR to `main`, tag `v*`, and manual dispatch. It runs JS checks, sets up JDK 17 + Android SDK, prebuilds, builds debug APK, builds release APK+AAB, uploads artifacts. On `v*` tags it attaches artifacts to the GitHub Release.
+- `.github/workflows/android-ci.yml` - consolidated Android workflow on push to `main`, tag `v*`, and manual dispatch. It sets up JDK 17 + Android SDK, prebuilds, builds debug APK, builds release APK+AAB, and uploads the `ORBIT-android` artifact. Releases are **manual-only**: tag and branch pushes never publish. A `workflow_dispatch` run publishes only when `publish_release=true`, `confirm_public_release=true`, and a valid `release_tag` are supplied.
 - `.github/workflows/android-release.yml` was removed to avoid conflicting duplicate release workflows.
 - `.github/workflows/android-logcat3.yml` remains diagnostic-only; it does not publish production releases.
+
+## Publishing a release (manual-only)
+
+1. Open **Actions → Android Build → Run workflow**.
+2. Select the branch/commit to build (normally `main`).
+3. Set `publish_release` to `true`.
+4. Set `confirm_public_release` to `true`.
+5. Enter a valid `release_tag` such as `v1.12.0`.
+6. Run the workflow.
+
+The release job only starts after the build succeeds. It downloads the verified
+`ORBIT-android` artifact from the same run, rejects missing, empty, or corrupt
+APK/AAB files, and refuses to publish when:
+
+- the release tag already has a GitHub Release;
+- the tag points to a different commit than the workflow run;
+- the build did not succeed.
+
+Ordinary `main` pushes and `v*` tag pushes only build and upload artifacts. They
+never create, edit, or overwrite a public release.
 
 ## Required GitHub secrets (for real signed release)
 

@@ -209,14 +209,23 @@ npx expo start --tunnel
 
 ## Installable APK (GitHub Releases)
 
-Every version tag builds a signed release APK in GitHub Actions and attaches it to
-the GitHub Release. Download it on your phone and install it (allow "Install
-unknown apps" for your browser/file manager).
+Android builds run automatically for `main` pushes and `v*` tags, but they only
+upload CI artifacts. Publishing a public GitHub Release is **manual-only** and
+requires an explicitly confirmed workflow run.
 
-```sh
-git tag v1.7.0
-git push origin v1.7.0
-```
+To publish a release:
+
+1. Open **Actions → Android Build → Run workflow**.
+2. Set `publish_release` to `true`.
+3. Set `confirm_public_release` to `true`.
+4. Enter a valid `release_tag` such as `v1.7.0`.
+5. Run the workflow. It downloads and verifies the APKs/AAB from that same
+   successful build, then creates the release.
+
+Tag pushes and normal `main` builds never create, edit, or overwrite a release.
+The release contains `ORBIT-debug.apk`, `ORBIT-release.apk`,
+`ORBIT-release.aab`, and `build-info.txt`. Download the APK on your phone and
+install it (allow "Install unknown apps" for your browser/file manager).
 
 Releases page:
 
@@ -224,12 +233,10 @@ Releases page:
 https://github.com/What-if-Ajeeb/Orbit/releases
 ```
 
-You can also start a build manually: **Actions → Android APK Release → Run
-workflow**. Builds take roughly 10–20 minutes.
-
-> The release APK is signed with the debug keystore, which is fine for testing and
-> sideloading but not for publishing to the Play Store. For a Play Store build,
-> use EAS Build with a production keystore.
+> The release APK is signed with the debug keystore when release-signing secrets
+> are not configured. That is fine for testing and sideloading but not for
+> publishing to the Play Store. For a Play Store build, use EAS Build with a
+> production keystore.
 
 ## Scripts
 
