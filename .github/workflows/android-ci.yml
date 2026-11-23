@@ -26,6 +26,8 @@ on:
     # Tag pushes (v*) build and upload CI artifacts only. Public releases are
     # manual-only and never created by a tag push.
     tags: ['v*']
+  pull_request:
+    branches: [main]
 
 permissions: {}
 
