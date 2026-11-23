@@ -109,16 +109,18 @@ Adding a new provider is just a preset with a base URL and default model:
 | Anthropic | `claude-3-5-sonnet-20241022` | `https://api.anthropic.com/v1` | Via OpenAI-compatible proxy (e.g. LiteLLM). |
 | Mistral | `mistral-large-latest` | `https://api.mistral.ai/v1` | OpenAI-compatible endpoint. |
 | Hugging Face | your model | `https://api-inference.huggingface.co/v1/` | HF Inference API. |
-| Ollama | `llama3` | `http://localhost:11434/v1` | Local Ollama instance — no key needed. |
+| Ollama | `qwen2.5:0.5b` | `http://127.0.0.1:11434/v1` | Default on-device Ollama — no key needed. |
 | OpenRouter | `openai/gpt-4.1-mini` | `https://openrouter.ai/api/v1` | One key, many models. |
 | Custom | your model | any URL | Any OpenAI-compatible endpoint. |
 
 The base URL and model are editable in **Settings → AI BRAIN**. The **Local server**
 mode stores `mode: 'local'` with the settings, skips the API key requirement, and
-allows cleartext HTTP on Android through `expo-build-properties`. A phone must use
-the host computer's LAN IP instead of `localhost` when connecting to Ollama or
-LM Studio. Chat messages go only to the provider you choose; tasks and account
-data stay local on the device.
+allows cleartext HTTP on Android through `expo-build-properties`. Fresh installs
+default to `onDeviceOllamaSettings()` (`http://127.0.0.1:11434/v1`, `qwen2.5:0.5b`);
+the Settings screen also has a **Connect on-device Ollama** shortcut that re-applies
+those defaults. A phone must use the host computer's LAN IP when Ollama or LM Studio
+runs on another machine. Chat messages go only to the provider you choose; tasks
+and account data stay local on the device.
 
 If no provider or local server is configured, the agent runs in offline local mode
 and understands commands like:

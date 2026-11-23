@@ -35,6 +35,7 @@ import {
   isAiConfigured,
   loadAiSettings,
   LOCAL_PROVIDER_ORDER,
+  onDeviceOllamaSettings,
   PROVIDER_PRESETS,
   saveAiSettings,
   type AiConnectionMode,
@@ -203,6 +204,26 @@ export default function SettingsScreen() {
       );
     } finally {
       setIsTesting(false);
+    }
+  }
+
+  async function connectOnDeviceOllama() {
+    if (isSaving || isTesting) {
+      return;
+    }
+
+    setIsSaving(true);
+    setError(null);
+    setNotice(null);
+
+    try {
+      const saved = await saveAiSettings(onDeviceOllamaSettings());
+      setSettings(saved);
+      setNotice(`Connected to on-device Ollama (${saved.model}).`);
+    } catch {
+      setError('Could not save the on-device Ollama settings. Please try again.');
+    } finally {
+      setIsSaving(false);
     }
   }
 
@@ -422,17 +443,25 @@ export default function SettingsScreen() {
               <View style={[styles.infoBox, styles.infoBoxAccent]}>
                 <Ionicons name="wifi-outline" size={16} color={colors.accent} />
                 <Text style={styles.infoBoxText}>
-                  Phone and computer must be on the same Wi-Fi. Use your computer LAN IP, not localhost. For Ollama, start with <Text style={styles.infoCode}>OLLAMA_HOST=0.0.0.0:11434</Text>.
+                  Ollama on this device uses <Text style={styles.infoCode}>http://127.0.0.1:11434/v1</Text>. For a server on another machine, use its LAN IP and start Ollama with <Text style={styles.infoCode}>OLLAMA_HOST=0.0.0.0:11434</Text>.
                 </Text>
               </View>
             ) : null}
+
+            <Button
+              label="Connect on-device Ollama"
+              variant="secondary"
+              onPress={() => { void connectOnDeviceOllama(); }}
+              loading={isSaving}
+              disabled={isTesting}
+            />
 
             <View style={styles.fields}>
               <TextField
                 label={isLocalAi ? 'Server URL' : 'Base URL'}
                 value={settings.baseUrl}
                 onChangeText={(value) => update({ baseUrl: value })}
-                placeholder={isLocalAi ? 'http://192.168.1.20:11434/v1' : 'https://api.openai.com/v1'}
+                placeholder={isLocalAi ? 'http://127.0.0.1:11434/v1' : 'https://api.openai.com/v1'}
                 autoCapitalize="none"
                 autoCorrect={false}
                 keyboardType="url"
@@ -445,7 +474,7 @@ export default function SettingsScreen() {
                 placeholder={preset.model || 'model-name'}
                 autoCapitalize="none"
                 autoCorrect={false}
-                hint={isLocalAi ? 'Example: llama3.2, qwen2.5, mistral' : undefined}
+                hint={isLocalAi ? 'Example: qwen2.5:0.5b, llama3.2, mistral' : undefined}
               />
               {!isLocalAi ? (
                 <TextField

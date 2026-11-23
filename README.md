@@ -3,8 +3,9 @@
 **Orbit Harness** — everything is a plugin, and MCP is the universal adapter.
 
 A local-first Android agent for **tasks and reminders**. Accounts, tasks, and chat
-history live in SQLite on the phone. The agent brain is a cloud LLM that you connect
-with your own API key — there is no shared Orbit server.
+history live in SQLite on the phone. The agent brain is an on-device Ollama server
+by default; you can connect a cloud LLM with your own API key — there is no shared
+Orbit server.
 
 Built with **Expo SDK 58**, **Expo Router**, **expo-sqlite**, **expo-secure-store**,
 and **expo-notifications**.
@@ -46,7 +47,7 @@ Open **Settings → AI BRAIN**, pick a provider, paste a key, and tap **Test**:
 | Anthropic | `claude-3-5-sonnet-20241022` | https://console.anthropic.com/ |
 | Mistral | `mistral-large-latest` | https://console.mistral.ai/ |
 | Hugging Face | your model | https://huggingface.co/settings/tokens |
-| Ollama | `llama3` | (local — no key needed) |
+| Ollama | `qwen2.5:0.5b` | (local — no key needed) |
 | OpenRouter | `openai/gpt-4.1-mini` | https://openrouter.ai/keys |
 | Custom | your model | any OpenAI-compatible endpoint |
 
@@ -54,9 +55,14 @@ The base URL and model are editable. The key is stored in encrypted SecureStore 
 the device and sent only to the provider you choose. Chat messages go to that
 provider; tasks and account data stay local.
 
-For a keyless local LLM, switch **AI BRAIN → Local server**, choose Ollama or Custom,
-and enter the OpenAI-compatible endpoint. On a phone, use the computer's LAN IP
-(for example `http://192.168.1.20:11434/v1`), not `localhost`. Start Ollama with
+By default Orbit links to Ollama running on the same device/container at
+`http://127.0.0.1:11434/v1` with `qwen2.5:0.5b` — no key needed. If you already
+saved other AI settings, tap **Connect on-device Ollama** in **Settings → AI BRAIN**
+to switch back in one tap, then **Test connection** to verify.
+
+For a keyless local LLM on another machine, switch **AI BRAIN → Local server**,
+choose Ollama or Custom, and enter the OpenAI-compatible endpoint using that
+machine's LAN IP (for example `http://192.168.1.20:11434/v1`). Start Ollama with
 `OLLAMA_HOST=0.0.0.0:11434` and keep both devices on the same Wi-Fi. The Android
 build allows cleartext HTTP only for this local connection flow.
 

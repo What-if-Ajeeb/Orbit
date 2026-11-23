@@ -23,6 +23,20 @@ export type AiSettings = {
   apiKey: string;
 };
 
+/** Ollama running on this device (or in this container) via the OpenAI-compatible API. */
+export const ON_DEVICE_OLLAMA_BASE_URL = 'http://127.0.0.1:11434/v1';
+export const ON_DEVICE_OLLAMA_MODEL = 'qwen2.5:0.5b';
+
+export function onDeviceOllamaSettings(): AiSettings {
+  return {
+    provider: 'ollama',
+    mode: 'local',
+    baseUrl: ON_DEVICE_OLLAMA_BASE_URL,
+    model: ON_DEVICE_OLLAMA_MODEL,
+    apiKey: '',
+  };
+}
+
 export type ProviderPreset = {
   id: AiProvider;
   /** Registered wire-protocol adapter used by this preset. */
@@ -140,11 +154,11 @@ export const PROVIDER_PRESETS: Record<AiProvider, ProviderPreset> = {
     adapterId: 'openai-compatible',
     label: 'Ollama',
     shortLabel: 'Ollama',
-    baseUrl: 'http://localhost:11434/v1',
-    model: 'llama3',
+    baseUrl: ON_DEVICE_OLLAMA_BASE_URL,
+    model: ON_DEVICE_OLLAMA_MODEL,
     keyHint: 'optional',
     docsUrl: 'https://github.com/ollama/ollama/blob/main/docs/api.md',
-    note: 'Local Ollama server. No API key needed; use your computer IP on the phone.',
+    note: 'Local Ollama server. No API key needed; on a phone use the host IP if Ollama is on another machine.',
     requiresApiKey: false,
   },
 };
@@ -180,20 +194,12 @@ function getWebStorage(): WebStorage | null {
 }
 
 function emptySettings(): AiSettings {
-  const preset = PROVIDER_PRESETS.openai;
-
-  return {
-    provider: 'openai',
-    mode: 'cloud',
-    baseUrl: preset.baseUrl,
-    model: preset.model,
-    apiKey: '',
-  };
+  return onDeviceOllamaSettings();
 }
 
 function normalizeSettings(value: Partial<AiSettings> | null): AiSettings {
   const provider =
-    value?.provider && value.provider in PROVIDER_PRESETS ? value.provider : 'openai';
+    value?.provider && value.provider in PROVIDER_PRESETS ? value.provider : 'ollama';
   const preset = PROVIDER_PRESETS[provider];
   // Older builds stored Ollama without a mode; treat it as a local server.
   const mode: AiConnectionMode =
