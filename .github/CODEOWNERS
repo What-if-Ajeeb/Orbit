@@ -1,0 +1,10 @@
+# Default owner for everything in the repo.
+* @What-if-Ajeeb
+
+# CI, release, and GitHub configuration require extra care.
+/.github/ @What-if-Ajeeb
+/scripts/git/ @What-if-Ajeeb
+/app.config.js @What-if-Ajeeb
+/plugins/ @What-if-Ajeeb
+/docs/ANDROID_RELEASE.md @What-if-Ajeeb
+/docs/GIT_WORKFLOW.md @What-if-Ajeeb

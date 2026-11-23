@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# Enforce Conventional Commits so history, changelogs, and release notes stay parseable.
+# Format: type(scope)!: subject
+# Emergency bypass (discouraged): SKIP_GIT_HOOKS=1 git commit ...
+set -euo pipefail
+
+if [[ "${SKIP_GIT_HOOKS:-0}" == "1" ]]; then
+  exit 0
+fi
+
+msg_file="${1:?commit message file is required}"
+header="$(head -n1 "$msg_file")"
+
+# Auto-generated messages from Git/GitHub.
+case "$header" in
+  "Merge "*|"Revert "*|"fixup! "*|"squash! "*|"amend! "*) exit 0 ;;
+esac
+
+pattern='^(feat|fix|chore|docs|style|refactor|perf|test|build|ci|revert)(\([a-z0-9._/-]+\))?!?: .+'
+
+if ! printf '%s' "$header" | grep -Eq "$pattern"; then
+  cat >&2 <<'EOF'
+✖ Invalid commit subject. Use Conventional Commits:
+
+  <type>(optional-scope): <imperative summary>
+
+  feat: add offline chat cache
+  fix(settings): stop duplicate notification listeners
+  chore(deps): bump expo to 58.0.27
+  ci(android): require signed release builds
+
+  Allowed types: feat fix chore docs style refactor perf test build ci revert
+EOF
+  printf '  Got: %s\n' "$header" >&2
+  exit 1
+fi
+
+if (( ${#header} > 100 )); then
+  echo "✖ Commit subject is ${#header} characters; keep it at 100 or fewer." >&2
+  exit 1
+fi
+
+case "$header" in
+  *.) echo "✖ Commit subject must not end with a period." >&2; exit 1 ;;
+esac
+
+exit 0

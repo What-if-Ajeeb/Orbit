@@ -237,12 +237,13 @@ requires an explicitly confirmed workflow run.
 
 To publish a release:
 
-1. Open **Actions → Android Build → Run workflow**.
+1. Open **Actions → Android → Run workflow**.
 2. Set `publish_release` to `true`.
 3. Set `confirm_public_release` to `true`.
-4. Enter a valid `release_tag` such as `v1.7.0`.
-5. Run the workflow. It downloads and verifies the APKs/AAB from that same
-   successful build, then creates the release.
+4. Enter `release_tag` exactly as `v<app.json version>` (for example `v1.10.6`).
+5. Run the workflow and approve the `release` environment when prompted. It
+   builds a signed APK/AAB, verifies the checksums and signing flag, then creates
+   the public release.
 
 Tag pushes and normal `main` builds never create, edit, or overwrite a release.
 They only upload CI artifacts. The public release contains `ORBIT-release.apk`,
@@ -257,10 +258,30 @@ Releases page:
 https://github.com/What-if-Ajeeb/Orbit/releases
 ```
 
-> The release APK is signed with the debug keystore when release-signing secrets
-> are not configured. That is fine for testing and sideloading but not for
-> publishing to the Play Store. For a Play Store build, use EAS Build with a
-> production keystore.
+> Artifact-only builds (pushes, PRs, tags) fall back to the debug keystore when
+> release-signing secrets are not configured. Public releases are blocked unless
+> `ORBIT_*` signing secrets are present and the build reports `signed=true`.
+> For a Play Store build, use EAS Build with a production keystore.
+
+## Contributing / Git workflow
+
+`main` is protected: no direct pushes, force-pushes, or unverified merges. Work
+on a short-lived topic branch, open a PR, and squash-merge after CI is green.
+
+```bash
+bash scripts/git/setup.sh          # once per clone: installs hooks + defaults
+git switch main && git pull --ff-only
+git switch -c feat/my-change
+# edit + verify
+git add -p
+git commit -m "feat(scope): imperative summary"
+git push -u origin HEAD
+```
+
+Commit messages and PR titles follow Conventional Commits. Required checks are
+`Validate`, `Build Android`, and `PR title`. See
+**[`docs/GIT_WORKFLOW.md`](docs/GIT_WORKFLOW.md)** for the full branch, commit,
+review, release, and recovery policy.
 
 ## Scripts
 

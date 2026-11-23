@@ -10,10 +10,10 @@ Every change, no matter how small, must pass through the same verification loop:
 2. **Typecheck** — Run `npx tsc --noEmit` to catch type errors.
 3. **Lint** — Run `npx expo lint` to catch style/issues.
 4. **Export** — Run `npx expo export --platform android --no-bytecode` to verify the Android bundle builds.
-5. **Commit** — Commit only when all checks pass.
-6. **Push** — Push to `main` only after the commit is clean.
+5. **Commit** — Commit only when all checks pass, using Conventional Commits.
+6. **Open a PR** — Push a topic branch and open a pull request against `main`. `main` is protected; never push to it directly. Merge only after required checks pass.
 
-If any step fails, fix the error and restart from step 2. Do not skip checks to save time.
+If any step fails, fix the error and restart from step 2. Do not skip checks to save time. See **[GIT_WORKFLOW.md](GIT_WORKFLOW.md)** for the full branch, commit, and release policy.
 
 ## 2. Multi-File Edits
 
@@ -94,6 +94,12 @@ npx tsc --noEmit
 # ESLint
 npx expo lint
 
+# Unit tests (Vitest)
+npm test
+
+# React Native component tests (Jest)
+npm run test:rn
+
 # Android bundle export (verifies Metro bundling works)
 npx expo export --platform android --no-bytecode --output-dir /tmp/opencode/orbit-export
 ```
@@ -106,18 +112,39 @@ Note: The default Hermes bytecode export may fail in this container (`hermesc` S
 |---|---|
 | `tsc --noEmit` | No output, exit code 0 |
 | `expo lint` | No output (or only pre-existing warnings), exit code 0 |
+| `npm test` | Vitest suite passes |
+| `npm run test:rn` | Jest suite passes |
 | `expo export` | `Exported: /tmp/opencode/orbit-export` and a `.js` bundle listed |
-| GitHub Actions CI | `ci.yml` runs `npm ci`, TypeScript, ESLint, Vitest, Jest, Expo Android export, and workflow/config syntax checks on every PR and via `android-ci.yml` on `main`/`v*` pushes. |
+| GitHub Actions CI | `ci.yml` runs `npm ci`, Expo Doctor, TypeScript, ESLint, Vitest, and Jest; `android.yml` builds the Android APK/AAB; `pr-title.yml` validates the Conventional Commit PR title. All three are required on PRs. |
 
 ## 5.1 Continuous Integration
 
 CI runs the same checks as the local loop, plus Android builds:
 
-- `ci.yml` — dependency installation (`npm ci`), TypeScript, ESLint, Vitest, Jest, Expo/Metro Android export, Expo Doctor (non-blocking), shell-script syntax, workflow YAML validation. Runs on pull requests and is reused by `android-ci.yml`.
-- `android-ci.yml` — on `main` pushes and `v*` tag pushes: validation, Android build (debug APK, release APK, AAB), artifact validation (existence, non-empty, ZIP integrity, application ID `com.orbit.app`, signing certificate), artifact upload. `v*` tag pushes never publish a release.
-- Manual release — strictly `workflow_dispatch` on `main` with `publish_release=true`, `confirm_public_release=true`, and a matching `release_tag`. Requires a successful signed build, certificate check, artifact validation, and (optionally) the emulator smoke test. Never runs automatically.
+- `ci.yml` — dependency installation (`npm ci`), Expo Doctor (non-blocking), TypeScript, ESLint, Vitest, Jest. Runs on pull requests and pushes to `main`.
+- `android.yml` — Android build (debug APK, release APK, AAB), ZIP/artifact validation, checksums, and artifact upload. Runs on PRs, `main` pushes, `v*` tag pushes, and manual dispatch. Pushes only upload artifacts; they never publish a release.
+- `pr-title.yml` — validates that the PR title is a Conventional Commit (it becomes the squash-merge message on `main`).
+- Manual release — strictly `workflow_dispatch` on `main` with `publish_release=true`, `confirm_public_release=true`, and `release_tag=v<app.json version>`. Requires release-signing secrets, a build that reports `signed=true`, artifact checksum verification, and approval of the `release` environment. The workflow creates a draft release, verifies every asset, then publishes.
 
-None of these workflows publish a release or push tags/branches automatically. The isolated release job is the only job with `contents: write`.
+None of these workflows push branches or tags automatically, and only the isolated release job has `contents: write`.
+
+## 5.2 Branch protection
+
+`main` is protected: no direct pushes, no force-pushes, linear history, and the
+`Validate`, `Build Android`, and `PR title` checks must pass. The remote rules are
+the source of truth; the local hooks in `.githooks/` are fast guardrails only.
+
+Run once per clone:
+
+```bash
+bash scripts/git/setup.sh
+```
+
+Run once per repo (admin, needs `gh auth login`):
+
+```bash
+bash scripts/git/protect-main.sh
+```
 
 ## 6. Iterating on Failures
 
@@ -131,19 +158,26 @@ If a check fails:
 
 Do not chain multiple unverified changes together. Make one change, verify, then move to the next.
 
-## 6. Git Workflow
+## 7. Git Workflow
+
+`main` is protected. Work on a topic branch and open a PR; direct pushes are blocked by hooks and by branch protection.
 
 ```bash
-git add -A
-git commit -m "Concise summary of changes"
-git push origin main
+git switch main && git pull --ff-only
+git switch -c feat/my-change
+# edit + verify
+git add -p
+git commit -m "feat(scope): imperative summary"
+git push -u origin HEAD
 ```
 
-- Commit messages should be imperative mood ("Add MCP card", not "Added MCP card").
-- If the change includes new features, consider bumping the version in `package.json` and `app.json`, then tagging (`git tag v1.6.0`).
-- Never push to `main` with uncommitted changes or failing checks.
+- Use Conventional Commits (`feat`, `fix`, `chore`, `docs`, `ci`, ...). Hooks enforce the format.
+- Keep one logical change per PR. Squash merge only.
+- Rebase onto `origin/main` and push with `--force-with-lease`; never force-push `main`.
+- Versions live in `app.json` and `package.json` and must match. Release tags (`v*`) are created only by the release workflow — never by hand.
+- Full policy: [GIT_WORKFLOW.md](GIT_WORKFLOW.md).
 
-## 7. Files Touched by Type
+## 8. Files Touched by Type
 
 | Area | Typical files |
 |---|---|
@@ -155,14 +189,15 @@ git push origin main
 | Theme | `src/theme.ts`, `src/context/theme.tsx` |
 | Docs | `README.md`, `docs/HARNESS.md`, `docs/OPERATIONS.md` |
 
-## 8. Emergencies
+## 9. Emergencies
 
 If a change breaks the build and you cannot fix it quickly:
 
-1. `git stash` the broken changes.
-2. Verify `main` is clean and builds.
-3. Re-apply changes one file at a time, verifying after each.
-4. Do not push broken code to `main`.
+1. Revert it on `main` with a revert PR (`git revert <sha>`); never reset or force-push `main`.
+2. `git stash` any broken local work and switch to a clean branch.
+3. Verify `main` is clean and builds.
+4. Re-apply changes one file at a time, verifying after each, on a new topic branch.
+5. Do not push broken code to `main`. The `ALLOW_MAIN_PUSH=1` bypass is for bootstrap/recovery only, never routine work.
 
 ---
 

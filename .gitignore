@@ -31,10 +31,32 @@ yarn-error.*
 *.pem
 
 # local env files
-.env*.local
+.env
+.env.*
+!.env.example
 
 # typescript
 *.tsbuildinfo
+
+# logs and local runtime state
+*.log
+*.pid
+lockllm/logs/
+
+# build / release outputs
+artifacts/
+symbols/
+coverage/
+*.apk
+*.aab
+*.ipa
+
+# Android signing (CI-only, never commit)
+android-signing/
+
+# editors
+.idea/
+.vscode/
 
 # python tooling
 __pycache__/

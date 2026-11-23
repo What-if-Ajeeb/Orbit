@@ -1,92 +1,104 @@
-# Android Release / CI
+# Android CI / Release
 
-## Environment diagnosis (this container)
-
-- OS: Linux container; `java`, `javac`, `adb`, Android SDK, Gradle not installed. `JAVA_HOME` unset.
-- Expo SDK: `~58.0.26`, React Native: `0.88.1`, `react-native-svg`: `15.16.0` (from `package.json`).
-- Android project is generated (CNG) via `npx expo prebuild --platform android --no-install` in CI.
-- **Conclusion**: Local Android APK/AAB builds are **not supported in this environment**. Android builds must run in GitHub Actions (or a machine with JDK 17 + Android SDK).
+Orbit builds Android in GitHub Actions. Local APK/AAB builds are not supported in
+the dev container (no JDK/Android SDK); use CI or a machine with JDK 17 +
+Android SDK.
 
 ## Workflows
 
-- `.github/workflows/ci.yml` - JS validation: `npm ci`, `npx expo-doctor` (non-blocking), `npm run typecheck`, `npm run lint`, `npm test` (Vitest), `npm run test:rn` (Jest), `npx expo export --platform android --no-bytecode`, plus shell-script and workflow-YAML syntax checks. Runs on `pull_request`, manual `workflow_dispatch`, and as a reusable `workflow_call` (invoked by `android-ci.yml` for `main` pushes and `v*` tag pushes). It does **not** run on `push` directly, so `main` pushes are validated exactly once via `android-ci.yml`.
-- `.github/workflows/android-ci.yml` - Android build pipeline. Runs `ci.yml` first, then plans/builds. Triggers: `push` to `main`, `push` to `v*` tags, and manual `workflow_dispatch`. `main` pushes and `v*` tag pushes build and upload CI-signed artifacts (no release secrets) and never publish a release. Manual dispatch can publish only when explicitly authorized.
-- `.github/workflows/android-logcat3.yml` - manual-only diagnostic. Builds debug APK from source, launches on emulator, uploads logcat artifacts. No release publishing, no branch/tag writes, no hardcoded APK download.
+| Workflow | Triggers | What it does |
+| --- | --- | --- |
+| `ci.yml` | PRs, `main` pushes, manual | `npm ci`, Expo Doctor (non-blocking), TypeScript, ESLint, Vitest, Jest |
+| `android.yml` | PRs, `main` pushes, `v*` tag pushes, manual | Debug APK, release APK, AAB, artifact validation, checksums, upload |
+| `pr-title.yml` | PR opened/edited/reopened/synced | Validates the Conventional Commit PR title |
+| `protect-main.sh` (script) | manual, repo admin | Applies branch protection + squash-only merge settings |
 
-## Release policy (unchanged)
+`android.yml` never publishes on push, PR, or tag. A public GitHub Release is
+created **only** by a confirmed manual run from `main`.
 
-Releases are **manual-only**.
+## Versioning
 
-- Nothing is published on push or tag push.
-- Only `workflow_dispatch` on `main` with `publish_release=true`, `confirm_public_release=true`, and `release_tag=v<app.json version>` can publish.
-- Existing GitHub Releases are never overwritten.
-- The release tag must point at the workflow commit (or be created at that commit by the release).
-- Workflow inputs are passed to scripts only through `env`.
-- Permissions are least-privilege (`permissions: {}` at workflow top, granted per job).
+`app.json` → `expo.version` is the single source of truth.
 
-## Versioning rule
+- `package.json` `version` must exactly equal `expo.version`.
+- Both must match `MAJOR.MINOR.PATCH`, with `MINOR`/`PATCH` below 1000.
+- Android `versionCode` is derived in `app.config.js` as
+  `MAJOR * 1_000_000 + MINOR * 1_000 + PATCH`.
+- A release tag is `v<version>`, e.g. `v1.10.6`. It must match the version in
+  the commit being built; the workflow rejects anything else.
+- Never hand-create a `v*` tag and never reuse a published tag. Bump the version
+  and publish a new release.
 
-`app.json` `expo.version` is the **single source of truth**.
+## One-time GitHub setup
 
-- `package.json` version must equal `app.json` version.
-- `release_tag` must equal `v${app.json.expo.version}`.
-- Android `versionCode` is derived in `app.config.js` as `MAJOR*1000000 + MINOR*1000 + PATCH` (monotonic for MAJOR.MINOR.PATCH where MINOR/PATCH < 1000).
-- `plugins/withReleaseSigning.js` is an Expo config plugin; it configures release signing from env and throws during prebuild when `ORBIT_REQUIRE_RELEASE_SIGNING=1` and required secrets are missing.
-
-## Required GitHub configuration (one-time, repo owner)
-
-1. **Create Environment `release`** with required reviewers. Only the `build-release` job uses it.
-2. **Move signing secrets into Environment `release`** (not repo-wide):
-   - `ORBIT_KEYSTORE_BASE64` - base64-encoded release keystore (renamed from `ORBIT_RELEASE_STORE_FILE`)
+1. **Environment `release`**
+   - Settings → Environments → New environment → `release`.
+   - Add required reviewers so publishing needs a human approval.
+2. **Signing secrets** (environment `release` is recommended, repo-level also works):
+   - `ORBIT_KEYSTORE_BASE64` — base64 of the release keystore
    - `ORBIT_RELEASE_STORE_PASSWORD`
    - `ORBIT_RELEASE_KEY_ALIAS`
    - `ORBIT_RELEASE_KEY_PASSWORD`
-3. **Add repository variable** `ORBIT_RELEASE_CERT_SHA256` - SHA-256 of the release signing certificate. Release verification fails if missing, mismatched, or debug cert.
-4. **Optional repository variable** `ORBIT_SMOKE_REQUIRED=true` - make emulator smoke test required after it is stable.
-5. **Enable Dependabot** for GitHub Actions and npm (`.github/dependabot.yml` is included).
+3. **Branch protection**
+   ```bash
+   gh auth login
+   bash scripts/git/protect-main.sh
+   ```
+
+Without signing secrets, artifact-only builds fall back to the debug keystore.
+That is fine for sideload testing, but **publishing is blocked** until signing is
+configured.
 
 ## Publishing a release
 
-1. Bump `app.json` `expo.version` and `package.json` `version` to the same MAJOR.MINOR.PATCH.
-2. Merge to `main`.
-3. Open **Actions → Android Build → Run workflow** on `main`.
-4. Set `publish_release=true`, `confirm_public_release=true`, `release_tag=vX.Y.Z`.
-5. Approve the `release` environment when prompted.
-6. Workflow builds signed artifacts, verifies certificate SHA-256, runs emulator smoke test, creates a **draft** release, verifies assets/checksums, then publishes it. If verification fails, the draft is deleted.
+1. Open a PR that bumps **both** `app.json` and `package.json` to the same
+   version, e.g. `chore(release): 1.11.0`.
+2. Merge the PR after CI is green.
+3. Open **Actions → Android → Run workflow**:
+   - branch: `main`
+   - `publish_release`: `true`
+   - `confirm_public_release`: `true`
+   - `release_tag`: `v1.11.0`
+4. Approve the `release` environment when prompted.
+5. The workflow:
+   - validates the tag against `app.json` before building
+   - builds debug + release artifacts and records `signed=true`
+   - verifies ZIP integrity, `SHA256SUMS.txt`, the signed flag, and the app version
+   - creates a **draft** release, verifies every asset is attached, then publishes
+   - deletes the draft if any verification step fails
 
-## Artifacts
+Release assets:
 
-Artifact retention:
-- `ORBIT-android` (CI builds on `main` and `v*` tag pushes): retained **14 days**.
-- `ORBIT-android` (authorized release builds): retained **90 days**.
-- `ORBIT-symbols` and `ORBIT-smoke-logcat`: retained **14 days**.
-- `ORBIT-logcat` (diagnostic workflow): retained **14 days**.
-
-CI artifact upload (`ORBIT-android`):
-- `ORBIT-debug.apk`
-- `ORBIT-release.apk`
-- `ORBIT-release.aab`
-- `build-info.txt` (commit, ref, event, run ID, UTC timestamp, app version, version code, package ID, signing status, certificate SHA-256)
-- `SHA256SUMS.txt`
-
-Public release assets:
 - `ORBIT-release.apk`
 - `ORBIT-release.aab`
 - `SHA256SUMS.txt`
-- `build-info.txt`
+- `build-info.txt` (commit, ref, event, run ID, version, package, signing status, UTC timestamp)
 
-Debug APK is kept as CI artifact only (not attached to public release).
-Symbol artifacts (`ORBIT-symbols`): R8 `mapping.txt` and Hermes source maps when present.
+`ORBIT-debug.apk` is uploaded as a CI artifact only and is never attached to a
+public release. CI artifacts are retained for 14 days.
 
-Every artifact is validated before upload: all three files must exist and be non-empty, APK/AAB ZIP integrity is verified, and the application ID is confirmed as `com.orbit.app`.
+## Artifact-only runs
 
-## Verification status
+Push to `main`, open a PR, push a `v*` tag, or run **Actions → Android** with
+`publish_release=false` to build and upload artifacts without publishing. This is
+the safe way to test the Android pipeline.
 
-- Local JS checks: run `npx tsc --noEmit`, `npx expo lint`, `npm test`, `npm run test:rn`.
-- GitHub Actions Android run: **not claimed as passed until an actual run completes successfully**.
-- Emulator smoke test: non-blocking until `ORBIT_SMOKE_REQUIRED=true`.
+## Troubleshooting
 
-## Device testing
+| Symptom | Cause / fix |
+| --- | --- |
+| `app.json (...) and package.json (...) versions differ` | Bump both to the same version in the same PR |
+| `release_tag must equal v...` | Use `v` + the exact `app.json` version |
+| `publish_release=true requires release-signing secrets` | Add the `ORBIT_*` secrets (or run artifact-only) |
+| `Refusing to publish an unsigned build` | The build did not report `signed=true`; fix signing, rebuild |
+| `Release vX.Y.Z already exists` | Never reuse a tag; bump the patch version |
+| `Draft release ... is missing asset` | Artifact upload/download failed; re-run the workflow |
+| `SHA256SUMS.txt` mismatch | Artifacts were corrupted or mixed between runs; rebuild |
 
-- Physical Android device: **NOT TESTED** in this environment.
-- Emulator: **NOT AVAILABLE** in this environment (CI smoke test covers launch sanity).
+## Security notes
+
+- The release job is the only job with `contents: write`; all other jobs are read-only.
+- Workflow actions are pinned to commit SHAs; Dependabot updates the pins.
+- The keystore is decoded only for the duration of the build and removed with
+  `if: always()`.
+- Public releases require a signed build and explicit human confirmation.

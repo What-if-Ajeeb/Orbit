@@ -1,0 +1,119 @@
+#!/usr/bin/env bash
+# Fast local guardrails. Full validation still runs in CI.
+# Emergency bypass (discouraged): SKIP_GIT_HOOKS=1 git commit ...
+set -euo pipefail
+
+if [[ "${SKIP_GIT_HOOKS:-0}" == "1" ]]; then
+  echo "pre-commit: skipped (SKIP_GIT_HOOKS=1)"
+  exit 0
+fi
+
+root="$(git rev-parse --show-toplevel)"
+cd "$root"
+
+if [[ -t 1 ]]; then
+  red=$'\033[31m'
+  yellow=$'\033[33m'
+  reset=$'\033[0m'
+else
+  red=""
+  yellow=""
+  reset=""
+fi
+
+fail() { printf '%s\n' "${red}✖ $*${reset}" >&2; }
+warn() { printf '%s\n' "${yellow}⚠ $*${reset}" >&2; }
+
+# --- Branch policy -----------------------------------------------------------
+branch="$(git symbolic-ref --quiet --short HEAD || true)"
+if [[ "$branch" == "main" && "${ALLOW_MAIN_COMMIT:-0}" != "1" ]]; then
+  fail "Direct commits on 'main' are blocked."
+  echo "  Create a branch first:  git switch -c feat/<short-topic>"
+  echo "  One-off override:      ALLOW_MAIN_COMMIT=1 git commit ..."
+  exit 1
+fi
+
+mapfile -d '' files < <(git diff --cached --name-only --diff-filter=ACMR -z)
+if (( ${#files[@]} == 0 )); then
+  exit 0
+fi
+
+failed=0
+
+for f in "${files[@]}"; do
+  # --- Secrets and signing material -----------------------------------------
+  case "$f" in
+    .env.example|*.env.example) ;;
+    .env|.env.*|*.pem|*.key|*.p12|*.pfx|*.jks|*.keystore|keystore.properties|android/app/release.keystore|android-signing/*)
+      fail "Refusing to commit secret/signing file: $f"
+      failed=1
+      continue
+      ;;
+  esac
+
+  # --- Large files ----------------------------------------------------------
+  size="$(git cat-file -s ":$f" 2>/dev/null || echo 0)"
+  if (( size > 5 * 1024 * 1024 )); then
+    fail "File larger than 5 MB: $f (${size} bytes). Use Git LFS or a CI artifact."
+    failed=1
+  fi
+
+  # --- Generated / runtime paths -------------------------------------------
+  case "$f" in
+    android/*|ios/*|dist/*|web-build/*|.expo/*|node_modules/*|artifacts/*|symbols/*|lockllm/logs/*)
+      fail "Generated/runtime path must not be committed: $f"
+      failed=1
+      continue
+      ;;
+  esac
+
+  # --- High-signal secret patterns -----------------------------------------
+  if git show ":$f" 2>/dev/null | grep -IaqE \
+    -- '-----BEGIN (RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----|gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{35}|xox[baprs]-[0-9A-Za-z-]{10,}'; then
+    fail "Possible credential in $f — remove it and rotate the secret."
+    failed=1
+  fi
+
+  # --- Structured config ----------------------------------------------------
+  case "$f" in
+    *.json)
+      if ! git show ":$f" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{JSON.parse(s)}catch(e){console.error(e.message);process.exit(1)}})' 2>/dev/null; then
+        fail "Invalid JSON: $f"
+        failed=1
+      fi
+      ;;
+    .github/workflows/*.yml|.github/workflows/*.yaml)
+      if command -v python3 >/dev/null 2>&1 && python3 -c 'import yaml' >/dev/null 2>&1; then
+        if ! git show ":$f" | python3 -c 'import sys,yaml; yaml.safe_load(sys.stdin)' 2>/dev/null; then
+          fail "Invalid workflow YAML: $f"
+          failed=1
+        fi
+      else
+        warn "PyYAML not installed; skipping YAML validation for $f"
+      fi
+      ;;
+  esac
+
+  # --- Executable shell scripts --------------------------------------------
+  mode="$(git ls-files -s -- "$f" | awk '{print $1}' | head -n1)"
+  if [[ "$f" == *.sh && "$mode" != "100755" ]]; then
+    fail "Shell script is not executable: $f"
+    echo "  Fix: chmod +x \"$f\" && git add \"$f\""
+    failed=1
+  fi
+done
+
+# --- Unresolved conflict markers -------------------------------------------
+if git diff --cached --check 2>/dev/null | grep -q 'leftover conflict marker'; then
+  fail "Unresolved merge-conflict marker in staged changes."
+  failed=1
+fi
+
+if (( failed )); then
+  echo
+  echo "Commit blocked. Fix the items above, then retry."
+  echo "Emergency bypass: SKIP_GIT_HOOKS=1 git commit ... (CI still enforces checks)"
+  exit 1
+fi
+
+exit 0

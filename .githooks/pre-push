@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+# Block direct pushes to protected branches and work-in-progress commits.
+# One-off bootstrap override (discouraged): ALLOW_MAIN_PUSH=1 git push ...
+# Emergency bypass (discouraged): SKIP_GIT_HOOKS=1 git push ...
+set -euo pipefail
+
+if [[ "${SKIP_GIT_HOOKS:-0}" == "1" ]]; then
+  echo "pre-push: skipped (SKIP_GIT_HOOKS=1)"
+  exit 0
+fi
+
+if [[ -t 1 ]]; then
+  red=$'\033[31m'
+  reset=$'\033[0m'
+else
+  red=""
+  reset=""
+fi
+fail() { printf '%s\n' "${red}✖ $*${reset}" >&2; }
+
+zero='0000000000000000000000000000000000000000'
+protected=("refs/heads/main" "refs/heads/master")
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+  [[ -n "${local_ref:-}" ]] || continue
+
+  # Branch/tag deletion.
+  if [[ "$local_sha" == "$zero" ]]; then
+    if [[ " ${protected[*]} " == *" $remote_ref "* ]]; then
+      fail "Deleting $remote_ref is blocked."
+      exit 1
+    fi
+    continue
+  fi
+
+  # Only branch pushes need policy checks.
+  [[ "$remote_ref" == refs/heads/* ]] || continue
+
+  if [[ " ${protected[*]} " == *" $remote_ref "* ]]; then
+    if [[ "${ALLOW_MAIN_PUSH:-0}" != "1" ]]; then
+      fail "Direct pushes to ${remote_ref#refs/heads/} are blocked."
+      echo "  Push a topic branch and open a pull request instead."
+      echo "  See docs/GIT_WORKFLOW.md."
+      echo "  Bootstrap override: ALLOW_MAIN_PUSH=1 git push ..."
+      exit 1
+    fi
+
+    # Even with the override, never allow history rewriting on main.
+    if [[ "$remote_sha" != "$zero" ]] && ! git merge-base --is-ancestor "$remote_sha" "$local_sha" 2>/dev/null; then
+      fail "Force-push to $remote_ref is blocked."
+      exit 1
+    fi
+  fi
+
+  # Reject WIP/squash-marker commits in the pushed range.
+  if [[ "$remote_sha" == "$zero" ]]; then
+    mapfile -t commits < <(git rev-list "$local_sha" --not --remotes)
+  else
+    mapfile -t commits < <(git rev-list "$remote_sha..$local_sha")
+  fi
+
+  for commit in "${commits[@]}"; do
+    subject="$(git show -s --format=%s "$commit")"
+    case "$subject" in
+      WIP*|wip*|"fixup! "*|"squash! "*|"amend! "*)
+        fail "Work-in-progress commit cannot be pushed: $commit $subject"
+        echo "  Squash or amend it before pushing."
+        exit 1
+        ;;
+    esac
+  done
+done
+
+exit 0

@@ -23,6 +23,18 @@ npx expo install --fix      # fix incompatible package versions
 
 Run lint and typecheck before declaring any task done.
 
+## Git workflow
+
+`main` is protected. Never commit or push to it directly.
+
+1. Run `bash scripts/git/setup.sh` once per clone (installs hooks + Git defaults).
+2. Create a topic branch: `git switch -c feat/<topic>` (or `fix/`, `chore/`, `ci/`, `docs/`).
+3. Commit with Conventional Commits: `feat(chat): add retry`, `fix(settings): ...`.
+4. Push the branch and open a PR against `main`. Required checks: `Validate`, `Build Android`, `PR title`.
+5. Squash-merge only after CI is green.
+
+Full policy: `docs/GIT_WORKFLOW.md`. Hooks and branch protection block direct `main` pushes; do not bypass them routinely.
+
 ## Navigation & Routing
 
 - Use **Expo Router** for all navigation. Routes live in `src/app/` — every file there is a screen, `_layout.tsx` files define navigators. Keep non-route code (components, hooks, utils) outside `src/app/`.
@@ -48,7 +60,7 @@ Before making changes across multiple files, fixing bugs, or running refactors/m
 2. **Typecheck** — Run `npx tsc --noEmit`.
 3. **Lint** — Run `npx expo lint`.
 4. **Export** — Run `npx expo export --platform android --no-bytecode`.
-5. **Commit** — Commit only when all checks pass.
-6. **Push** — Push to `main`.
+5. **Commit** — Commit only when all checks pass, using Conventional Commits.
+6. **Open a PR** — Push a topic branch and open a pull request against `main`. `main` is protected; never push to it directly. Merge only after required checks pass.
 
 If any step fails, fix the error and restart from step 2. Do not skip checks.
