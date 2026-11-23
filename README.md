@@ -231,26 +231,36 @@ npx expo start --tunnel
 
 ## Installable APK (GitHub Releases)
 
-Android builds run automatically for pull requests, `main` pushes, and `v*` tags,
-but they only upload CI artifacts. Publishing a public GitHub Release is
-**manual-only** and requires an explicitly confirmed workflow run.
+Android builds run automatically for pull requests and `main` pushes, but they
+only upload CI artifacts. Pushing a `v*` tag builds and publishes a public
+GitHub Release automatically.
 
 To publish a release:
 
-1. Open **Actions → Android → Run workflow**.
-2. Set `publish_release` to `true`.
-3. Set `confirm_public_release` to `true`.
-4. Enter `release_tag` exactly as `v<app.json version>` (for example `v1.10.6`).
-5. Run the workflow and approve the `release` environment when prompted. It
-   builds a signed APK/AAB, verifies the checksums and signing flag, then creates
-   the public release.
+1. Bump **both** `app.json` and `package.json` to the same version in a PR and
+   merge it (for example `1.10.6`).
+2. Tag the merged `main` commit and push the tag:
 
-Tag pushes and normal `main` builds never create, edit, or overwrite a release.
-They only upload CI artifacts. The public release contains `ORBIT-release.apk`,
-`ORBIT-release.aab`, `SHA256SUMS.txt`, and `build-info.txt`; `ORBIT-debug.apk`
-is kept as a CI artifact only and is never attached to a public release.
-Download the release APK on your phone and install it (allow "Install unknown
-apps" for your browser/file manager).
+   ```bash
+   git switch main && git pull --ff-only
+   git tag -a v1.10.6 -m "Orbit v1.10.6"
+   git push origin v1.10.6
+   ```
+
+3. The **Android** workflow builds the APK/AAB, verifies checksums and the
+   signing status, then creates the release. If the `release` environment has
+   required reviewers, approve the run when prompted.
+
+You can also publish from **Actions → Android → Run workflow** on `main`:
+check `publish_release` and leave `release_tag` empty (it defaults to
+`v<app.json version>`).
+
+Normal `main` pushes and pull requests never create, edit, or overwrite a
+release. They only upload CI artifacts. The public release contains
+`ORBIT-release.apk`, `ORBIT-release.aab`, `SHA256SUMS.txt`, and
+`build-info.txt`; `ORBIT-debug.apk` is kept as a CI artifact only and is never
+attached to a public release. Download the release APK on your phone and
+install it (allow "Install unknown apps" for your browser/file manager).
 
 Releases page:
 
@@ -258,9 +268,10 @@ Releases page:
 https://github.com/What-if-Ajeeb/Orbit/releases
 ```
 
-> Artifact-only builds (pushes, PRs, tags) fall back to the debug keystore when
-> release-signing secrets are not configured. Public releases are blocked unless
-> `ORBIT_*` signing secrets are present and the build reports `signed=true`.
+> Without `ORBIT_*` signing secrets, releases are **debug-signed** and the
+> release notes say so. That is fine for sideloading/testing. After adding a
+> release keystore, set the repository variable
+> `ORBIT_REQUIRE_RELEASE_SIGNING=true` to block unsigned releases.
 > For a Play Store build, use EAS Build with a production keystore.
 
 ## Contributing / Git workflow

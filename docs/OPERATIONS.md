@@ -122,9 +122,9 @@ Note: The default Hermes bytecode export may fail in this container (`hermesc` S
 CI runs the same checks as the local loop, plus Android builds:
 
 - `ci.yml` — dependency installation (`npm ci`), Expo Doctor (non-blocking), TypeScript, ESLint, Vitest, Jest. Runs on pull requests and pushes to `main`.
-- `android.yml` — Android build (debug APK, release APK, AAB), ZIP/artifact validation, checksums, and artifact upload. Runs on PRs, `main` pushes, `v*` tag pushes, and manual dispatch. Pushes only upload artifacts; they never publish a release.
+- `android.yml` — Android build (debug APK, release APK, AAB), ZIP/artifact validation, checksums, and artifact upload. Runs on PRs, `main` pushes, `v*` tag pushes, and manual dispatch. Tag pushes and `publish_release` runs publish a GitHub Release; PRs and `main` pushes only upload artifacts.
 - `pr-title.yml` — validates that the PR title is a Conventional Commit (it becomes the squash-merge message on `main`).
-- Manual release — strictly `workflow_dispatch` on `main` with `publish_release=true`, `confirm_public_release=true`, and `release_tag=v<app.json version>`. Requires release-signing secrets, a build that reports `signed=true`, artifact checksum verification, and approval of the `release` environment. The workflow creates a draft release, verifies every asset, then publishes.
+- Release — push a `v<app.json version>` tag from `main`, or run `workflow_dispatch` on `main` with `publish_release` checked (leave `release_tag` empty to use the current version). Verifies artifact checksums and signing status, and requires approval of the `release` environment. The workflow creates a draft release, verifies every asset, then publishes. Without signing secrets the release is debug-signed and marked as such; set `ORBIT_REQUIRE_RELEASE_SIGNING=true` to block unsigned releases.
 
 None of these workflows push branches or tags automatically, and only the isolated release job has `contents: write`.
 
@@ -174,7 +174,7 @@ git push -u origin HEAD
 - Use Conventional Commits (`feat`, `fix`, `chore`, `docs`, `ci`, ...). Hooks enforce the format.
 - Keep one logical change per PR. Squash merge only.
 - Rebase onto `origin/main` and push with `--force-with-lease`; never force-push `main`.
-- Versions live in `app.json` and `package.json` and must match. Release tags (`v*`) are created only by the release workflow — never by hand.
+- Versions live in `app.json` and `package.json` and must match. Release tags (`v*`) are created from merged `main` commits; pushing one publishes the release. Never move or reuse a published tag.
 - Full policy: [GIT_WORKFLOW.md](GIT_WORKFLOW.md).
 
 ## 8. Files Touched by Type

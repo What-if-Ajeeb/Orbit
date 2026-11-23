@@ -19,7 +19,7 @@ pull request and green CI.
 | Squash merge only | One commit per PR on `main`; no merge bubbles |
 | CI must be green before merge | Required checks: `Validate`, `Build Android`, `PR title` |
 | Force-push only your own branch, always with `--force-with-lease` | Never rewrite shared history |
-| Releases are manual and signed | No accidental public releases from pushes |
+| Releases are explicit and version-checked | Only a `v*` tag push or a manual publish run can create a release |
 
 ---
 
@@ -57,7 +57,8 @@ This configures:
 - admin enforcement (rules apply to everyone)
 
 Also create the `release` environment with required reviewers and add the
-`ORBIT_*` signing secrets — see [ANDROID_RELEASE.md](ANDROID_RELEASE.md).
+`ORBIT_*` signing secrets — see [ANDROID_RELEASE.md](ANDROID_RELEASE.md). If the
+environment uses deployment branch rules, allow `main` and `v*` tags.
 
 Without `gh`, configure the same settings in **Settings → Branches → Add branch
 protection rule** and **Settings → General → Pull Requests**.
@@ -225,20 +226,30 @@ git undo     # soft-reset the last commit (keeps changes staged)
    ```
 
 2. Merge the PR after CI is green.
-3. Go to **Actions → Android → Run workflow** on `main`.
-4. Set `publish_release=true`, `confirm_public_release=true`, and
-   `release_tag=v1.11.0` (it must equal `v<app.json version>`).
-5. Approve the `release` environment when prompted.
-6. The workflow builds, verifies `signed=true`, checks `SHA256SUMS.txt`,
-   creates a **draft** release, verifies its assets, then publishes it.
+3. Tag the merged `main` commit and push the tag:
+
+   ```bash
+   git switch main && git pull --ff-only
+   git tag -a v1.11.0 -m "Orbit v1.11.0"
+   git push origin v1.11.0
+   ```
+
+4. Approve the `release` environment when prompted (if it has reviewers).
+5. The workflow checks the tag against `app.json`, builds, verifies the signing
+   status and `SHA256SUMS.txt`, creates a **draft** release, verifies its
+   assets, then publishes it.
+
+To retry without creating a new tag, use **Actions → Android → Run workflow** on
+`main`, check `publish_release`, and leave `release_tag` empty to use
+`v<app.json version>`.
 
 Rules:
 
-- Normal `main` pushes and `v*` tag pushes only upload CI artifacts.
-- Never create a release tag by hand; the workflow creates it at the built commit.
-- Never reuse a published tag. Bump the version instead.
-- Publishing requires release-signing secrets; an unsigned build cannot be
-  published.
+- PRs and `main` pushes only upload CI artifacts.
+- Tag the merged `main` commit. Never move or reuse a published tag; bump the
+  version instead.
+- Signing secrets are optional; without them the release is debug-signed and
+  marked as such. Set `ORBIT_REQUIRE_RELEASE_SIGNING=true` to require signed builds.
 
 See [ANDROID_RELEASE.md](ANDROID_RELEASE.md) for signing setup and troubleshooting.
 
@@ -323,7 +334,7 @@ version, and publish a new release.
 | `git rebase origin/main` + `--force-with-lease` | `git push --force` |
 | `git revert` on `main` | `git reset` + force-push `main` |
 | Delete merged branches | Leave stale branches for months |
-| Let the workflow create release tags | Hand-create `v*` tags or reuse them |
+| Tag merged `main` commits for releases | Move, delete, or reuse published tags |
 | Run the verification loop before pushing | Rely on CI to catch obvious failures |
 
 ---
@@ -335,4 +346,4 @@ version, and publish a new release.
   short-lived, auto-deleted after merge.
 - `dependabot/*` — managed by Dependabot; do not push to them manually.
 - `archive/*` tags — abandoned work preserved for recovery; never build from them.
-- `v*` tags — release markers created by the release workflow only.
+- `v*` tags — release markers on merged `main` commits; pushing one publishes a release.
