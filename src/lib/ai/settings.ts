@@ -1,6 +1,10 @@
 import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 
+import { normalizeOllamaBaseUrl, ON_DEVICE_OLLAMA_BASE_URL } from './ollama';
+
+export { ON_DEVICE_OLLAMA_BASE_URL } from './ollama';
+
 export type AiProvider =
   | 'deepseek'
   | 'openai'
@@ -23,16 +27,16 @@ export type AiSettings = {
   apiKey: string;
 };
 
-/** Ollama running on this device (or in this container) via the OpenAI-compatible API. */
-export const ON_DEVICE_OLLAMA_BASE_URL = 'http://127.0.0.1:11434/v1';
-export const ON_DEVICE_OLLAMA_MODEL = 'qwen2.5:0.5b';
-
+/**
+ * Ollama running on this same device via its native HTTP API.
+ * The model is intentionally empty: `/api/tags` must discover what is installed.
+ */
 export function onDeviceOllamaSettings(): AiSettings {
   return {
     provider: 'ollama',
     mode: 'local',
     baseUrl: ON_DEVICE_OLLAMA_BASE_URL,
-    model: ON_DEVICE_OLLAMA_MODEL,
+    model: '',
     apiKey: '',
   };
 }
@@ -151,14 +155,14 @@ export const PROVIDER_PRESETS: Record<AiProvider, ProviderPreset> = {
   },
   ollama: {
     id: 'ollama',
-    adapterId: 'openai-compatible',
+    adapterId: 'ollama-native',
     label: 'Ollama',
     shortLabel: 'Ollama',
     baseUrl: ON_DEVICE_OLLAMA_BASE_URL,
-    model: ON_DEVICE_OLLAMA_MODEL,
-    keyHint: 'optional',
+    model: '',
+    keyHint: 'not needed',
     docsUrl: 'https://github.com/ollama/ollama/blob/main/docs/api.md',
-    note: 'Local Ollama server. No API key needed; on a phone use the host IP if Ollama is on another machine.',
+    note: 'Native /api/tags + /api/chat. Model list is discovered from the running server; no /v1 suffix.',
     requiresApiKey: false,
   },
 };
@@ -207,10 +211,15 @@ function normalizeSettings(value: Partial<AiSettings> | null): AiSettings {
       ? 'local'
       : 'cloud';
 
+  const rawBaseUrl = (value?.baseUrl ?? preset.baseUrl).trim();
+  // Migrate the old OpenAI-compatible `/v1` Ollama default to the native API.
+  const baseUrl =
+    provider === 'ollama' ? normalizeOllamaBaseUrl(rawBaseUrl) || preset.baseUrl : rawBaseUrl;
+
   return {
     provider,
     mode,
-    baseUrl: (value?.baseUrl ?? preset.baseUrl).trim(),
+    baseUrl,
     model: (value?.model ?? preset.model).trim(),
     apiKey: (value?.apiKey ?? '').trim(),
   };

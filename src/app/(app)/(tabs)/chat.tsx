@@ -25,7 +25,12 @@ import { SidebarButton } from '@/components/SidebarButton';
 import { useSession } from '@/context/auth';
 import { useSidebar } from '@/context/sidebar';
 import { runAgent } from '@/lib/ai/agent';
-import { isAiConfigured, loadAiSettings } from '@/lib/ai/settings';
+import { OllamaRequestError } from '@/lib/ai/ollama';
+import {
+  isAiConfigured,
+  loadAiSettings,
+  type AiSettings,
+} from '@/lib/ai/settings';
 import {
   getChatStore,
   type ChatMessage,
@@ -40,6 +45,23 @@ const SUGGESTIONS = [
   'Add task pay electricity bill tomorrow 10am',
   "What's pending?",
 ];
+
+function describeAiMode(settings: AiSettings): string {
+  if (!isAiConfigured(settings)) {
+    return 'Local mode';
+  }
+
+  return settings.provider === 'ollama' && settings.mode === 'local'
+    ? 'On-device AI'
+    : 'Cloud AI';
+}
+
+function isCancelledError(error: unknown): boolean {
+  return (
+    (error instanceof OllamaRequestError && error.code === 'cancelled') ||
+    (error instanceof Error && error.message === 'AI request cancelled.')
+  );
+}
 
 export default function ChatScreen() {
   const { colors } = useAppTheme();
@@ -67,6 +89,10 @@ export default function ChatScreen() {
   const [input, setInput] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [aiReady, setAiReady] = useState<boolean | null>(null);
+  const [aiLabel, setAiLabel] = useState('Local mode');
+  const [streamedText, setStreamedText] = useState('');
+  const streamRef = useRef('');
+  const abortRef = useRef<AbortController | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [historyManualOpen, setHistoryManualOpen] = useState(false);
   const [historyDismissedKey, setHistoryDismissedKey] = useState<string | null>(null);
@@ -101,6 +127,7 @@ export default function ChatScreen() {
       ]);
 
       setAiReady(isAiConfigured(settings));
+      setAiLabel(describeAiMode(settings));
 
       let currentId = activeIdRef.current;
 
@@ -206,6 +233,13 @@ export default function ChatScreen() {
     return () => subscription.remove();
   }, []);
 
+  useEffect(
+    () => () => {
+      abortRef.current?.abort();
+    },
+    []
+  );
+
   if (!user) {
     return null;
   }
@@ -222,6 +256,10 @@ export default function ChatScreen() {
     setConversations(list);
   }
 
+  function stopGeneration() {
+    abortRef.current?.abort();
+  }
+
   async function send(rawText?: string) {
     if (isSending) {
       return;
@@ -233,12 +271,18 @@ export default function ChatScreen() {
       return;
     }
 
+    const controller = new AbortController();
+    abortRef.current = controller;
+    streamRef.current = '';
+    setStreamedText('');
     setInput('');
     setError(null);
     setIsSending(true);
 
+    let conversationId: number | null = null;
+
     try {
-      let conversationId = activeIdRef.current;
+      conversationId = activeIdRef.current;
 
       if (conversationId === null) {
         const created = await store.createConversation(activeUser.id);
@@ -259,6 +303,7 @@ export default function ChatScreen() {
 
       const settings = await loadAiSettings();
       setAiReady(isAiConfigured(settings));
+      setAiLabel(describeAiMode(settings));
 
       const history = nextMessages
         .filter((message) => message.content.trim().length > 0)
@@ -271,11 +316,16 @@ export default function ChatScreen() {
         userName: activeUser.name,
         history,
         settings,
-        conversationId: activeIdRef.current!,
+        conversationId,
         creatorMode,
         agent: MASTER_AGENT,
         projectId: 'orbit-workspace',
         projectLabel: 'Orbit workspace',
+        signal: controller.signal,
+        onTextDelta: (delta) => {
+          streamRef.current += delta;
+          setStreamedText(streamRef.current);
+        },
       });
 
       const assistantMessage = await store.addMessage(
@@ -290,12 +340,30 @@ export default function ChatScreen() {
       setMessages((current) => [...current, assistantMessage]);
       await refreshConversations();
     } catch (sendError) {
-      setError(
-        sendError instanceof Error
-          ? sendError.message
-          : 'Something went wrong. Please try again.'
-      );
+      if (isCancelledError(sendError)) {
+        const partial = streamRef.current.trim();
+
+        if (partial && conversationId !== null) {
+          const stopped = await store.addMessage(
+            activeUser.id,
+            conversationId,
+            'assistant',
+            partial
+          );
+          setMessages((current) => [...current, stopped]);
+          await refreshConversations();
+        }
+      } else {
+        setError(
+          sendError instanceof Error
+            ? sendError.message
+            : 'Something went wrong. Please try again.'
+        );
+      }
     } finally {
+      abortRef.current = null;
+      streamRef.current = '';
+      setStreamedText('');
       setIsSending(false);
     }
   }
@@ -456,7 +524,7 @@ export default function ChatScreen() {
             >
               <Ionicons name="key-outline" size={16} color={colors.accent} />
               <Text style={styles.modeBannerText}>
-                Local mode — basic commands only. Add an API key for full AI chat.
+                Not connected — basic commands only. Connect an AI provider in Settings.
               </Text>
               <Ionicons name="chevron-forward" size={16} color={colors.textFaint} />
             </Pressable>
@@ -513,7 +581,19 @@ export default function ChatScreen() {
             messages.map((message) => <ChatBubble key={message.id} message={message} />)
           )}
 
-          {isSending ? (
+          {streamedText ? (
+            <ChatBubble
+              message={{
+                id: -1,
+                role: 'assistant',
+                content: streamedText,
+                traces: [],
+                artifacts: [],
+                createdAt: 0,
+              }}
+            />
+          ) : null}
+          {isSending && !streamedText ? (
             <View style={styles.typing} accessibilityLiveRegion="polite">
               <ActivityIndicator size="small" color={colors.accent} />
               <Text style={styles.typingText}>Orbit is thinking…</Text>
@@ -547,36 +627,60 @@ export default function ChatScreen() {
             {aiReady !== null ? (
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel={aiReady ? 'Cloud AI is on. Open settings' : 'Local mode. Open settings'}
+                accessibilityLabel={`${aiLabel}. Open settings`}
                 onPress={() => router.navigate('/settings')}
                 style={({ pressed }) => [styles.modePill, pressed && styles.pressed]}
               >
                 <Ionicons
-                  name={aiReady ? 'sparkles' : 'hardware-chip-outline'}
+                  name={
+                    aiLabel === 'On-device AI'
+                      ? 'hardware-chip-outline'
+                      : aiReady
+                        ? 'sparkles'
+                        : 'hardware-chip-outline'
+                  }
                   size={15}
                   color={aiReady ? colors.accent : colors.textMuted}
                 />
-                <Text style={styles.modePillText}>{aiReady ? 'Cloud AI' : 'Local mode'}</Text>
+                <Text style={styles.modePillText}>{aiLabel}</Text>
               </Pressable>
             ) : (
               <View />
             )}
 
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Send message"
-              disabled={!canSend}
-              onPress={() => {
-                void send();
-              }}
-              style={({ pressed }) => [
-                styles.sendButton,
-                canSend ? styles.sendEnabled : styles.sendDisabled,
-                pressed && styles.pressed,
-              ]}
-            >
-              <Ionicons name="arrow-up" size={22} color={canSend ? colors.white : colors.textFaint} />
-            </Pressable>
+            {isSending ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Stop generating"
+                onPress={stopGeneration}
+                style={({ pressed }) => [
+                  styles.stopButton,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Text style={styles.stopText}>Stop</Text>
+              </Pressable>
+            ) : (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Send message"
+                disabled={!canSend}
+                onPress={() => {
+                  void send();
+                }}
+                style={({ pressed }) => [
+                  styles.sendButton,
+                  canSend ? styles.sendEnabled : styles.sendDisabled,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Ionicons
+                  name="arrow-up"
+                  size={22}
+                  color={canSend ? colors.white : colors.textFaint}
+                />
+              </Pressable>
+            )}
           </View>
         </View>
 
@@ -793,6 +897,20 @@ const makeStyles = ({ colors }: AppTheme) =>
     },
     sendDisabled: {
       backgroundColor: colors.surfaceAlt,
+    },
+    stopButton: {
+      minWidth: 64,
+      height: 48,
+      borderRadius: radius.pill,
+      paddingHorizontal: spacing.md,
+      backgroundColor: colors.surfaceAlt,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    stopText: {
+      color: colors.text,
+      fontSize: 14,
+      fontWeight: '700',
     },
     disclaimer: {
       color: colors.textFaint,

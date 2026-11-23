@@ -1,4 +1,9 @@
-import { aiProviderRegistry, type AiProviderAdapter } from './provider-registry';
+import { ollamaChat } from './ollama';
+import {
+  aiProviderRegistry,
+  type AiProviderAdapter,
+  type CompletionOptions,
+} from './provider-registry';
 import { isAiConfigured, PROVIDER_PRESETS, type AiSettings } from './settings';
 import type { LlmMessage, LlmToolDefinition, LlmToolCall, LlmTurn } from './types';
 
@@ -59,10 +64,28 @@ function friendlyError(status: number, rawMessage: string): string {
 async function postJson(
   url: string,
   headers: Record<string, string>,
-  body: unknown
+  body: unknown,
+  externalSignal?: AbortSignal
 ): Promise<JsonRecord> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  let timedOut = false;
+  let cancelled = false;
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, REQUEST_TIMEOUT_MS);
+
+  const onAbort = () => {
+    cancelled = true;
+    controller.abort();
+  };
+
+  if (externalSignal?.aborted) {
+    cancelled = true;
+    controller.abort();
+  } else {
+    externalSignal?.addEventListener('abort', onAbort, { once: true });
+  }
 
   let response: Response;
 
@@ -74,13 +97,18 @@ async function postJson(
       signal: controller.signal,
     });
   } catch (error) {
-    if (error instanceof Error && error.name === 'AbortError') {
+    if (cancelled) {
+      throw new AiError('AI request cancelled.');
+    }
+
+    if (timedOut || (error instanceof Error && error.name === 'AbortError')) {
       throw new AiError('The request timed out. Check your connection and try again.');
     }
 
     throw new AiError('Could not reach the AI provider. Check your internet connection.');
   } finally {
     clearTimeout(timeout);
+    externalSignal?.removeEventListener('abort', onAbort);
   }
 
   const raw = await response.text();
@@ -140,7 +168,8 @@ function toOpenAiMessages(messages: LlmMessage[]): JsonRecord[] {
 async function openAiCompletion(
   settings: AiSettings,
   messages: LlmMessage[],
-  tools: LlmToolDefinition[]
+  tools: LlmToolDefinition[],
+  options: CompletionOptions = {}
 ): Promise<LlmTurn> {
   const body: JsonRecord = {
     model: settings.model,
@@ -167,7 +196,12 @@ async function openAiCompletion(
     headers.Authorization = `Bearer ${apiKey}`;
   }
 
-  const data = await postJson(buildUrl(settings.baseUrl, '/chat/completions'), headers, body);
+  const data = await postJson(
+    buildUrl(settings.baseUrl, '/chat/completions'),
+    headers,
+    body,
+    options.signal
+  );
 
   const choices = Array.isArray(data.choices) ? data.choices : [];
   const choice = asRecord(choices[0]);
@@ -328,7 +362,8 @@ function toGeminiContents(
 async function geminiCompletion(
   settings: AiSettings,
   messages: LlmMessage[],
-  tools: LlmToolDefinition[]
+  tools: LlmToolDefinition[],
+  options: CompletionOptions = {}
 ): Promise<LlmTurn> {
   const systemText = messages
     .filter((message): message is Extract<LlmMessage, { role: 'system' }> => message.role === 'system')
@@ -370,7 +405,8 @@ async function geminiCompletion(
       'Content-Type': 'application/json',
       'x-goog-api-key': settings.apiKey,
     },
-    body
+    body,
+    options.signal
   );
 
   const promptFeedback = asRecord(data.promptFeedback);
@@ -423,19 +459,33 @@ async function geminiCompletion(
 export const openAiAdapter: AiProviderAdapter = {
   id: 'openai-compatible',
   label: 'OpenAI-compatible',
-  complete: ({ settings, messages, tools }) => openAiCompletion(settings, messages, tools),
+  complete: ({ settings, messages, tools }, options = {}) =>
+    openAiCompletion(settings, messages, tools, options),
 };
 
 export const geminiAdapter: AiProviderAdapter = {
   id: 'gemini',
   label: 'Google Gemini',
-  complete: ({ settings, messages, tools }) => geminiCompletion(settings, messages, tools),
+  complete: ({ settings, messages, tools }, options = {}) =>
+    geminiCompletion(settings, messages, tools, options),
+};
+
+/** Native Ollama `/api/chat` adapter (no OpenAI-compatible `/v1` proxy). */
+export const ollamaAdapter: AiProviderAdapter = {
+  id: 'ollama-native',
+  label: 'Ollama (native)',
+  complete: ({ settings, messages, tools }, options = {}) =>
+    ollamaChat(settings, messages, tools, {
+      onTextDelta: options.onTextDelta,
+      signal: options.signal,
+    }),
 };
 
 export async function requestCompletion(
   settings: AiSettings,
   messages: LlmMessage[],
-  tools: LlmToolDefinition[]
+  tools: LlmToolDefinition[],
+  options: CompletionOptions = {}
 ): Promise<LlmTurn> {
   if (!isAiConfigured(settings)) {
     throw new AiError('AI is not configured yet. Check your provider details in Settings → AI.');
@@ -448,7 +498,7 @@ export async function requestCompletion(
     throw new AiError(`No AI adapter is registered for “${settings.provider}”.`);
   }
 
-  return adapter.complete({ settings, messages, tools });
+  return adapter.complete({ settings, messages, tools }, options);
 }
 
 export async function pingAi(settings: AiSettings): Promise<string> {

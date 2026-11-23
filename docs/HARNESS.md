@@ -84,8 +84,9 @@ import { aiProviderRegistry } from '@/lib/harness';
 aiProviderRegistry.register({
   id: 'my-protocol',
   label: 'My protocol',
-  complete: async ({ settings, messages, tools }) => {
-    // Call the endpoint, then return a neutral turn.
+  complete: async ({ settings, messages, tools }, options = {}) => {
+    // options.onTextDelta enables token streaming when the protocol supports it.
+    // options.signal cancels an in-flight request.
     return { text: '…', toolCalls: [] };
   },
 });
@@ -96,31 +97,35 @@ settings change; adding a protocol is a one-file plugin.
 
 ## Model-agnostic routing
 
-Orbit does not tie itself to a single model family. Every provider speaks the
-same OpenAI-compatible wire protocol (`POST /v1/chat/completions`); the Bearer
-token is added only when a key is configured, so local servers work without one.
-Adding a new provider is just a preset with a base URL and default model:
+Orbit does not tie itself to a single model family. Each provider has its own
+adapter: OpenAI-compatible (`POST /chat/completions`), native Gemini, or native
+Ollama (`GET /api/tags` + `POST /api/chat`). Adding a new protocol is a one-file
+plugin; adding a preset is a settings change.
 
-| Provider | Default model | Endpoint | Notes |
+| Provider | Default model | Endpoint / discovery | Notes |
 | --- | --- | --- | --- |
-| DeepSeek | `deepseek-chat` | `https://api.deepseek.com/v1` | Recommended default. |
+| DeepSeek | `deepseek-chat` | `https://api.deepseek.com/v1` | OpenAI-compatible. |
 | OpenAI | `gpt-4.1-mini` | `https://api.openai.com/v1` | Official OpenAI API. |
-| Google Gemini | `gemini-2.5-flash` | `https://generativelanguage.googleapis.com/v1beta` | Gemini via OpenAI-compatible shim. |
+| Google Gemini | `gemini-2.5-flash` | `https://generativelanguage.googleapis.com/v1beta` | Native Gemini adapter. |
 | Anthropic | `claude-3-5-sonnet-20241022` | `https://api.anthropic.com/v1` | Via OpenAI-compatible proxy (e.g. LiteLLM). |
 | Mistral | `mistral-large-latest` | `https://api.mistral.ai/v1` | OpenAI-compatible endpoint. |
 | Hugging Face | your model | `https://api-inference.huggingface.co/v1/` | HF Inference API. |
-| Ollama | `qwen2.5:0.5b` | `http://127.0.0.1:11434/v1` | Default on-device Ollama — no key needed. |
+| Ollama | discovered via `/api/tags` | `http://127.0.0.1:11434` | Native on-device API; no key. |
 | OpenRouter | `openai/gpt-4.1-mini` | `https://openrouter.ai/api/v1` | One key, many models. |
 | Custom | your model | any URL | Any OpenAI-compatible endpoint. |
 
 The base URL and model are editable in **Settings → AI BRAIN**. The **Local server**
-mode stores `mode: 'local'` with the settings, skips the API key requirement, and
-allows cleartext HTTP on Android through `expo-build-properties`. Fresh installs
-default to `onDeviceOllamaSettings()` (`http://127.0.0.1:11434/v1`, `qwen2.5:0.5b`);
-the Settings screen also has a **Connect on-device Ollama** shortcut that re-applies
-those defaults. A phone must use the host computer's LAN IP when Ollama or LM Studio
-runs on another machine. Chat messages go only to the provider you choose; tasks
-and account data stay local on the device.
+mode stores `mode: 'local'` and skips the API key requirement. Fresh installs point
+to `onDeviceOllamaSettings()` (`http://127.0.0.1:11434`) with an empty model: the
+Settings screen calls `GET /api/tags`, shows status and retry controls, and lets you
+pick a model that is actually installed. **Connect on-device Ollama** performs
+discovery and auto-selects the first model. Chat then uses `POST /api/chat`, with
+NDJSON streaming and a Stop button in the Chat screen.
+
+Android cleartext HTTP is scoped by `plugins/withLocalhostCleartext.js` to
+`127.0.0.1` / `localhost` only; all other cleartext traffic is denied. Ollama is
+not exposed to the LAN. Native manifest/resource changes require a new APK; OTA
+updates cannot change them.
 
 If no provider or local server is configured, the agent runs in offline local mode
 and understands commands like:

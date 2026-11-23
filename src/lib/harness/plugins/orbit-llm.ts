@@ -2,7 +2,7 @@ import { Service, type Context } from 'cordis';
 
 import { aiProviderRegistry } from '@/lib/ai/provider-registry';
 import type { AiProviderAdapter } from '@/lib/ai/provider-registry';
-import { geminiAdapter, openAiAdapter } from '@/lib/ai/providers';
+import { geminiAdapter, ollamaAdapter, openAiAdapter } from '@/lib/ai/providers';
 
 /**
  * LLM adapter registry plugin. Mounting Orbit adapters moves the static
@@ -18,6 +18,7 @@ export class OrbitLlm extends Service<OrbitLlm> {
     // Mount the built-in adapters now that registration lives behind ctx.llm.
     aiProviderRegistry.register(openAiAdapter, { replace: true });
     aiProviderRegistry.register(geminiAdapter, { replace: true });
+    aiProviderRegistry.register(ollamaAdapter, { replace: true });
   }
 
   register(adapter: AiProviderAdapter): void {

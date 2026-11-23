@@ -1,10 +1,14 @@
 name: Android Build
 
+# Policy (unchanged): GitHub Releases are manual-only. Pushes never publish.
+# Only a confirmed workflow_dispatch run on `main` can publish, and only after
+# the signed build, certificate check, and artifact checks pass.
+
 on:
   workflow_dispatch:
     inputs:
       publish_release:
-        description: 'Request creation of a public GitHub Release'
+        description: 'Request creation of a public GitHub Release (main branch only)'
         required: false
         type: boolean
         default: false
@@ -14,329 +18,331 @@ on:
         type: boolean
         default: false
       release_tag:
-        description: 'Version tag for the release (required when publish_release is true), e.g. v1.11.0'
+        description: 'Must equal v<app.json version>, e.g. v1.10.5 (required when publish_release is true)'
         required: false
         type: string
   push:
     branches: [main]
-    # Tag pushes only build/upload artifacts. Releases are manual-only.
+    # Tag pushes (v*) build and upload CI artifacts only. Public releases are
+    # manual-only and never created by a tag push.
     tags: ['v*']
 
-permissions:
-  contents: read
+permissions: {}
 
 concurrency:
   # Keep manual release runs in their own group so a normal main push can
-  # never cancel an authorized release run mid-flight.
+  # never cancel an authorized release run mid-flight. Tag pushes are never
+  # cancelled mid-flight.
   group: android-build-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/heads/') }}
 
+env:
+  EXPO_NO_TELEMETRY: '1'
+
 jobs:
-  build:
-    name: Android Build
+  validate:
+    name: Validate (types, lint, tests)
+    permissions:
+      contents: read
+    uses: ./.github/workflows/ci.yml
+
+  plan:
+    name: Plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      release: ${{ steps.plan.outputs.release }}
+      tag: ${{ steps.plan.outputs.tag }}
+      version: ${{ steps.plan.outputs.version }}
+      version_code: ${{ steps.plan.outputs.version_code }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+
+      - name: Plan build
+        id: plan
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PUBLISH_RELEASE: ${{ github.event.inputs.publish_release }}
+          CONFIRM_PUBLIC_RELEASE: ${{ github.event.inputs.confirm_public_release }}
+          RELEASE_TAG: ${{ github.event.inputs.release_tag }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          app_version="$(node -p "require('./app.json').expo.version")"
+          pkg_version="$(node -p "require('./package.json').version")"
+          if [ "$app_version" != "$pkg_version" ]; then
+            echo "::error::app.json version ($app_version) and package.json version ($pkg_version) differ."
+            exit 1
+          fi
+          if ! printf '%s' "$app_version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::Version '$app_version' must look like MAJOR.MINOR.PATCH."
+            exit 1
+          fi
+          IFS=. read -r major minor patch <<< "$app_version"
+          if [ "$minor" -ge 1000 ] || [ "$patch" -ge 1000 ]; then
+            echo "::error::MINOR and PATCH must be below 1000 to fit the versionCode scheme."
+            exit 1
+          fi
+          version_code=$(( major * 1000000 + minor * 1000 + patch ))
+
+          release=false
+          tag=""
+          if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ "$PUBLISH_RELEASE" = "true" ]; then
+            if [ "$CONFIRM_PUBLIC_RELEASE" != "true" ]; then
+              echo "::error::publish_release=true requires confirm_public_release=true."
+              exit 1
+            fi
+            if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+              echo "::error::Releases can only be published from main (this run is on $GITHUB_REF)."
+              exit 1
+            fi
+            if [ "$RELEASE_TAG" != "v${app_version}" ]; then
+              echo "::error::release_tag must be v${app_version} (the app version), got '${RELEASE_TAG}'."
+              exit 1
+            fi
+            bash scripts/ci/check-release-tag.sh "$RELEASE_TAG"
+            release=true
+            tag="$RELEASE_TAG"
+          else
+            echo "Artifact-only run; no GitHub Release will be published."
+          fi
+
+          {
+            echo "release=$release"
+            echo "tag=$tag"
+            echo "version=$app_version"
+            echo "version_code=$version_code"
+          } >> "$GITHUB_OUTPUT"
+          echo "Version $app_version (versionCode $version_code), release=$release"
+
+  build-ci:
+    name: Build (CI, no release key)
+    needs: [validate, plan]
+    if: needs.plan.outputs.release != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
       contents: read
     steps:
-      - name: Validate manual release request
-        if: github.event_name == 'workflow_dispatch'
-        env:
-          PUBLISH_RELEASE: ${{ github.event.inputs.publish_release }}
-          CONFIRM_PUBLIC_RELEASE: ${{ github.event.inputs.confirm_public_release }}
-          RELEASE_TAG: ${{ github.event.inputs.release_tag }}
-        run: |
-          set -euo pipefail
-          if [ "$PUBLISH_RELEASE" != "true" ]; then
-            echo "Artifact-only run; no GitHub Release will be published."
-            exit 0
-          fi
-          if [ "$CONFIRM_PUBLIC_RELEASE" != "true" ]; then
-            echo "::error::publish_release=true requires confirm_public_release=true."
-            exit 1
-          fi
-          if ! printf '%s' "$RELEASE_TAG" | grep -Eq '^v[0-9][0-9A-Za-z._-]*$'; then
-            echo "::error::A valid release_tag is required, such as v1.11.0."
-            exit 1
-          fi
-          echo "Manual release request validated for $RELEASE_TAG."
-
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
-          node-version: 22
-          cache: npm
+          persist-credentials: false
 
-      - uses: actions/setup-java@v4
+      - name: Android build
+        uses: ./.github/actions/android-build
         with:
-          distribution: temurin
-          java-version: 17
-
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-        with:
-          packages: "platform-tools"
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Expo prebuild (Android)
-        run: npx expo prebuild --platform android --no-install
-
-      - name: Configure release signing
-        env:
-          ORBIT_RELEASE_STORE_FILE: ${{ secrets.ORBIT_RELEASE_STORE_FILE }}
-          ORBIT_RELEASE_STORE_PASSWORD: ${{ secrets.ORBIT_RELEASE_STORE_PASSWORD }}
-          ORBIT_RELEASE_KEY_ALIAS: ${{ secrets.ORBIT_RELEASE_KEY_ALIAS }}
-          ORBIT_RELEASE_KEY_PASSWORD: ${{ secrets.ORBIT_RELEASE_KEY_PASSWORD }}
-        run: |
-          python3 - <<'PYTHON'
-          import os, pathlib
-          p = pathlib.Path('android/app/build.gradle')
-          s = p.read_text()
-          old4 = '\n'.join([
-              '    signingConfigs {',
-              '        debug {',
-              "            storeFile file('debug.keystore')",
-              "            storePassword 'android'",
-              "            keyAlias 'androiddebugkey'",
-              "            keyPassword 'android'",
-              '        }',
-              '    }',
-              '    buildTypes {',
-              '        debug {',
-              '            signingConfig signingConfigs.debug',
-              '        }',
-              '        release {',
-              '            // Caution! In production, you need to generate your own keystore file.',
-              '            // see https://reactnative.dev/docs/signed-apk-android.',
-              '            signingConfig signingConfigs.debug',
-              "            def enableShrinkResources = findProperty('android.enableShrinkResourcesInReleaseBuilds') ?: 'false'",
-              '            shrinkResources enableShrinkResources.toBoolean()',
-              '            minifyEnabled enableMinifyInReleaseBuilds',
-              '            proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"',
-              "            def enablePngCrunchInRelease = findProperty('android.enablePngCrunchInReleaseBuilds') ?: 'true'",
-              '            crunchPngs enablePngCrunchInRelease.toBoolean()',
-              '        }',
-              '    }',
-          ])
-          new4 = '\n'.join([
-              '    signingConfigs {',
-              '        debug {',
-              "            storeFile file('debug.keystore')",
-              "            storePassword 'android'",
-              "            keyAlias 'androiddebugkey'",
-              "            keyPassword 'android'",
-              '        }',
-              '        release {',
-              "            def releaseStoreFile = System.getenv('ORBIT_RELEASE_STORE_FILE')",
-              '            if (releaseStoreFile) {',
-              '                storeFile file(releaseStoreFile)',
-              "                storePassword System.getenv('ORBIT_RELEASE_STORE_PASSWORD')",
-              "                keyAlias System.getenv('ORBIT_RELEASE_KEY_ALIAS')",
-              "                keyPassword System.getenv('ORBIT_RELEASE_KEY_PASSWORD')",
-              '            } else {',
-              "                storeFile file('debug.keystore')",
-              "                storePassword 'android'",
-              "                keyAlias 'androiddebugkey'",
-              "                keyPassword 'android'",
-              '            }',
-              '        }',
-              '    }',
-              '    buildTypes {',
-              '        debug {',
-              '            signingConfig signingConfigs.debug',
-              '        }',
-              '        release {',
-              '            signingConfig signingConfigs.release',
-              "            def enableShrinkResources = findProperty('android.enableShrinkResourcesInReleaseBuilds') ?: 'false'",
-              '            shrinkResources enableShrinkResources.toBoolean()',
-              '            minifyEnabled enableMinifyInReleaseBuilds',
-              '            proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"',
-              "            def enablePngCrunchInRelease = findProperty('android.enablePngCrunchInReleaseBuilds') ?: 'true'",
-              '            crunchPngs enablePngCrunchInRelease.toBoolean()',
-              '        }',
-              '    }',
-          ])
-          if old4 in s:
-              p.write_text(s.replace(old4, new4))
-              print('patched signing config')
-          else:
-              print('signing config pattern not found; keeping generated config')
-          PYTHON
-          if [ -n "$ORBIT_RELEASE_STORE_FILE" ]; then
-            echo "$ORBIT_RELEASE_STORE_FILE" | base64 -d > android/app/release.keystore
-            echo "ORBIT_RELEASE_STORE_FILE=release.keystore" >> "$GITHUB_ENV"
-            echo "HAS_RELEASE_SIGNING=true" >> "$GITHUB_ENV"
-          else
-            echo "HAS_RELEASE_SIGNING=false" >> "$GITHUB_ENV"
-          fi
-
-      - name: Build debug APK
-        run: |
-          cd android
-          chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon
-
-      - name: Build release APK and AAB
-        env:
-          ORBIT_RELEASE_STORE_PASSWORD: ${{ secrets.ORBIT_RELEASE_STORE_PASSWORD }}
-          ORBIT_RELEASE_KEY_ALIAS: ${{ secrets.ORBIT_RELEASE_KEY_ALIAS }}
-          ORBIT_RELEASE_KEY_PASSWORD: ${{ secrets.ORBIT_RELEASE_KEY_PASSWORD }}
-        run: |
-          cd android
-          chmod +x gradlew
-          ./gradlew assembleRelease bundleRelease --no-daemon
-
-      - name: Collect artifacts
-        run: |
-          mkdir -p artifacts
-          cp android/app/build/outputs/apk/debug/app-debug.apk artifacts/ORBIT-debug.apk
-          cp android/app/build/outputs/apk/release/app-release.apk artifacts/ORBIT-release.apk
-          cp android/app/build/outputs/bundle/release/app-release.aab artifacts/ORBIT-release.aab
-          ls -la artifacts
-          echo "HAS_RELEASE_SIGNING=${HAS_RELEASE_SIGNING:-false}" > artifacts/build-info.txt
-          if [ "${HAS_RELEASE_SIGNING:-false}" != "true" ]; then
-            echo "Release APK/AAB are debug-signed fallback because signing secrets are not configured." >> artifacts/build-info.txt
-          fi
+          sign: 'false'
+          version-code: ${{ needs.plan.outputs.version_code }}
 
       - name: Upload Android artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: ORBIT-android
           path: artifacts/*
           if-no-files-found: error
+          overwrite: true
+          retention-days: 14
 
-  # Strict policy: tag pushes and main pushes never publish. Only an
-  # explicitly confirmed workflow_dispatch may create a GitHub Release.
+      - name: Upload symbols (R8 mapping, source maps)
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ORBIT-symbols
+          path: symbols/*
+          if-no-files-found: warn
+          overwrite: true
+          retention-days: 14
+
+  build-release:
+    name: Build (signed release)
+    needs: [validate, plan]
+    if: needs.plan.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: release
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+
+      - name: Android build
+        uses: ./.github/actions/android-build
+        with:
+          sign: 'true'
+          version-code: ${{ needs.plan.outputs.version_code }}
+          keystore-base64: ${{ secrets.ORBIT_KEYSTORE_BASE64 }}
+          store-password: ${{ secrets.ORBIT_RELEASE_STORE_PASSWORD }}
+          key-alias: ${{ secrets.ORBIT_RELEASE_KEY_ALIAS }}
+          key-password: ${{ secrets.ORBIT_RELEASE_KEY_PASSWORD }}
+          cert-sha256: ${{ vars.ORBIT_RELEASE_CERT_SHA256 }}
+
+      - name: Upload Android artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ORBIT-android
+          path: artifacts/*
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 90
+
+      - name: Upload symbols (R8 mapping, source maps)
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ORBIT-symbols
+          path: symbols/*
+          if-no-files-found: warn
+          overwrite: true
+          retention-days: 90
+
+  smoke:
+    name: Emulator smoke test
+    needs: [build-ci, build-release]
+    if: ${{ !cancelled() && (needs.build-ci.result == 'success' || needs.build-release.result == 'success') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    continue-on-error: ${{ vars.ORBIT_SMOKE_REQUIRED != 'true' }}
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts/ci
+
+      - name: Download Android artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: ORBIT-android
+          path: artifacts
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Launch on emulator
+        uses: reactivecircus/android-emulator-runner@69c8581131285561115a2e413eb0037446bdc2d6 # v2.35.0
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          profile: pixel_7
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: bash scripts/ci/smoke-test.sh artifacts/ORBIT-release.apk com.orbit.app
+
+      - name: Upload logcat
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ORBIT-smoke-logcat
+          path: logcat.txt
+          if-no-files-found: ignore
+          overwrite: true
+          retention-days: 14
+
   release:
     name: Publish GitHub Release
-    needs: build
+    needs: [plan, build-release, smoke]
     if: >-
-      needs.build.result == 'success' &&
-      github.event_name == 'workflow_dispatch' &&
-      github.event.inputs.publish_release == 'true' &&
-      github.event.inputs.confirm_public_release == 'true'
+      ${{ !cancelled()
+      && needs.plan.outputs.release == 'true'
+      && needs.build-release.result == 'success'
+      && (vars.ORBIT_SMOKE_REQUIRED != 'true' || needs.smoke.result == 'success') }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
       contents: write
-      actions: read
+    concurrency:
+      group: android-release
+      cancel-in-progress: false
     steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts/ci
+
       - name: Download verified build artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: ORBIT-android
           path: release-assets
-          run-id: ${{ github.run_id }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Verify release artifacts
         run: |
           set -euo pipefail
-          for f in ORBIT-debug.apk ORBIT-release.apk ORBIT-release.aab build-info.txt; do
-            path="release-assets/$f"
-            if [ ! -s "$path" ]; then
+          cd release-assets
+          for f in ORBIT-release.apk ORBIT-release.aab build-info.txt SHA256SUMS.txt; do
+            if [ ! -s "$f" ]; then
               echo "::error::Missing or empty release artifact: $f"
               exit 1
             fi
-            case "$f" in
-              *.apk|*.aab) unzip -tq "$path" >/dev/null ;;
-            esac
-            size=$(stat -c '%s' "$path")
-            echo "$f: ${size} bytes"
           done
-          cat release-assets/build-info.txt
+          for f in ORBIT-release.apk ORBIT-release.aab; do
+            unzip -tq "$f" >/dev/null
+          done
+          sha256sum -c SHA256SUMS.txt
+          grep -qx 'signed=true' build-info.txt || { echo "::error::build-info.txt does not say signed=true"; exit 1; }
+          cat build-info.txt
+          ls -la
 
-      - name: Resolve release tag
-        id: release_tag
+      - name: Re-check release authorization
         env:
-          INPUT_TAG: ${{ github.event.inputs.release_tag }}
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.plan.outputs.tag }}
+        run: bash scripts/ci/check-release-tag.sh "$TAG"
+
+      - name: Create draft, verify, then publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.plan.outputs.tag }}
         run: |
           set -euo pipefail
-          if [ "$GITHUB_EVENT_NAME" != "workflow_dispatch" ]; then
-            echo "::error::GitHub Releases are manual-only."
-            exit 1
-          fi
-          tag="$INPUT_TAG"
-          if ! printf '%s' "$tag" | grep -Eq '^v[0-9][0-9A-Za-z._-]*$'; then
-            echo "::error::A valid release_tag is required, such as v1.11.0."
-            exit 1
-          fi
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          echo "Release tag: $tag"
+          cleanup() { gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" --yes >/dev/null 2>&1 || true; }
+          trap cleanup ERR
 
-      - name: Verify release authorization
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ steps.release_tag.outputs.tag }}
-        run: |
-          set -euo pipefail
-          if [ "$GITHUB_EVENT_NAME" != "workflow_dispatch" ]; then
-            echo "::error::GitHub Releases are manual-only."
-            exit 1
-          fi
-          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "::error::A GitHub Release for $TAG already exists. Refusing to overwrite it."
-            exit 1
-          fi
-
-          # Refuse to attach this run's artifacts to a tag that points at a
-          # different commit. A missing tag will be created at this commit.
-          tag_lines=$(git ls-remote "https://github.com/${GITHUB_REPOSITORY}.git" "refs/tags/${TAG}" "refs/tags/${TAG}^{}")
-          if [ -n "$tag_lines" ]; then
-            tag_sha=$(printf '%s\n' "$tag_lines" | awk '/\^\{\}$/ {print $1; exit}')
-            if [ -z "$tag_sha" ]; then
-              tag_sha=$(printf '%s\n' "$tag_lines" | awk 'NR == 1 {print $1}')
-            fi
-            if [ "$tag_sha" != "$GITHUB_SHA" ]; then
-              echo "::error::Tag $TAG points to $tag_sha, not this workflow commit $GITHUB_SHA. Refusing to publish mismatched artifacts."
-              exit 1
-            fi
-            echo "Tag $TAG already points to the workflow commit."
-          else
-            echo "Tag $TAG does not exist; the release will create it at $GITHUB_SHA."
-          fi
-
-      - name: Create GitHub Release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ steps.release_tag.outputs.tag }}
-        run: |
-          set -euo pipefail
           gh release create "$TAG" \
-            release-assets/ORBIT-debug.apk \
             release-assets/ORBIT-release.apk \
             release-assets/ORBIT-release.aab \
+            release-assets/SHA256SUMS.txt \
             release-assets/build-info.txt \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
             --title "$TAG" \
-            --generate-notes
+            --generate-notes \
+            --draft
 
-      - name: Verify published release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ steps.release_tag.outputs.tag }}
-        run: |
-          set -euo pipefail
-          url=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json url --jq .url)
-          asset_names=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')
-          for f in ORBIT-debug.apk ORBIT-release.apk ORBIT-release.aab build-info.txt; do
+          asset_names="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')"
+          for f in ORBIT-release.apk ORBIT-release.aab SHA256SUMS.txt build-info.txt; do
             if ! printf '%s\n' "$asset_names" | grep -Fxq "$f"; then
-              echo "::error::Release $TAG is missing asset $f"
+              echo "::error::Draft release $TAG is missing asset $f"
               exit 1
             fi
           done
 
-          asset_sizes=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[] | "\(.name) (\(.size) bytes)"')
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false
+          trap - ERR
+
+          url="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json url --jq .url)"
+          sizes="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[] | "\(.name) (\(.size) bytes)"')"
           echo "Published release: $url"
-          echo "$asset_sizes"
+          echo "$sizes"
           {
             echo "### GitHub Release"
             echo "- Tag: \`$TAG\`"
             echo "- URL: $url"
             echo "- Assets:"
-            echo "$asset_sizes" | sed 's/^/  - /'
+            echo "$sizes" | sed 's/^/  - /'
           } >> "$GITHUB_STEP_SUMMARY"

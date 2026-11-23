@@ -20,6 +20,7 @@
   "exclude": [
     "jest.setup.ts",
     "**/*.rn.test.ts",
-    "**/*.rn.test.tsx"
+    "**/*.rn.test.tsx",
+    "plugins/__tests__"
   ]
 }
