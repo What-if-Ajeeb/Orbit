@@ -4,7 +4,12 @@ on:
   workflow_dispatch:
     inputs:
       publish_release:
-        description: 'Create a public GitHub Release from this build'
+        description: 'Request creation of a public GitHub Release'
+        required: false
+        type: boolean
+        default: false
+      confirm_public_release:
+        description: 'Confirm: I authorize publishing this public GitHub Release'
         required: false
         type: boolean
         default: false
@@ -14,6 +19,7 @@ on:
         type: string
   push:
     branches: [main]
+    # Tag pushes only build/upload artifacts. Releases are manual-only.
     tags: ['v*']
 
 permissions:
@@ -31,6 +37,28 @@ jobs:
     permissions:
       contents: read
     steps:
+      - name: Validate manual release request
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          PUBLISH_RELEASE: ${{ github.event.inputs.publish_release }}
+          CONFIRM_PUBLIC_RELEASE: ${{ github.event.inputs.confirm_public_release }}
+          RELEASE_TAG: ${{ github.event.inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          if [ "$PUBLISH_RELEASE" != "true" ]; then
+            echo "Artifact-only run; no GitHub Release will be published."
+            exit 0
+          fi
+          if [ "$CONFIRM_PUBLIC_RELEASE" != "true" ]; then
+            echo "::error::publish_release=true requires confirm_public_release=true."
+            exit 1
+          fi
+          if ! printf '%s' "$RELEASE_TAG" | grep -Eq '^v[0-9][0-9A-Za-z._-]*$'; then
+            echo "::error::A valid release_tag is required, such as v1.11.0."
+            exit 1
+          fi
+          echo "Manual release request validated for $RELEASE_TAG."
+
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
@@ -178,15 +206,16 @@ jobs:
           path: artifacts/*
           if-no-files-found: error
 
+  # Strict policy: tag pushes and main pushes never publish. Only an
+  # explicitly confirmed workflow_dispatch may create a GitHub Release.
   release:
     name: Publish GitHub Release
     needs: build
     if: >-
       needs.build.result == 'success' &&
-      (
-        (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
-        (github.event_name == 'workflow_dispatch' && github.event.inputs.publish_release == 'true')
-      )
+      github.event_name == 'workflow_dispatch' &&
+      github.event.inputs.publish_release == 'true' &&
+      github.event.inputs.confirm_public_release == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -221,18 +250,16 @@ jobs:
       - name: Resolve release tag
         id: release_tag
         env:
-          EVENT_NAME: ${{ github.event_name }}
-          REF_NAME: ${{ github.ref_name }}
           INPUT_TAG: ${{ github.event.inputs.release_tag }}
         run: |
           set -euo pipefail
-          if [ "$EVENT_NAME" = "push" ]; then
-            tag="$REF_NAME"
-          else
-            tag="$INPUT_TAG"
+          if [ "$GITHUB_EVENT_NAME" != "workflow_dispatch" ]; then
+            echo "::error::GitHub Releases are manual-only."
+            exit 1
           fi
+          tag="$INPUT_TAG"
           if ! printf '%s' "$tag" | grep -Eq '^v[0-9][0-9A-Za-z._-]*$'; then
-            echo "::error::A version tag is required. Set release_tag to a tag such as v1.11.0 when publish_release is true."
+            echo "::error::A valid release_tag is required, such as v1.11.0."
             exit 1
           fi
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
@@ -240,34 +267,34 @@ jobs:
 
       - name: Verify release authorization
         env:
-          EVENT_NAME: ${{ github.event_name }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ steps.release_tag.outputs.tag }}
         run: |
           set -euo pipefail
+          if [ "$GITHUB_EVENT_NAME" != "workflow_dispatch" ]; then
+            echo "::error::GitHub Releases are manual-only."
+            exit 1
+          fi
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "::error::A GitHub Release for $TAG already exists. Refusing to overwrite it."
             exit 1
           fi
 
-          # A tag-triggered run already targets the pushed tag. For manual
-          # releases, refuse to attach this run's artifacts to a tag that
-          # points at a different commit.
-          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            tag_lines=$(git ls-remote "https://github.com/${GITHUB_REPOSITORY}.git" "refs/tags/${TAG}" "refs/tags/${TAG}^{}")
-            if [ -n "$tag_lines" ]; then
-              tag_sha=$(printf '%s\n' "$tag_lines" | awk '/\^\{\}$/ {print $1; exit}')
-              if [ -z "$tag_sha" ]; then
-                tag_sha=$(printf '%s\n' "$tag_lines" | awk 'NR == 1 {print $1}')
-              fi
-              if [ "$tag_sha" != "$GITHUB_SHA" ]; then
-                echo "::error::Tag $TAG points to $tag_sha, not this workflow commit $GITHUB_SHA. Refusing to publish mismatched artifacts."
-                exit 1
-              fi
-              echo "Tag $TAG already points to the workflow commit."
-            else
-              echo "Tag $TAG does not exist; the release will create it at $GITHUB_SHA."
+          # Refuse to attach this run's artifacts to a tag that points at a
+          # different commit. A missing tag will be created at this commit.
+          tag_lines=$(git ls-remote "https://github.com/${GITHUB_REPOSITORY}.git" "refs/tags/${TAG}" "refs/tags/${TAG}^{}")
+          if [ -n "$tag_lines" ]; then
+            tag_sha=$(printf '%s\n' "$tag_lines" | awk '/\^\{\}$/ {print $1; exit}')
+            if [ -z "$tag_sha" ]; then
+              tag_sha=$(printf '%s\n' "$tag_lines" | awk 'NR == 1 {print $1}')
             fi
+            if [ "$tag_sha" != "$GITHUB_SHA" ]; then
+              echo "::error::Tag $TAG points to $tag_sha, not this workflow commit $GITHUB_SHA. Refusing to publish mismatched artifacts."
+              exit 1
+            fi
+            echo "Tag $TAG already points to the workflow commit."
+          else
+            echo "Tag $TAG does not exist; the release will create it at $GITHUB_SHA."
           fi
 
       - name: Create GitHub Release
