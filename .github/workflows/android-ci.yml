@@ -26,7 +26,9 @@ permissions:
   contents: read
 
 concurrency:
-  group: android-build-${{ github.ref }}
+  # Keep manual release runs in their own group so a normal main push can
+  # never cancel an authorized release run mid-flight.
+  group: android-build-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/heads/') }}
 
 jobs:
