@@ -1,0 +1,262 @@
+name: Android
+
+# Orbit Android pipeline (Expo SDK 58 / RN 0.88)
+#
+# Triggers:
+#   - push main / PR  → CI artifacts only
+#   - tag v*          → CI artifacts only (never publishes)
+#   - workflow_dispatch with publish=true + confirm=true + tag
+#                     → build + publish GitHub Release
+#
+# Signing:
+#   Optional. If ORBIT_KEYSTORE_BASE64 + passwords are set, release is signed.
+#   Otherwise debug keystore is used (fine for sideload testing).
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      publish_release:
+        description: 'Publish a public GitHub Release after build'
+        type: boolean
+        default: false
+      confirm_public_release:
+        description: 'I confirm publishing this public release'
+        type: boolean
+        default: false
+      release_tag:
+        description: 'Tag to publish, must match v{app.json version} e.g. v1.10.6'
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
+
+env:
+  EXPO_NO_TELEMETRY: '1'
+
+jobs:
+  build:
+    name: Build Android
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Read app version
+        id: ver
+        run: |
+          set -euo pipefail
+          APP_VERSION="$(node -p "require('./app.json').expo.version")"
+          PKG_VERSION="$(node -p "require('./package.json').version")"
+          if [ "$APP_VERSION" != "$PKG_VERSION" ]; then
+            echo "::error::app.json ($APP_VERSION) and package.json ($PKG_VERSION) versions differ"
+            exit 1
+          fi
+          echo "version=$APP_VERSION" >> "$GITHUB_OUTPUT"
+          echo "App version: $APP_VERSION"
+
+      - name: Configure release signing (optional)
+        id: signing
+        env:
+          ORBIT_KEYSTORE_BASE64: ${{ secrets.ORBIT_KEYSTORE_BASE64 }}
+          ORBIT_RELEASE_STORE_PASSWORD: ${{ secrets.ORBIT_RELEASE_STORE_PASSWORD }}
+          ORBIT_RELEASE_KEY_ALIAS: ${{ secrets.ORBIT_RELEASE_KEY_ALIAS }}
+          ORBIT_RELEASE_KEY_PASSWORD: ${{ secrets.ORBIT_RELEASE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -n "${ORBIT_KEYSTORE_BASE64:-}" ] && \
+             [ -n "${ORBIT_RELEASE_STORE_PASSWORD:-}" ] && \
+             [ -n "${ORBIT_RELEASE_KEY_ALIAS:-}" ] && \
+             [ -n "${ORBIT_RELEASE_KEY_PASSWORD:-}" ]; then
+            mkdir -p android-signing
+            echo "$ORBIT_KEYSTORE_BASE64" | base64 -d > android-signing/release.keystore
+            chmod 600 android-signing/release.keystore
+            if [ ! -s android-signing/release.keystore ]; then
+              echo "::error::Decoded keystore is empty"
+              exit 1
+            fi
+            if ! keytool -list -keystore android-signing/release.keystore \
+                -storepass "$ORBIT_RELEASE_STORE_PASSWORD" >/dev/null 2>&1; then
+              echo "::error::Keystore cannot be opened with the given store password"
+              exit 1
+            fi
+            {
+              echo "ORBIT_KEYSTORE_PATH=$GITHUB_WORKSPACE/android-signing/release.keystore"
+              echo "ORBIT_RELEASE_STORE_PASSWORD=$ORBIT_RELEASE_STORE_PASSWORD"
+              echo "ORBIT_RELEASE_KEY_ALIAS=$ORBIT_RELEASE_KEY_ALIAS"
+              echo "ORBIT_RELEASE_KEY_PASSWORD=$ORBIT_RELEASE_KEY_PASSWORD"
+              echo "ORBIT_REQUIRE_RELEASE_SIGNING=0"
+              echo "SIGNED=true"
+            } >> "$GITHUB_ENV"
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+            echo "Release signing secrets found — will sign with release keystore"
+          else
+            echo "SIGNED=false" >> "$GITHUB_ENV"
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            echo "No release signing secrets — release APK will use debug keystore"
+          fi
+
+      - name: Expo prebuild (Android)
+        run: npx expo prebuild --platform android --no-install
+
+      - name: Build debug APK
+        run: |
+          set -euo pipefail
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+
+      - name: Build release APK + AAB
+        run: |
+          set -euo pipefail
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleRelease bundleRelease --no-daemon
+
+      - name: Collect artifacts
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          cp android/app/build/outputs/apk/debug/app-debug.apk artifacts/ORBIT-debug.apk
+          cp android/app/build/outputs/apk/release/app-release.apk artifacts/ORBIT-release.apk
+          cp android/app/build/outputs/bundle/release/app-release.aab artifacts/ORBIT-release.aab
+
+          for f in ORBIT-debug.apk ORBIT-release.apk ORBIT-release.aab; do
+            if [ ! -s "artifacts/$f" ]; then
+              echo "::error::Missing or empty: $f"
+              exit 1
+            fi
+            unzip -tq "artifacts/$f" >/dev/null
+          done
+
+          (cd artifacts && sha256sum ORBIT-debug.apk ORBIT-release.apk ORBIT-release.aab > SHA256SUMS.txt)
+
+          {
+            echo "commit=$GITHUB_SHA"
+            echo "ref=$GITHUB_REF"
+            echo "event=$GITHUB_EVENT_NAME"
+            echo "run_id=$GITHUB_RUN_ID"
+            echo "app_version=${{ steps.ver.outputs.version }}"
+            echo "package=com.orbit.app"
+            echo "signed=${{ steps.signing.outputs.signed }}"
+            echo "built_at_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          } > artifacts/build-info.txt
+
+          ls -la artifacts
+          cat artifacts/build-info.txt
+          cat artifacts/SHA256SUMS.txt
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ORBIT-android
+          path: artifacts/*
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Cleanup keystore
+        if: always()
+        run: rm -rf android-signing
+
+  release:
+    name: Publish GitHub Release
+    needs: build
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.event.inputs.publish_release == 'true' &&
+      github.event.inputs.confirm_public_release == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Validate release inputs
+        env:
+          RELEASE_TAG: ${{ github.event.inputs.release_tag }}
+          APP_VERSION: ${{ needs.build.result }}
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "::error::Releases must be published from main (got $GITHUB_REF)"
+            exit 1
+          fi
+          if ! printf '%s' "$RELEASE_TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+'; then
+            echo "::error::release_tag must look like v1.10.6 (got '$RELEASE_TAG')"
+            exit 1
+          fi
+          echo "Will publish tag: $RELEASE_TAG"
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: ORBIT-android
+          path: release-assets
+
+      - name: Verify artifacts exist
+        run: |
+          set -euo pipefail
+          cd release-assets
+          for f in ORBIT-release.apk ORBIT-release.aab SHA256SUMS.txt build-info.txt; do
+            if [ ! -s "$f" ]; then
+              echo "::error::Missing release asset: $f"
+              exit 1
+            fi
+          done
+          cat build-info.txt
+          cat SHA256SUMS.txt
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event.inputs.release_tag }}
+        run: |
+          set -euo pipefail
+
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::Release $TAG already exists. Bump version and use a new tag."
+            exit 1
+          fi
+
+          gh release create "$TAG" \
+            release-assets/ORBIT-release.apk \
+            release-assets/ORBIT-release.aab \
+            release-assets/SHA256SUMS.txt \
+            release-assets/build-info.txt \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "$TAG" \
+            --generate-notes
+
+          url=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json url --jq .url)
+          echo "Published: $url"
+          echo "### Release $TAG" >> "$GITHUB_STEP_SUMMARY"
+          echo "- URL: $url" >> "$GITHUB_STEP_SUMMARY"
