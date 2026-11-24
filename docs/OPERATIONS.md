@@ -83,6 +83,52 @@ When renaming modules or moving code:
 3. Run `tsc --noEmit` to catch broken imports.
 4. Run `expo lint` and `expo export`.
 
+## 4.1 Plugin platform changes
+
+Plugin-platform work is a multi-file change: validation/lifecycle code lives in
+`src/lib/plugins/`, React state in `src/context/plugins.tsx`, UI in
+`src/components/plugins/`, `src/app/(app)/plugins/` and
+`src/app/(app)/plugin/[pluginId].tsx`, and schema in `src/lib/db.ts` (database
+version 12). Treat it like any other refactor: edit, then run typecheck, lint,
+Vitest and Android export before committing.
+
+Implemented behavior to preserve when editing:
+
+- Version-1 JSON manifests are validated; unknown top-level fields are rejected
+  and only `$schema` is ignored.
+- Entry kinds are `builtin`, `declarative` and `mcp`. Third-party plugins are
+  declarative; only reviewed `official` plugins can attach executable code from
+  `BUILTIN_IMPLEMENTATIONS` (currently only `orbit-diagnostics`).
+- Lifecycle transitions are explicit, with dependency/version checks, lifecycle
+  hook timeouts, update backups and rollback.
+- Permissions are default-deny and pass through `PluginApprovalHost`; there is no
+  "Approve all" control. Trust levels never grant access.
+- Plugin tools are namespaced `plugin__<slug>__<name>` and require `ai.invoke`;
+  storage is namespaced and capped at 1 MB per plugin.
+- MCP servers are mirrored into synthetic `mcp.server.<slug>` plugins. The gate
+  is installed in the constructor, so tools are denied until records are synced;
+  it requires `mcp.connect` plus `ai.invoke`, and revocations are sticky.
+- Legacy `hooks` rows are data only. `runHookCode()` always throws, no hook code
+  is compiled, and failed `executeHook()` results are ignored by the agent.
+- There is no downloaded code loader, notifications/credentials adapter, SDK
+  file API, `sdk.mcp` or global widget renderer.
+
+Reference docs: `docs/PLUGIN_ARCHITECTURE.md`, `docs/PLUGIN_MANIFEST.md`,
+`docs/PLUGIN_SECURITY.md`, `docs/PLUGIN_SDK.md`,
+`docs/PLUGIN_DEVELOPER_GUIDE.md`, and `docs/PLUGIN_MIGRATION.md`.
+
+Verification commands for plugin-related changes:
+
+```bash
+npx tsc --noEmit
+npx expo lint
+npm test
+npx expo export --platform android --no-bytecode
+```
+
+The Vitest suite includes plugin tests under `src/lib/plugins/__tests__/`. Do
+not claim those tests passed unless you ran them and checked the result.
+
 ## 5. Testing & Verification Commands
 
 Always run these before committing:
@@ -182,6 +228,7 @@ git push -u origin HEAD
 | Area | Typical files |
 |---|---|
 | AI provider/tool/chat seams | `src/lib/ai/*.ts`, `src/lib/harness/*`, `src/lib/mcp/*` |
+| Plugin platform | `src/lib/plugins/*`, `src/context/plugins.tsx`, `src/components/plugins/*`, `src/app/(app)/plugins/*`, `plugins/example-plugin/*`, `docs/PLUGIN_*.md` |
 | Database | `src/lib/db.ts`, `src/lib/plugin-store.ts`, `src/lib/events.ts`, `src/lib/telemetry.ts` |
 | Screens | `src/app/(app)/*.tsx` |
 | Components | `src/components/*.tsx` |

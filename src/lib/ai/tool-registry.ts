@@ -13,6 +13,15 @@ export type AgentToolContext = {
   userId: number;
   /** Conversation the tool call belongs to, when the caller knows it. */
   conversationId?: number;
+  /** Cancels long-running tool work when the user stops the turn. */
+  signal?: AbortSignal;
+};
+
+export type AgentToolProvenance = {
+  source: 'builtin' | 'plugin' | 'mcp';
+  pluginId?: string;
+  trustLevel?: string;
+  permissions?: string[];
 };
 
 /**
@@ -22,6 +31,8 @@ export type AgentToolContext = {
  */
 export type AgentTool = {
   definition: LlmToolDefinition;
+  /** Where the tool came from. Used by the harness and diagnostics. */
+  meta?: AgentToolProvenance;
   execute: (
     context: AgentToolContext,
     args: Record<string, unknown>

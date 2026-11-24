@@ -12,6 +12,7 @@ import { SidebarButton } from '@/components/SidebarButton';
 import { Skeleton } from '@/components/Skeleton';
 import { TaskItem } from '@/components/TaskItem';
 import { useSession } from '@/context/auth';
+import { usePluginSnapshot } from '@/context/plugins';
 import { useSidebar } from '@/context/sidebar';
 import { useAppTheme, useStyles, type AppTheme } from '@/context/theme';
 import { isAiConfigured, loadAiSettings } from '@/lib/ai/settings';
@@ -86,6 +87,7 @@ export default function HomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { user } = useSession();
+  const snapshot = usePluginSnapshot();
   const { open: openSidebar } = useSidebar();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [stats, setStats] = useState<TaskStats | null>(null);
@@ -269,6 +271,43 @@ export default function HomeScreen() {
           <StatCard value={stats?.dueToday ?? 0} label="Due today" color={colors.accent} loading={!isLoaded} />
           <StatCard value={stats?.doneCount ?? 0} label="Done" color={colors.success} loading={!isLoaded} />
         </View>
+
+        {/* Plugin dashboard widgets: only running plugins with granted ui.contribute reach here. */}
+        {snapshot.widgets.length > 0 ? (
+          <View style={styles.pluginSection}>
+            <View style={styles.sectionRow}>
+              <Text accessibilityRole="header" style={styles.sectionLabel}>
+                Plugin widgets
+              </Text>
+            </View>
+            <View style={styles.pluginWidgetRow}>
+              {snapshot.widgets.map((widget) => (
+                <Pressable
+                  key={`${widget.pluginId}:${widget.id}`}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Open ${widget.title}`}
+                  onPress={() =>
+                    router.navigate(
+                      `/plugin/${encodeURIComponent(widget.pluginId)}` as Href
+                    )
+                  }
+                  style={({ pressed }) => [
+                    styles.pluginWidget,
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <Text style={styles.pluginWidgetTitle}>{widget.title}</Text>
+                  <Text numberOfLines={3} style={styles.pluginWidgetBody}>
+                    {widget.description}
+                  </Text>
+                  <Text numberOfLines={1} style={styles.pluginWidgetMeta}>
+                    {widget.pluginName}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+        ) : null}
 
         {/* Up next */}
         <View style={styles.sectionRow}>
@@ -532,6 +571,40 @@ const makeStyles = ({ colors }: AppTheme) =>
       letterSpacing: 0.4,
       marginTop: 2,
       textTransform: 'uppercase',
+    },
+    pluginSection: {
+      gap: spacing.xs,
+    },
+    pluginWidgetRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: spacing.sm,
+    },
+    pluginWidget: {
+      flexGrow: 1,
+      flexBasis: '45%',
+      minHeight: 96,
+      padding: spacing.md,
+      borderRadius: radius.md,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+      gap: 4,
+    },
+    pluginWidgetTitle: {
+      color: colors.text,
+      fontSize: 14,
+      fontWeight: '700',
+    },
+    pluginWidgetBody: {
+      color: colors.textMuted,
+      fontSize: 12,
+      lineHeight: 17,
+    },
+    pluginWidgetMeta: {
+      color: colors.textFaint,
+      fontSize: 10,
+      marginTop: 'auto',
     },
     footer: {
       color: colors.textFaint,

@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Brand } from '@/components/Brand';
 import { useSession } from '@/context/auth';
+import { usePluginSnapshot } from '@/context/plugins';
 import { useSidebar } from '@/context/sidebar';
 import { useAppTheme, useStyles, type AppTheme } from '@/context/theme';
 import { getChatStore, type Conversation } from '@/lib/chat';
@@ -40,6 +41,7 @@ const MAIN_ITEMS: NavItem[] = [
 ];
 
 const ADVANCED_ITEMS: NavItem[] = [
+  { label: 'Plugins', href: '/plugins' as Href, icon: 'extension-puzzle-outline', activeIcon: 'extension-puzzle' },
   { label: 'Harness', href: '/harness', icon: 'git-network-outline', activeIcon: 'git-network' },
   { label: 'Events', href: '/events', icon: 'receipt-outline', activeIcon: 'receipt' },
   { label: 'Telemetry', href: '/telemetry', icon: 'analytics-outline', activeIcon: 'analytics' },
@@ -69,6 +71,12 @@ function getInitials(name: string): string {
     .toUpperCase();
 }
 
+function navIcon(name: string): keyof typeof Ionicons.glyphMap {
+  return name in Ionicons.glyphMap
+    ? (name as keyof typeof Ionicons.glyphMap)
+    : 'extension-puzzle-outline';
+}
+
 /** Links into the chat screen carry a timestamp so repeating the same action works twice. */
 function chatLink(params: Record<string, string | number>): Href {
   const query = Object.entries(params)
@@ -87,6 +95,7 @@ export function AppSidebar() {
   const insets = useSafeAreaInsets();
   const pathname = usePathname();
   const { width } = useWindowDimensions();
+  const { navigation } = usePluginSnapshot();
   const [progress] = useState(() => new Animated.Value(0));
   const [recents, setRecents] = useState<Conversation[]>([]);
   const [advancedOpen, setAdvancedOpen] = useState(false);
@@ -227,6 +236,42 @@ export function AppSidebar() {
           showsVerticalScrollIndicator={false}
         >
           {MAIN_ITEMS.map((item) => renderNavRow(item))}
+
+          {navigation.length > 0 ? (
+            <>
+              <View style={styles.divider} />
+              <Text style={styles.sectionLabel}>Plugin apps</Text>
+              {navigation.map((entry) => {
+                const active = pathname.startsWith(`/plugin/${entry.pluginId}`);
+
+                return (
+                  <Pressable
+                    key={`${entry.pluginId}:${entry.id}`}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: active }}
+                    onPress={() => navigate(entry.path as Href)}
+                    style={({ pressed }) => [
+                      styles.navItem,
+                      active && styles.navItemActive,
+                      pressed && styles.pressed,
+                    ]}
+                  >
+                    <Ionicons
+                      name={navIcon(entry.icon)}
+                      size={24}
+                      color={active ? colors.text : colors.textMuted}
+                    />
+                    <Text
+                      numberOfLines={1}
+                      style={[styles.navLabel, active && styles.navLabelActive]}
+                    >
+                      {entry.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </>
+          ) : null}
 
           <View style={styles.divider} />
 

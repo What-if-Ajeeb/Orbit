@@ -7,10 +7,9 @@ export type MountedPlugin = {
 };
 
 /**
- * Runtime registry for plugins mounted during a chat session. Creator mode
- * agents use cordis_* tools to write, install, and mount new plugins or UI
- * overlays live. Mounted tool plugins are registered into the agent tool
- * registry so the model can call them in the same session.
+ * Legacy in-memory overlay registry kept only for compatibility with old data
+ * shapes. ORBIT 2.0 never mounts plugin code from here; the canonical registry
+ * is `src/lib/plugins/registry.ts`.
  */
 export class PluginRuntime {
   private plugins = new Map<number, MountedPlugin>();
