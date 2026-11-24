@@ -120,6 +120,7 @@ Reference docs: `docs/PLUGIN_ARCHITECTURE.md`, `docs/PLUGIN_MANIFEST.md`,
 Verification commands for plugin-related changes:
 
 ```bash
+cargo test --manifest-path sandbox-core/Cargo.toml
 npx tsc --noEmit
 npx expo lint
 npm test
@@ -134,6 +135,9 @@ not claim those tests passed unless you ran them and checked the result.
 Always run these before committing:
 
 ```bash
+# Rust sandbox policy core
+cargo test --manifest-path sandbox-core/Cargo.toml
+
 # TypeScript typecheck
 npx tsc --noEmit
 
@@ -156,19 +160,20 @@ Note: The default Hermes bytecode export may fail in this container (`hermesc` S
 
 | Command | Success signal |
 |---|---|
+| `cargo test --manifest-path sandbox-core/Cargo.toml` | Rust policy-core tests pass |
 | `tsc --noEmit` | No output, exit code 0 |
 | `expo lint` | No output (or only pre-existing warnings), exit code 0 |
 | `npm test` | Vitest suite passes |
 | `npm run test:rn` | Jest suite passes |
 | `expo export` | `Exported: /tmp/opencode/orbit-export` and a `.js` bundle listed |
-| GitHub Actions CI | `ci.yml` runs `npm ci`, Expo Doctor, TypeScript, ESLint, Vitest, and Jest; `android.yml` builds the Android APK/AAB; `pr-title.yml` validates the Conventional Commit PR title. All three are required on PRs. |
+| GitHub Actions CI | `ci.yml` runs `npm ci`, Expo Doctor, Rust sandbox-core tests, TypeScript, ESLint, Vitest, and Jest; `android.yml` builds the Rust Android library and APK/AAB; `pr-title.yml` validates the Conventional Commit PR title. All three are required on PRs. |
 
 ## 5.1 Continuous Integration
 
 CI runs the same checks as the local loop, plus Android builds:
 
-- `ci.yml` — dependency installation (`npm ci`), Expo Doctor (non-blocking), TypeScript, ESLint, Vitest, Jest. Runs on pull requests and pushes to `main`.
-- `android.yml` — Android build (debug APK, release APK, AAB), ZIP/artifact validation, checksums, and artifact upload. Runs on PRs, `main` pushes, `v*` tag pushes, and manual dispatch. Tag pushes and `publish_release` runs publish a GitHub Release; PRs and `main` pushes only upload artifacts.
+- `ci.yml` — dependency installation (`npm ci`), Expo Doctor (non-blocking), Rust sandbox-core tests, TypeScript, ESLint, Vitest, Jest. Runs on pull requests and pushes to `main`.
+- `android.yml` — builds the Rust sandbox library for all four Android ABIs, then Android build (debug APK, release APK, AAB), native-library/ZIP/artifact validation, checksums, and artifact upload. Runs on PRs, `main` pushes, `v*` tag pushes, and manual dispatch. Tag pushes and `publish_release` runs publish a GitHub Release; PRs and `main` pushes only upload artifacts.
 - `pr-title.yml` — validates that the PR title is a Conventional Commit (it becomes the squash-merge message on `main`).
 - Release — push a `v<app.json version>` tag from `main`, or run `workflow_dispatch` on `main` with `publish_release` checked (leave `release_tag` empty to use the current version). Verifies artifact checksums and signing status, and requires approval of the `release` environment. The workflow creates a draft release, verifies every asset, then publishes. Without signing secrets the release is debug-signed and marked as such; set `ORBIT_REQUIRE_RELEASE_SIGNING=true` to block unsigned releases.
 

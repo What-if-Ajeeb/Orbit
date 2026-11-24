@@ -20,6 +20,7 @@ import {
 } from '@/lib/diagnostics';
 import { HarnessProvider } from '@/lib/harness/spine/boot';
 import { configureNotifications } from '@/lib/notifications';
+import { disposeMobileSandboxManager } from '@/lib/sandbox/manager';
 
 void SplashScreen.preventAutoHideAsync();
 installGlobalDiagnostics();
@@ -45,6 +46,7 @@ export default function RootLayout() {
           <PaperThemeBridge>
             <SessionProvider>
               <NotificationSetup />
+              <SandboxLifecycle />
               <SplashController />
               <HarnessProvider>
                 <RootNavigator />
@@ -70,6 +72,18 @@ function NotificationSetup() {
     void configureNotifications().catch((error: unknown) => {
       reportDiagnostic('Notification setup', error);
     });
+  }, []);
+
+  return null;
+}
+
+function SandboxLifecycle() {
+  useEffect(() => {
+    return () => {
+      void disposeMobileSandboxManager().catch(() => {
+        // The service may already be gone during shutdown; cleanup is best effort.
+      });
+    };
   }, []);
 
   return null;

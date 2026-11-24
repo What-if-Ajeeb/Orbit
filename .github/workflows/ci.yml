@@ -28,12 +28,17 @@ jobs:
           node-version: 22
           cache: npm
 
+      - uses: dtolnay/rust-toolchain@stable
+
       - name: Install dependencies
         run: npm ci
 
       - name: Expo doctor
         continue-on-error: true
         run: npx expo-doctor
+
+      - name: Rust sandbox core tests
+        run: cargo test --manifest-path sandbox-core/Cargo.toml
 
       - name: TypeScript
         run: npm run typecheck

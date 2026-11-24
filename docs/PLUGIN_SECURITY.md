@@ -137,10 +137,29 @@ v12 migration in `src/lib/db.ts`: `plugin_records`, `plugin_versions`,
 `plugin_meta`. Legacy rows from the old `plugins` table are imported once as
 disabled, untrusted declarative records; legacy executable code is never loaded.
 
+## Android mobile sandbox (Android only)
+
+The separate [`MOBILE_SANDBOX.md`](MOBILE_SANDBOX.md) subsystem adds an Android-only
+process boundary for **data-only deterministic programs**, not arbitrary plugin
+code. A local Expo Module binds an `android:isolatedProcess="true"` service. Rust in
+that service validates the manifest and interprets a fixed instruction set; it has
+no file, network, permission, JavaScript, or native-code APIs. Kotlin only performs
+binding, message correlation, and timeouts.
+
+Every run requires an explicit `sandbox.execute` approval through
+`PluginApprovalHost` with `trustLevel: 'untrusted'`. A denial, timeout, missing
+native library, bind failure, or panic fails closed. The existing plugin platform
+still never loads downloaded JavaScript or legacy hook code.
+
+This is a process boundary plus a bounded interpreter. It is **not** a claim of
+complete isolation from the Android kernel, Binder, or a device compromise, and it
+must not be used to justify running arbitrary third-party native or JavaScript code.
+
 ## Current limitations
 
-- This is application-level containment for declarative plugins, not a sandbox
-  around arbitrary native or JavaScript code.
+- Plugin containment is application-level for declarative plugins, not a sandbox
+  around arbitrary native or JavaScript code. The Android mobile sandbox is a
+  separate, bounded, data-only execution path.
 - Triple-dot identifiers are namespaces, not verified publisher identities.
 - `publisher.verified` is advisory metadata. Trust levels do not grant
   permissions, but they do gate which entry-point kinds and plugin ids may be

@@ -91,6 +91,7 @@ export default function AppLayout() {
             <Stack.Screen name="telemetry" />
             <Stack.Screen name="policy" />
             <Stack.Screen name="plugins/index" />
+            <Stack.Screen name="sandbox/index" />
             <Stack.Screen name="plugins/[pluginId]" />
             <Stack.Screen name="plugin/[pluginId]" />
             <Stack.Screen name="buddy/tree" />

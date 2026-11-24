@@ -34,6 +34,7 @@ and **expo-notifications**.
 - MCP server connections (HTTP endpoints + optional bearer token) with per-server sync status
 - Runtime extension layer: skill registry, reviewed built-in lifecycle hooks, and delegated subagent tasks (legacy hook scripts are disabled)
 - **Plugin platform**: declarative manifests, default-deny permissions, namespaced tools/storage, and a Plugin Manager (`Plugins` in the drawer)
+- **Android mobile sandbox** (Android-only): Rust policy core in an isolated Android service, owned from RN through an Expo Module; manage it from **Sandbox** in the drawer. See [`docs/MOBILE_SANDBOX.md`](docs/MOBILE_SANDBOX.md).
 - Offline **local mode** for basic commands when no API key is configured
 
 ## Connect the AI brain

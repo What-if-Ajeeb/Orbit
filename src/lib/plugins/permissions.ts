@@ -156,6 +156,13 @@ export const PLUGIN_PERMISSION_META: Record<
     risk: 'low',
     sensitive: false,
   },
+  'sandbox.execute': {
+    permission: 'sandbox.execute',
+    label: 'Run in sandbox',
+    description: 'Run a deterministic program in the Android isolated sandbox. The program cannot access files, network or device permissions.',
+    risk: 'high',
+    sensitive: true,
+  },
 };
 
 export function isPluginPermission(value: unknown): value is PluginPermission {
