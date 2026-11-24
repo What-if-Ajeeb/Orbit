@@ -1,7 +1,14 @@
 import { agentToolRegistry, type AgentTool } from '../ai/tool-registry';
 import type { LlmToolDefinition } from '../ai/types';
+import { mcpPluginId } from '../plugins/mcp-bridge';
 import { McpClient, type McpTool } from './client';
 import { loadMcpServers, type McpServerConfig } from './settings';
+
+export type McpToolGate = (serverId: string) => {
+  allowed: boolean;
+  pluginId: string;
+  reason?: string;
+};
 
 export type McpServerSyncStatus = {
   serverId: string;
@@ -35,6 +42,20 @@ let syncInFlight: Promise<McpSyncResult> | null = null;
 const clientCache = new Map<string, ClientCacheEntry>();
 const TOOL_PREFIX = 'mcp__';
 const MAX_TOOL_NAME = 64;
+
+let toolGate: McpToolGate | null = null;
+
+/**
+ * Installs the plugin-platform gate for MCP tool execution. When no gate is
+ * installed (headless tests, early boot) tools behave as before.
+ */
+export function setMcpToolGate(gate: McpToolGate | null): void {
+  toolGate = gate;
+}
+
+export function getMcpToolGate(): McpToolGate | null {
+  return toolGate;
+}
 
 function slug(value: string): string {
   const clean = value
@@ -131,11 +152,26 @@ function buildAgentTool(
     ),
     parameters: tool.inputSchema,
   };
+  const pluginId = mcpPluginId(server.id);
 
   return {
+    meta: {
+      source: 'mcp',
+      pluginId,
+      trustLevel: 'local',
+      permissions: ['mcp.connect', 'ai.invoke'],
+    },
     definition,
     async execute(_context, args) {
       const label = tool.title || tool.name;
+      const gate = toolGate?.(server.id);
+
+      if (gate && !gate.allowed) {
+        return {
+          content: `MCP tool blocked: ${gate.reason ?? 'the MCP integration is not enabled.'}`,
+          trace: `MCP · ${server.name}: ${label} blocked`,
+        };
+      }
 
       try {
         const result = await getClient(server).callTool(tool.name, args);

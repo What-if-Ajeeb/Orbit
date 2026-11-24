@@ -1,3 +1,4 @@
+import { usePluginPlatform } from '@/context/plugins';
 import { useAppTheme, useStyles, type AppTheme } from '@/context/theme';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useFocusEffect } from 'expo-router';
@@ -19,7 +20,6 @@ import { TextField } from '@/components/TextField';
 import {
   getMcpStatuses,
   getMcpToolCount,
-  refreshMcpTools,
   type McpServerSyncStatus,
 } from '@/lib/mcp/registry';
 import {
@@ -57,6 +57,7 @@ function toolLabel(count: number): string {
 }
 
 export function McpServersCard({ onNotice, onError }: McpServersCardProps) {
+  const platform = usePluginPlatform();
   const { colors } = useAppTheme();
   const styles = useStyles(makeStyles);
   const [servers, setServers] = useState<McpServerConfig[]>([]);
@@ -74,6 +75,20 @@ export function McpServersCard({ onNotice, onError }: McpServersCardProps) {
       void (async () => {
         const list = await loadMcpServers();
 
+        if (platform.isReady()) {
+          try {
+            await platform.syncMcpServers(list, { refreshTools: false });
+          } catch (syncError) {
+            if (active) {
+              onError(
+                syncError instanceof Error
+                  ? syncError.message
+                  : 'Could not sync MCP plugin records.'
+              );
+            }
+          }
+        }
+
         if (active) {
           setServers(list);
           setStatuses(getMcpStatuses());
@@ -84,7 +99,7 @@ export function McpServersCard({ onNotice, onError }: McpServersCardProps) {
       return () => {
         active = false;
       };
-    }, [])
+    }, [platform, onError])
   );
 
   const statusById = useMemo(
@@ -103,23 +118,34 @@ export function McpServersCard({ onNotice, onError }: McpServersCardProps) {
       }
 
       try {
-        const result = await refreshMcpTools(list);
-        setStatuses(result.statuses);
-        setToolCount(result.toolCount);
+        // Keep synthetic plugin records and the MCP tool registry in lockstep.
+        const { tools } = await platform.syncMcpServers(list, {
+          refreshTools: true,
+        });
+
+        if (!tools) {
+          if (announce) {
+            onError('MCP sync failed. Plugin records were updated; tools were not refreshed.');
+          }
+          return null;
+        }
+
+        setStatuses(tools.statuses);
+        setToolCount(tools.toolCount);
 
         if (announce) {
-          const failed = result.statuses.find((status) => !status.ok);
+          const failed = tools.statuses.find((status) => !status.ok);
 
           if (failed) {
             onError(`${failed.serverName}: ${failed.error ?? 'could not connect.'}`);
-          } else if (result.toolCount > 0) {
-            onNotice(`MCP sync complete · ${toolLabel(result.toolCount)} available.`);
+          } else if (tools.toolCount > 0) {
+            onNotice(`MCP sync complete · ${toolLabel(tools.toolCount)} available.`);
           } else {
             onNotice('MCP sync complete — no tools found.');
           }
         }
 
-        return result;
+        return tools;
       } catch (syncError) {
         if (announce) {
           onError(
@@ -132,7 +158,7 @@ export function McpServersCard({ onNotice, onError }: McpServersCardProps) {
         setIsSyncing(false);
       }
     },
-    [onError, onNotice]
+    [platform, onError, onNotice]
   );
 
   function openEditor(server?: McpServerConfig) {
@@ -186,8 +212,9 @@ export function McpServersCard({ onNotice, onError }: McpServersCardProps) {
           : `${config.name} saved (disabled).`
       );
 
+      const result = await syncServers(saved, false);
+
       if (config.enabled) {
-        const result = await syncServers(saved, false);
         const status = result?.statuses.find((item) => item.serverId === config.id);
 
         if (status?.ok) {

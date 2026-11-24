@@ -26,6 +26,7 @@ import { ScreenHeader } from '@/components/ScreenHeader';
 import { SidebarButton } from '@/components/SidebarButton';
 import { TextField } from '@/components/TextField';
 import { useSession } from '@/context/auth';
+import { usePluginSnapshot } from '@/context/plugins';
 import { useSidebar } from '@/context/sidebar';
 import {
   listOllamaModels,
@@ -72,6 +73,7 @@ export default function SettingsScreen() {
   const db = useSQLiteContext();
   const insets = useSafeAreaInsets();
   const { user, signOut } = useSession();
+  const snapshot = usePluginSnapshot();
   const { open: openSidebar } = useSidebar();
   const [settings, setSettings] = useState<AiSettings | null>(null);
   const [permission, setPermission] = useState<NotificationPermissionState>('undetermined');
@@ -757,6 +759,52 @@ export default function SettingsScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>Integrations</Text>
           <McpServersCard onNotice={setNotice} onError={setError} />
+        </View>
+
+        <Text style={styles.sectionLabel}>PLUGINS</Text>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>Plugin Manager</Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Open plugin manager"
+            onPress={() => router.push('/plugins' as Href)}
+            style={({ pressed }) => [pressed && styles.pressed]}
+          >
+            <GlassView style={styles.navCard}>
+              <View style={styles.settingIconWrap}>
+                <Ionicons name="extension-puzzle-outline" size={18} color={colors.accent} />
+              </View>
+              <View style={styles.settingText}>
+                <Text style={styles.settingTitle}>Plugins</Text>
+                <Text style={styles.settingDescription}>Install, enable, and review plugin permissions.</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={colors.textFaint} />
+            </GlassView>
+          </Pressable>
+
+          {snapshot.settingsSections.map((section) => (
+            <Pressable
+              key={`${section.pluginId}:${section.id}`}
+              accessibilityRole="button"
+              accessibilityLabel={`Open ${section.title}`}
+              onPress={() => router.push(section.path as Href)}
+              style={({ pressed }) => [pressed && styles.pressed]}
+            >
+              <GlassView style={styles.navCard}>
+                <View style={styles.settingIconWrap}>
+                  <Ionicons name="options-outline" size={18} color={colors.accent} />
+                </View>
+                <View style={styles.settingText}>
+                  <Text style={styles.settingTitle}>{section.title}</Text>
+                  <Text style={styles.settingDescription}>
+                    {section.description ?? `Contributed by ${section.pluginName}.`}
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color={colors.textFaint} />
+              </GlassView>
+            </Pressable>
+          ))}
         </View>
 
         <View style={styles.section}>

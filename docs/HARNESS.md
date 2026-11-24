@@ -47,6 +47,43 @@ mounts the five plugins; the in-app boot still mounts them directly today.
 A plugin can be added without editing the agent loop, the chat screen, or the other
 plugins. The agent only knows the registries.
 
+## Plugin platform (separate lifecycle layer)
+
+`src/lib/plugins/` and `src/context/plugins.tsx` add a second, manifest-driven
+plugin layer. It is distinct from the four harness seams above: it owns its own
+lifecycle, permission grants, SQLite tables and Plugin Manager UI. The Cordis
+core services listed in the note at the top are adopted as read-only records;
+this layer does not remount them.
+
+Implemented behavior:
+
+- Version 1 JSON manifests are validated; the bundled catalog includes the
+  Cordis core service metadata, built-in diagnostics and
+  `plugins/example-plugin`.
+- Install, enable, disable, update and uninstall are explicit state transitions
+  with dependency checks, lifecycle hook timeouts, update backups and rollback.
+- Permissions are default-deny and flow through `PluginApprovalHost`; there is no
+  "Approve all" control. Trust levels and `verified` flags are advisory only.
+- Tools are namespaced as `plugin__<slug>__<name>` and require `ai.invoke`.
+  Storage and settings are per-plugin; events are typed and size-limited.
+- Configured MCP servers are mirrored into synthetic `mcp.server.<slug>` plugins.
+  The tool gate is installed in the constructor and denies tools until records
+  are synced; it requires both `mcp.connect` and `ai.invoke`, and revocations are
+  sticky across re-sync.
+- `src/lib/cordis-tools.ts` exposes only read-only `cordis_plugin_list`,
+  `cordis_plugin_inspect` and `cordis_plugin_permission_audit` agent tools.
+- Legacy hook scripts are disabled: `HookEngine.runHookCode()` throws, stored
+  hook rows are never evaluated, and failed `executeHook()` results are ignored
+  by the agent.
+
+Current limitations: third-party plugins are declarative only (no downloaded
+code execution), no remote catalog, `notifications`/`credentials` SDK adapters
+are unavailable, there is no SDK file API or `sdk.mcp`, and toolbar/context
+actions have no global host. Plugin-specific
+Vitest files exist under `src/lib/plugins/__tests__/`; no results are asserted
+here. See [`docs/PLUGIN_ARCHITECTURE.md`](PLUGIN_ARCHITECTURE.md) and the related
+`docs/PLUGIN_*.md` files for the implemented details.
+
 ## How a message flows
 
 ```text
@@ -252,6 +289,21 @@ Settings.
 
 The snapshot is built by `buildHarnessSnapshot()` and loaded by
 `loadHarnessSnapshot()` in `src/lib/harness/index.ts`.
+
+## Verification
+
+For harness or plugin-platform changes, run the repository checks described in
+[`docs/OPERATIONS.md`](OPERATIONS.md):
+
+```sh
+npx tsc --noEmit
+npx expo lint
+npm test
+npx expo export --platform android --no-bytecode
+```
+
+The Vitest suite includes the plugin-specific tests under
+`src/lib/plugins/__tests__/`. This document does not assert their results.
 
 ## Invariants
 

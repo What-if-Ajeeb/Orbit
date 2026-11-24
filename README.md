@@ -32,7 +32,8 @@ and **expo-notifications**.
 - Android runtime permissions for camera, microphone, location, and contacts, requested only after Orbit's own approval
 - AI settings screen with provider presets, connection test, and secure key storage
 - MCP server connections (HTTP endpoints + optional bearer token) with per-server sync status
-- Runtime extension layer: skill registry, agent lifecycle hooks, and delegated subagent tasks
+- Runtime extension layer: skill registry, reviewed built-in lifecycle hooks, and delegated subagent tasks (legacy hook scripts are disabled)
+- **Plugin platform**: declarative manifests, default-deny permissions, namespaced tools/storage, and a Plugin Manager (`Plugins` in the drawer)
 - Offline **local mode** for basic commands when no API key is configured
 
 ## Connect the AI brain
@@ -208,6 +209,52 @@ Add a chat store with `registerChatStorePlugin(...)`, then activate it with
 `setActiveChatStore('my-store')`. The full lifecycle, MCP caching, and security
 rules are in **[`docs/HARNESS.md`](docs/HARNESS.md)**.
 
+## Plugin platform
+
+`src/lib/plugins/` and `src/context/plugins.tsx` add a second, manifest-driven
+lifecycle on top of the registries above. **Plugins** in the drawer opens the
+Plugin Manager, where bundled manifests can be installed, enabled, inspected,
+updated and disabled. Permissions are default-deny and requested through the
+approval dialog; trust levels do not grant permissions and gate built-in entry points.
+
+What is implemented today:
+
+- Declarative version-1 manifests with no downloaded JavaScript. See
+  `plugins/example-plugin/manifest.json`.
+- A bundled catalog with the Cordis core service metadata, built-in diagnostics
+  and the example plugin. Catalog registration is not installation.
+- Explicit lifecycle transitions, dependency checks, hook timeouts, update
+  backups and rollback, backed by the v12 SQLite schema.
+- Namespaced plugin tools (`plugin__<slug>__<name>`), per-plugin JSON storage and
+  settings, typed in-process events, and default-deny permission grants.
+- MCP servers mirrored as synthetic `mcp.server.<slug>` plugins with a tool gate
+  installed in the constructor; tools are denied until records are synced.
+  Revoking `mcp.connect` or `ai.invoke` is sticky across re-sync.
+- Three read-only agent tools: `cordis_plugin_list`,
+  `cordis_plugin_inspect`, and `cordis_plugin_permission_audit`.
+- Legacy hook code is disabled: stored hook rows are never compiled or
+  evaluated, and failed executions are recorded and ignored by the agent.
+
+Limitations: no remote catalog, no downloaded executable plugin code, no
+notifications/credentials SDK adapter, no SDK file API, no `sdk.mcp`, and no
+global widget or settings-section renderer. Plugin-specific Vitest files live
+under `src/lib/plugins/__tests__/`; no results are asserted here. Details are in
+[`docs/PLUGIN_ARCHITECTURE.md`](docs/PLUGIN_ARCHITECTURE.md),
+[`docs/PLUGIN_MANIFEST.md`](docs/PLUGIN_MANIFEST.md),
+[`docs/PLUGIN_SECURITY.md`](docs/PLUGIN_SECURITY.md),
+[`docs/PLUGIN_SDK.md`](docs/PLUGIN_SDK.md),
+[`docs/PLUGIN_DEVELOPER_GUIDE.md`](docs/PLUGIN_DEVELOPER_GUIDE.md), and
+[`docs/PLUGIN_MIGRATION.md`](docs/PLUGIN_MIGRATION.md).
+
+To verify plugin-related changes locally:
+
+```sh
+npx tsc --noEmit
+npx expo lint
+npm test
+npx expo export --platform android --no-bytecode
+```
+
 ## Run on your Android phone
 
 1. Install **Expo Go** from the Play Store.
@@ -357,9 +404,9 @@ src/
     auth.ts               # hashing, sessions, account queries
     chat-store.ts         # ChatStore interface + SQLite implementation
     chat.ts               # chat store plugin registry (SQLite default)
-    db.ts                 # SQLite schema + migrations (v7)
+    db.ts                 # SQLite schema + migrations (v12)
     dates.ts              # formatting + natural-language date parsing
-    hooks.ts              # agent lifecycle hooks + execution engine
+    hooks.ts              # legacy hook rows retained; code execution disabled
     notifications.ts      # local notification scheduling
     skills.ts             # skill registry + capability executor
     subagents.ts          # subagent registry + delegated task store
@@ -377,8 +424,9 @@ Architecture and plugin guide: [`docs/HARNESS.md`](docs/HARNESS.md).
 - `tasks` — title, notes, due/remind timestamps, priority, status, notification id
 - `conversations` — one row per chat, ordered by last update
 - `messages` — persisted agent messages linked to a conversation, with tool traces
-- `skills`, `hooks`, `subagents`, `subagent_tasks` — runtime extension stores (v6)
+- `skills`, `hooks`, `subagents`, `subagent_tasks` — legacy runtime extension stores (v6); hook rows are retained for data compatibility but their code is never executed
 - `permission_requests`, `permission_grants`, `permission_audit`, `permission_agents`, `paired_devices`, `permission_state` — agent consent, grants, audit, companion sessions, and emergency-stop state (v7)
+- `plugin_records`, `plugin_versions`, `plugin_dependencies`, `plugin_permissions`, `plugin_permission_audit`, `plugin_install_history`, `plugin_settings`, `plugin_kv`, `plugin_backups`, `plugin_meta` — declarative plugin lifecycle, permissions, settings, KV, history and backups (v12)
 
 Chats, messages, and tasks cascade-delete when their user is removed. Permission
 records cascade with the user; paired-device tokens live separately in SecureStore.

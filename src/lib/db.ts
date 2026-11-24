@@ -7,7 +7,7 @@ export const DATABASE_NAME = 'orbit.db';
  * tasks and the agent conversation) lives in SQLite on the device.
  */
 export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
-  const DATABASE_VERSION = 11;
+  const DATABASE_VERSION = 12;
 
   const result = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
   let currentDbVersion = result?.user_version ?? 0;
@@ -557,6 +557,132 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
     `);
 
     currentDbVersion = 11;
+  }
+
+  if (currentDbVersion === 11) {
+    await db.execAsync(`
+      CREATE TABLE IF NOT EXISTS plugin_records (
+        plugin_id TEXT PRIMARY KEY NOT NULL,
+        name TEXT NOT NULL,
+        version TEXT NOT NULL,
+        manifest TEXT NOT NULL,
+        trust_level TEXT NOT NULL,
+        source TEXT NOT NULL,
+        status TEXT NOT NULL,
+        enabled INTEGER NOT NULL DEFAULT 0,
+        installed_at INTEGER NOT NULL DEFAULT 0,
+        updated_at INTEGER NOT NULL DEFAULT 0,
+        last_started_at INTEGER,
+        last_stopped_at INTEGER,
+        error TEXT,
+        health_json TEXT,
+        data_schema_version INTEGER NOT NULL DEFAULT 1,
+        legacy INTEGER NOT NULL DEFAULT 0
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_plugin_records_status
+        ON plugin_records (status, enabled);
+      CREATE INDEX IF NOT EXISTS idx_plugin_records_legacy
+        ON plugin_records (legacy);
+
+      CREATE TABLE IF NOT EXISTS plugin_versions (
+        plugin_id TEXT NOT NULL,
+        version TEXT NOT NULL,
+        manifest TEXT NOT NULL,
+        source TEXT NOT NULL,
+        installed_at INTEGER NOT NULL,
+        PRIMARY KEY (plugin_id, version),
+        FOREIGN KEY (plugin_id) REFERENCES plugin_records (plugin_id) ON DELETE CASCADE
+      );
+
+      CREATE TABLE IF NOT EXISTS plugin_dependencies (
+        plugin_id TEXT NOT NULL,
+        dependency_id TEXT NOT NULL,
+        version_range TEXT NOT NULL,
+        optional INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (plugin_id, dependency_id),
+        FOREIGN KEY (plugin_id) REFERENCES plugin_records (plugin_id) ON DELETE CASCADE
+      );
+
+      CREATE TABLE IF NOT EXISTS plugin_permissions (
+        plugin_id TEXT NOT NULL,
+        permission TEXT NOT NULL,
+        granted INTEGER NOT NULL DEFAULT 0,
+        source TEXT NOT NULL,
+        granted_at INTEGER NOT NULL DEFAULT 0,
+        revoked_at INTEGER,
+        PRIMARY KEY (plugin_id, permission)
+      );
+
+      CREATE TABLE IF NOT EXISTS plugin_permission_audit (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        plugin_id TEXT NOT NULL,
+        event TEXT NOT NULL,
+        permissions TEXT NOT NULL,
+        source TEXT NOT NULL,
+        detail TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_plugin_permission_audit_plugin
+        ON plugin_permission_audit (plugin_id, id DESC);
+
+      CREATE TABLE IF NOT EXISTS plugin_install_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        plugin_id TEXT NOT NULL,
+        action TEXT NOT NULL,
+        from_version TEXT,
+        to_version TEXT,
+        status TEXT NOT NULL,
+        detail TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_plugin_install_history_plugin
+        ON plugin_install_history (plugin_id, id DESC);
+      CREATE INDEX IF NOT EXISTS idx_plugin_install_history_created
+        ON plugin_install_history (created_at DESC);
+
+      CREATE TABLE IF NOT EXISTS plugin_settings (
+        plugin_id TEXT NOT NULL,
+        key TEXT NOT NULL,
+        value TEXT NOT NULL,
+        updated_at INTEGER NOT NULL,
+        PRIMARY KEY (plugin_id, key)
+      );
+
+      CREATE TABLE IF NOT EXISTS plugin_kv (
+        plugin_id TEXT NOT NULL,
+        key TEXT NOT NULL,
+        value TEXT NOT NULL,
+        updated_at INTEGER NOT NULL,
+        bytes INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (plugin_id, key)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_plugin_kv_plugin
+        ON plugin_kv (plugin_id);
+
+      CREATE TABLE IF NOT EXISTS plugin_backups (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        plugin_id TEXT NOT NULL,
+        from_version TEXT NOT NULL,
+        to_version TEXT NOT NULL,
+        data TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_plugin_backups_plugin
+        ON plugin_backups (plugin_id, id DESC);
+
+      CREATE TABLE IF NOT EXISTS plugin_meta (
+        key TEXT PRIMARY KEY NOT NULL,
+        value TEXT NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+    `);
+
+    currentDbVersion = 12;
   }
 
   if (currentDbVersion !== DATABASE_VERSION) {

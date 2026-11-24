@@ -1,0 +1,89 @@
+{
+  "manifestVersion": 1,
+  "pluginId": "com.example.hello-orbit",
+  "name": "Hello Orbit",
+  "version": "1.0.0",
+  "description": "A declarative example plugin. It contributes a sidebar entry, a dashboard widget and a settings section without running any downloaded code.",
+  "author": {
+    "name": "ORBIT Examples",
+    "url": "https://example.com/orbit-plugins"
+  },
+  "publisher": {
+    "id": "com.example",
+    "name": "Example Publisher",
+    "verified": false
+  },
+  "category": "ui",
+  "icon": "sparkles-outline",
+  "minimumOrbitVersion": "1.0.0",
+  "platformSupport": ["android", "ios", "web"],
+  "entryPoint": {
+    "kind": "declarative",
+    "screen": "plugin-home"
+  },
+  "permissions": [
+    "ui.contribute",
+    "storage.read",
+    "storage.write",
+    "notifications.send"
+  ],
+  "capabilities": [
+    "ui.screens",
+    "ui.navigation",
+    "ui.widgets",
+    "ui.settings",
+    "storage.namespaced"
+  ],
+  "dependencies": [],
+  "optionalDependencies": [],
+  "routes": [
+    {
+      "id": "home",
+      "screen": "plugin-home",
+      "title": "Hello Orbit"
+    }
+  ],
+  "navigationEntries": [
+    {
+      "id": "hello-nav",
+      "label": "Hello Orbit",
+      "icon": "sparkles-outline",
+      "routeId": "home",
+      "order": 50
+    }
+  ],
+  "dashboardWidgets": [
+    {
+      "id": "hello-widget",
+      "title": "Hello Orbit",
+      "description": "This card comes from an example declarative plugin.",
+      "size": "small"
+    }
+  ],
+  "settingsSections": [
+    {
+      "id": "hello-settings",
+      "title": "Hello Orbit",
+      "description": "Example plugin settings."
+    }
+  ],
+  "settingsSchema": [
+    {
+      "key": "greeting",
+      "type": "string",
+      "label": "Greeting",
+      "description": "Shown on the plugin home screen.",
+      "default": "Hello from a declarative plugin"
+    }
+  ],
+  "toolbarActions": [],
+  "contextActions": [],
+  "mcpTools": [],
+  "events": {
+    "emits": [],
+    "listens": []
+  },
+  "lifecycleHooks": [],
+  "dataSchemaVersion": 1,
+  "updatePolicy": "manual"
+}

@@ -5,7 +5,9 @@ import { useSQLiteContext } from 'expo-sqlite';
 
 import { AppSidebar } from '@/components/AppSidebar';
 import { PermissionHost } from '@/components/permissions/PermissionHost';
+import { PluginApprovalHost } from '@/components/plugins/PluginApprovalHost';
 import { SidebarProvider } from '@/context/sidebar';
+import { PluginPlatformProvider } from '@/context/plugins';
 import { useAppTheme, useStyles, type AppTheme } from '@/context/theme';
 import { setOrbitDb } from '@/lib/harness/plugins/orbit-session';
 import { permissionManager } from '@/lib/permissions';
@@ -70,31 +72,37 @@ export default function AppLayout() {
   }, [db]);
 
   return (
-    <SidebarProvider>
-      <View style={styles.root}>
-        <NotificationRedirect />
-        <Stack
-          screenOptions={{
-            headerShown: false,
-            contentStyle: { backgroundColor: colors.background },
-            animation: 'slide_from_right',
-          }}
-        >
-          <Stack.Screen name="(tabs)" />
-          <Stack.Screen name="artifact" />
-          <Stack.Screen name="harness" />
-          <Stack.Screen name="permissions" />
-          <Stack.Screen name="events" />
-          <Stack.Screen name="telemetry" />
-          <Stack.Screen name="policy" />
-          <Stack.Screen name="buddy/tree" />
-          <Stack.Screen name="buddy/evolve" />
-          <Stack.Screen name="buddy/collection" />
-        </Stack>
-        <AppSidebar />
-        <PermissionHost />
-      </View>
-    </SidebarProvider>
+    <PluginPlatformProvider>
+      <SidebarProvider>
+        <View style={styles.root}>
+          <NotificationRedirect />
+          <Stack
+            screenOptions={{
+              headerShown: false,
+              contentStyle: { backgroundColor: colors.background },
+              animation: 'slide_from_right',
+            }}
+          >
+            <Stack.Screen name="(tabs)" />
+            <Stack.Screen name="artifact" />
+            <Stack.Screen name="harness" />
+            <Stack.Screen name="permissions" />
+            <Stack.Screen name="events" />
+            <Stack.Screen name="telemetry" />
+            <Stack.Screen name="policy" />
+            <Stack.Screen name="plugins/index" />
+            <Stack.Screen name="plugins/[pluginId]" />
+            <Stack.Screen name="plugin/[pluginId]" />
+            <Stack.Screen name="buddy/tree" />
+            <Stack.Screen name="buddy/evolve" />
+            <Stack.Screen name="buddy/collection" />
+          </Stack>
+          <AppSidebar />
+          <PermissionHost />
+          <PluginApprovalHost />
+        </View>
+      </SidebarProvider>
+    </PluginPlatformProvider>
   );
 }
 

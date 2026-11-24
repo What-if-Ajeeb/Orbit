@@ -25,7 +25,8 @@ export type HookPlugin = {
   description: string;
   hookType: HookType;
   enabled: boolean;
-  code: string; // JavaScript code to execute
+  /** Legacy JavaScript payload. Kept for data compatibility; never executed. */
+  code: string;
   priority: number; // Lower runs first
 };
 
@@ -154,7 +155,8 @@ export class HookEngine {
     for (const hook of hooks) {
       const start = Date.now();
       try {
-        // Execute hook code in a sandboxed context
+        // Legacy hooks are audited but never executed. ORBIT plugins use the
+        // declarative manifest and reviewed built-in implementations instead.
         const result = await this.runHookCode(hook, context);
         executions.push({
           hookId: hook.id,
@@ -182,15 +184,15 @@ export class HookEngine {
     return executions;
   }
 
-  private async runHookCode(hook: HookPlugin, context: HookContext): Promise<Record<string, unknown>> {
-    // Sandboxed execution - in production this runs in an isolated context
-    const fn = new Function('context', 'console', hook.code);
-    const result = fn(context, {
-      log: (...args: unknown[]) => console.log('[Hook]', ...args),
-      error: (...args: unknown[]) => console.error('[Hook]', ...args),
-      warn: (...args: unknown[]) => console.warn('[Hook]', ...args),
-    });
-
-    return result && typeof result === 'object' ? result : { result };
+  private async runHookCode(
+    _hook: HookPlugin,
+    _context: HookContext
+  ): Promise<Record<string, unknown>> {
+    // `new Function` was removed: stored hook strings are untrusted data and
+    // are never compiled or evaluated. Returning a failed execution keeps the
+    // audit trail visible while preserving existing callers of executeHook().
+    throw new Error(
+      'Legacy hook code execution is disabled. Use a declarative plugin instead.'
+    );
   }
 }
