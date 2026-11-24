@@ -38,7 +38,7 @@ jobs:
         run: npx expo-doctor
 
       - name: Rust sandbox core tests
-        run: cargo test --manifest-path sandbox-core/Cargo.toml
+        run: cargo test --locked --manifest-path sandbox-core/Cargo.toml
 
       - name: TypeScript
         run: npm run typecheck
