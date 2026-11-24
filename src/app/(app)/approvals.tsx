@@ -58,6 +58,7 @@ export default function ApprovalsScreen() {
   );
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const pluginInstall = pluginRequest?.kind === 'install' ? pluginRequest : null;
 
   const pending: PermissionRequestRecord[] = user
     ? state.queue.filter((request) => request.userId === user.id)
@@ -216,12 +217,41 @@ export default function ApprovalsScreen() {
                   <View style={styles.cardCopy}>
                     <Text style={styles.cardTitle}>{pluginRequest.pluginName}</Text>
                     <Text style={styles.meta}>
-                      {pluginRequest.kind === 'tool' ? pluginRequest.toolName : 'Permission request'}
+                      {pluginInstall
+                        ? `${pluginInstall.requiresUpdate ? 'Update' : 'Install'} approval · v${pluginInstall.pluginVersion}`
+                        : pluginRequest.kind === 'tool'
+                          ? pluginRequest.toolName
+                          : 'Permission request'}
                     </Text>
                   </View>
                   <Text style={styles.timer}>{timeLeft(pluginRequest.expiresAt)}</Text>
                 </View>
                 <Text style={styles.summary}>{pluginRequest.reason}</Text>
+                {pluginInstall ? (
+                  <View style={styles.actionsList}>
+                    <Text style={styles.meta}>
+                      Needed for: {pluginInstall.capabilityLabel}
+                    </Text>
+                    {pluginInstall.steps.map((step, index) => (
+                      <Text key={`${step}-${index}`} style={styles.actionItem}>
+                        · {step}
+                      </Text>
+                    ))}
+                    {pluginInstall.dependencies.length > 0 ? (
+                      <Text style={styles.meta}>
+                        Dependencies:{' '}
+                        {pluginInstall.dependencies
+                          .map((dependency) => `${dependency.name} ${dependency.version}`)
+                          .join(', ')}
+                      </Text>
+                    ) : null}
+                    {pluginInstall.sensitivePermissions.length > 0 ? (
+                      <Text style={styles.warningText}>
+                        Sensitive access is granted only if you approve.
+                      </Text>
+                    ) : null}
+                  </View>
+                ) : null}
                 <View style={styles.permissionList}>
                   {pluginRequest.permissions.map((permission) => (
                     <Text key={permission} style={styles.actionItem}>
@@ -234,7 +264,13 @@ export default function ApprovalsScreen() {
                 ) : null}
                 <View style={styles.buttons}>
                   <Button
-                    label="Approve"
+                    label={
+                      pluginInstall
+                        ? pluginInstall.requiresUpdate
+                          ? 'Update & grant'
+                          : 'Install & grant'
+                        : 'Approve'
+                    }
                     onPress={() => pluginDecision(pluginRequest, true)}
                     disabled={busyId === String(pluginRequest.id)}
                   />
@@ -324,6 +360,11 @@ const makeStyles = ({ colors }: AppTheme) =>
       color: colors.textMuted,
       fontSize: 12,
       lineHeight: 17,
+    },
+    warningText: {
+      color: colors.warning,
+      fontSize: 11,
+      lineHeight: 16,
     },
     permissionList: {
       gap: 2,

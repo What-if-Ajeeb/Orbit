@@ -7,10 +7,16 @@ import { ARTIFACT_TOOLS } from './artifact-tools';
 import type { LlmToolDefinition } from './types';
 import { COMPUTER_EXECUTE_TOOL } from '../permissions/computer-tool';
 import '../connections/tools';
+import { buildDemandTools } from '../plugins/demand-tools';
 
 // Built-in tool plugins. Orbit can add another capability by registering a new
 // AgentTool here (or from an add-on module) without editing the agent loop.
-for (const tool of [...TASK_TOOLS, ...ARTIFACT_TOOLS, COMPUTER_EXECUTE_TOOL]) {
+for (const tool of [
+  ...TASK_TOOLS,
+  ...ARTIFACT_TOOLS,
+  COMPUTER_EXECUTE_TOOL,
+  ...buildDemandTools(),
+]) {
   if (!agentToolRegistry.get(tool.definition.name)) {
     agentToolRegistry.register(tool);
   }

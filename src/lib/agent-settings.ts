@@ -49,6 +49,10 @@ const DEFAULT_ALLOWED_TOOLS = [
   'complete_task',
   'artifact_read',
   'artifact_list',
+  // Read-only discovery and an approval-gated request. Neither can install or
+  // grant access without the native plugin approval dialog.
+  'orbit_plugin_discover',
+  'orbit_plugin_request',
 ];
 
 function clampText(value: unknown, max: number): string {

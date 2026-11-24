@@ -72,6 +72,29 @@ host-neutral queue in `src/lib/plugins/approvals.ts`:
 update-time permission requests through this host. The UI does not auto-approve
 user-facing grants.
 
+The same queue handles `kind: 'install'` requests from the demand resolver. The
+modal shows the capability reason, version, trust label, planned steps, required
+dependencies, sensitive permissions and sandbox warning. The action is
+**Install & grant** or **Update & grant**; **Deny**, timeout or unmount leaves the
+plugin untouched. There is no bulk approval.
+
+## Demand installation boundaries
+
+`src/lib/plugins/demand.ts` never downloads code or manifests. It searches only
+the bundled trusted catalog (verified `official`/`verified` publishers) and
+enabled, user-configured MCP servers. A candidate must pass `validateManifest()`,
+compatibility checks, dependency version checks, and an entry-point trust check
+before it can reach the approval queue. `orbit_plugin_request` cannot bypass that
+queue: the install/update/enable and scoped permission grant happen only after a
+`true` approval result.
+
+Both agent tools are scoped in `secureExecuteTool()` through the existing
+Permission Manager. Discovery is read-only; requesting is marked as
+approval-gated and delegates the real decision to the plugin approval dialog.
+Successful activations grant only the exact `plugin__`/`mcp__` tools that the
+approved plugin registered, and `runAgent()` recomputes the tool list for the
+next round. If the approved plugin contributes no tool, the result says so.
+
 ## Tool execution boundaries
 
 Plugin tools are registered only while a plugin is `starting`/`running`, and
@@ -88,8 +111,10 @@ rejected. `buildPluginAgentTool()` in `src/lib/plugins/tools.ts` enforces:
 
 `cordis_plugin_list`, `cordis_plugin_inspect` and
 `cordis_plugin_permission_audit` in `src/lib/cordis-tools.ts` are read-only.
-There are no agent tools that install plugins, approve permissions or execute
-plugin code.
+`orbit_plugin_discover` and `orbit_plugin_request` do not install, approve or
+execute anything directly; a request is only a proposal to the user-gated plugin
+approval surface. No agent tool can grant a permission or execute plugin code
+without that surface and the runtime's per-call checks.
 
 MCP execution remains under `src/lib/mcp/registry.ts`. Each configured server
 is mirrored as a synthetic `mcp.server.<slug>` plugin. The plugin runtime

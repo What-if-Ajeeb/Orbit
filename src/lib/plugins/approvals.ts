@@ -19,9 +19,32 @@ export type PluginToolApprovalInput = {
   reason: string;
 };
 
+export type PluginInstallApprovalInput = {
+  kind: 'install';
+  pluginId: string;
+  pluginName: string;
+  pluginVersion: string;
+  trustLevel: PluginTrustLevel;
+  capability: string;
+  capabilityLabel: string;
+  reason: string;
+  permissions: PluginPermission[];
+  sensitivePermissions: PluginPermission[];
+  dependencies: {
+    pluginId: string;
+    name: string;
+    version: string;
+    permissions: PluginPermission[];
+  }[];
+  requiresSandbox: boolean;
+  requiresUpdate: boolean;
+  steps: string[];
+};
+
 export type PluginApprovalInput =
   | PluginPermissionApprovalInput
-  | PluginToolApprovalInput;
+  | PluginToolApprovalInput
+  | PluginInstallApprovalInput;
 
 export type PluginApprovalRequest = PluginApprovalInput & {
   id: number;
@@ -104,6 +127,13 @@ export class PluginApprovalService {
     timeoutMs?: number
   ): Promise<boolean> {
     return this.enqueue({ ...input, kind: 'tool' }, timeoutMs);
+  }
+
+  requestInstall(
+    input: Omit<PluginInstallApprovalInput, 'kind'>,
+    timeoutMs?: number
+  ): Promise<boolean> {
+    return this.enqueue({ ...input, kind: 'install' }, timeoutMs);
   }
 
   private promote(): void {

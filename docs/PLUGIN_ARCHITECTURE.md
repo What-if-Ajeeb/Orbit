@@ -115,6 +115,34 @@ The catalog is a local list of bundled manifests plus out-of-band `readme` and
 `screenshots` text. There is no remote catalog fetch, downloader, or code
 loader.
 
+## Demand-based installation
+
+`src/lib/plugins/demand.ts` is a host-neutral resolver layered over the existing
+registry; it is not a second plugin runtime. It infers a capability from the
+current task (Learn Mode: DSA/programming/study; Agent Mode: GitHub, docs,
+testing, research, build, MCP), then searches only two trusted sources:
+
+- bundled catalog entries whose trust is `official`/`verified` and whose
+  publisher is verified;
+- enabled, user-configured MCP servers, mirrored through the existing synthetic
+  `mcp.server.<slug>` manifests.
+
+Candidates are validated for manifest correctness, platform/version
+compatibility, publisher trust, dependency versions and permissions before a
+plan is produced. The plan names the exact install or update, required
+dependencies, permissions and sandbox need. `SmartPluginInstaller` then calls
+`PluginApprovalService.requestInstall()`; only an explicit approval allows the
+existing `PluginRegistry.install/update/enable` lifecycle to run. Denial,
+timeout or failure performs no install, grant or activation.
+
+Installed running plugins are reused. Updates are applied from the trusted
+catalog with `PluginRegistry.update()` and its backup/rollback path. Demand
+state and a bounded usage history live in namespaced plugin KV storage; the
+Plugin Manager renders them. Idle auto-installed plugins may be disabled, but
+the installer never calls `uninstall()` and never disables a plugin installed by
+the user. Manual install, update, enable, disable and remove remain in the
+Plugin Manager.
+
 Tables created by the v12 migration in `src/lib/db.ts`: `plugin_records`,
 `plugin_versions`, `plugin_dependencies`, `plugin_permissions`,
 `plugin_permission_audit`, `plugin_install_history`, `plugin_settings`,

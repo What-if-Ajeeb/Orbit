@@ -25,6 +25,7 @@ import type {
 } from '@/lib/plugins/types';
 import { radius, spacing } from '@/theme';
 
+import { SmartPluginActivity } from '@/components/plugins/SmartPluginActivity';
 import { usePluginActions } from '@/components/plugins/usePluginActions';
 
 type Filter = 'all' | 'installed' | 'available' | 'updates';
@@ -290,6 +291,8 @@ export default function PluginsScreen() {
             <Text style={styles.bannerNoticeText}>{actions.notice}</Text>
           </View>
         ) : null}
+
+        <SmartPluginActivity />
 
         <View style={styles.filters}>
           {FILTERS.map((item) => {

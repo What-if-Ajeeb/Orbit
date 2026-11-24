@@ -290,6 +290,39 @@ export function classifyToolAction(input: ClassifyInput): ClassifiedPermissionAc
     });
   }
 
+  if (name === 'orbit_plugin_discover' || name === 'orbit_plugin_request') {
+    const requesting = name === 'orbit_plugin_request';
+
+    return makeAction(input, {
+      category: 'app_installation',
+      risk: requesting ? 'medium' : 'low',
+      title: requesting
+        ? `Request a trusted plugin for ${input.agent.name}?`
+        : 'Search trusted ORBIT plugins',
+      summary: requesting
+        ? 'The plugin install, activation and permission grant are decided in the plugin approval dialog. Denying there changes nothing.'
+        : 'This only searches the bundled trusted catalog and your configured MCP servers. It cannot install, enable or grant access.',
+      actions: [
+        requesting ? 'Ask the user to approve the exact plugin plan' : 'Read trusted plugin metadata',
+        ...summarizeArguments(args, 3),
+      ],
+      target: {
+        kind: 'application',
+        label: requesting ? 'ORBIT plugin installation' : 'ORBIT trusted plugin registry',
+        detail: 'On this device',
+      },
+      reason:
+        'The agent needs the right capability for this task and must not install anything silently.',
+      scopeKey: `${name}:${input.projectId}`,
+      autoApprove: true,
+      metadata: {
+        localOnly: true,
+        pluginDemand: true,
+        approvalGated: requesting,
+      },
+    });
+  }
+
   if (ARTIFACT_TOOLS.has(name)) {
     const reading = name === 'artifact_read' || name === 'artifact_list';
 
