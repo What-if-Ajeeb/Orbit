@@ -1,0 +1,21 @@
+[package]
+name = "orbit-sandbox-core"
+version = "0.1.0"
+edition = "2021"
+description = "Security-sensitive validation, policy enforcement and deterministic execution for the ORBIT Android mobile sandbox"
+license = "MIT"
+
+[lib]
+name = "orbit_sandbox_core"
+crate-type = ["rlib", "cdylib"]
+
+[dependencies]
+jni = "0.22.4"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true

@@ -66,6 +66,10 @@ __pycache__/
 /ios
 /android
 
+# Rust build output and cargo-ndk generated native libraries
+/sandbox-core/target/
+/modules/orbit-mobile-sandbox/android/src/main/jniLibs/
+
 # Android signing
 *.keystore
 *.jks

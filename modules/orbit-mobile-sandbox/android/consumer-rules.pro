@@ -1,0 +1,3 @@
+-keep class com.orbit.sandbox.SandboxNative { *; }
+-keep class com.orbit.sandbox.OrbitSandboxService { *; }
+-keep class com.orbit.sandbox.OrbitMobileSandboxModule { *; }

@@ -75,6 +75,22 @@ jobs:
         with:
           packages: platform-tools
 
+      - name: Install Android NDK
+        run: |
+          set -euo pipefail
+          NDK_VERSION="27.1.12297006"
+          sdkmanager "ndk;${NDK_VERSION}"
+          echo "ANDROID_NDK_HOME=${ANDROID_HOME}/ndk/${NDK_VERSION}" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_ROOT=${ANDROID_HOME}/ndk/${NDK_VERSION}" >> "$GITHUB_ENV"
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk --version 4.1.2 --locked
+
       - name: Install dependencies
         run: npm ci
 
@@ -197,6 +213,23 @@ jobs:
             echo "No release signing secrets — build will use the debug keystore"
           fi
 
+      - name: Rust sandbox core tests
+        run: cargo test --manifest-path sandbox-core/Cargo.toml
+
+      - name: Build Rust sandbox library for Android
+        run: |
+          set -euo pipefail
+          JNI_DIR="modules/orbit-mobile-sandbox/android/src/main/jniLibs"
+          mkdir -p "$JNI_DIR"
+          cargo ndk \
+            -t armeabi-v7a \
+            -t arm64-v8a \
+            -t x86 \
+            -t x86_64 \
+            -o "$JNI_DIR" \
+            build --manifest-path sandbox-core/Cargo.toml --release
+          find "$JNI_DIR" -name 'liborbit_sandbox_core.so' -print
+
       - name: Expo prebuild (Android)
         run: npx expo prebuild --platform android --no-install
 
@@ -228,6 +261,14 @@ jobs:
               exit 1
             fi
             unzip -tq "artifacts/$f" >/dev/null
+          done
+
+          # The sandbox native core must ship in every Android artifact.
+          for f in ORBIT-debug.apk ORBIT-release.apk ORBIT-release.aab; do
+            if ! unzip -l "artifacts/$f" | grep -q 'liborbit_sandbox_core.so'; then
+              echo "::error::$f is missing liborbit_sandbox_core.so"
+              exit 1
+            fi
           done
 
           (cd artifacts && sha256sum ORBIT-debug.apk ORBIT-release.apk ORBIT-release.aab > SHA256SUMS.txt)

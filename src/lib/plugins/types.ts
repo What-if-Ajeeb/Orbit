@@ -65,6 +65,7 @@ export const PLUGIN_PERMISSIONS = [
   'credentials.request',
   'background.execute',
   'ui.contribute',
+  'sandbox.execute',
 ] as const;
 
 export type PluginPermission = (typeof PLUGIN_PERMISSIONS)[number];
