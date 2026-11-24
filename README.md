@@ -275,6 +275,9 @@ What is implemented today:
 - Demand history and auto-installed state appear in the Plugin Manager.
   Auto-installed plugins can be disabled when idle but are never auto-uninstalled;
   manually installed plugins are never disabled by this path.
+- A reviewed built-in tool can run its data-only body in the Android isolated
+  sandbox through the same `PluginRegistry` and approval queue; no second runtime
+  or downloaded code. MCP tools keep their host-side network bridge.
 - Legacy hook code is disabled: stored hook rows are never compiled or
   evaluated, and failed executions are recorded and ignored by the agent.
 

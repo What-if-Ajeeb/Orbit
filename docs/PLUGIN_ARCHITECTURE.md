@@ -187,6 +187,13 @@ JSON Schema subset, optionally asks for tool confirmation when the tool sets
 `requiresApproval`, enforces a timeout clamped to 1–60 seconds (default 15 s),
 observes cancellation, and rejects results over 200,000 characters.
 
+A tool definition may provide a data-only `program` instead of a host `execute`
+function. `createSandboxToolExecutor()` is the single bridge from that wrapper to
+`MobileSandboxManager`; the program body runs in the Android isolated process,
+while ownership, grants, validation, timeout and result checks stay in the
+plugin layer. The diagnostics plugin's `sandbox_echo` tool is the reference.
+There is no `sandbox` manifest entry kind and no second runtime.
+
 MCP servers remain owned by `src/lib/mcp/registry.ts`. Each configured server
 is mirrored as a synthetic `mcp.server.<slug>` plugin with `mcp.connect` and
 `ai.invoke` grants. `mcpPluginAllowsTool()` blocks a server's tools unless that

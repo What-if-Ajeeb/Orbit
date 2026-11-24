@@ -176,6 +176,14 @@ Every run requires an explicit `sandbox.execute` approval through
 native library, bind failure, or panic fails closed. The existing plugin platform
 still never loads downloaded JavaScript or legacy hook code.
 
+A reviewed built-in tool may supply a data-only `program` on its
+`PluginToolDefinition`. The sandbox is then the tool body: the same registry,
+namespacing, schema checks, timeouts and permission assertions still apply, and
+only the execution of the tool body moves into the isolated process. The
+diagnostics plugin's `sandbox_echo` tool is the reference implementation. There
+is no `sandbox` manifest entry kind and no dynamic code loader. MCP tools keep
+their host-side network bridge because the Rust core has no network API.
+
 This is a process boundary plus a bounded interpreter. It is **not** a claim of
 complete isolation from the Android kernel, Binder, or a device compromise, and it
 must not be used to justify running arbitrary third-party native or JavaScript code.
@@ -184,7 +192,7 @@ must not be used to justify running arbitrary third-party native or JavaScript c
 
 - Plugin containment is application-level for declarative plugins, not a sandbox
   around arbitrary native or JavaScript code. The Android mobile sandbox is a
-  separate, bounded, data-only execution path.
+  bounded, data-only execution path for tools that explicitly declare a program.
 - Triple-dot identifiers are namespaces, not verified publisher identities.
 - `publisher.verified` is advisory metadata. Trust levels do not grant
   permissions, but they do gate which entry-point kinds and plugin ids may be

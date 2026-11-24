@@ -1,9 +1,15 @@
 import { toolFail, type AgentTool } from '@/lib/ai/tool-registry';
+import { getMobileSandboxManager } from '@/lib/sandbox/manager';
+import type {
+  SandboxExecutionResult,
+  SandboxProgramManifest,
+} from '@/lib/sandbox/types';
 
 import { CancelledError, errorMessage, TimeoutError, withTimeout } from './async';
 import { validateJsonSchema } from './json-schema';
 import type {
   PluginPermission,
+  PluginSdkToolContext,
   PluginSdkToolResult,
   PluginToolDefinition,
   PluginTrustLevel,
@@ -19,6 +25,49 @@ const LOCAL_TOOL_NAME = /^[A-Za-z][A-Za-z0-9_-]{0,40}$/;
 const MAX_EXPOSED_NAME = 64;
 const DEFAULT_TOOL_TIMEOUT = 15_000;
 const MAX_TOOL_TIMEOUT = 60_000;
+
+/** Runs a data-only plugin program in the existing isolated sandbox. */
+export type SandboxToolExecutor = (
+  manifest: SandboxProgramManifest,
+  input: Record<string, unknown>,
+  context: PluginSdkToolContext
+) => Promise<PluginSdkToolResult>;
+
+function sandboxResultToToolResult(result: SandboxExecutionResult): PluginSdkToolResult {
+  if (!result.ok) {
+    return {
+      content: toolFail(
+        `Sandbox rejected the tool result: ${result.errors.join(' ') || 'unknown error'}`
+      ),
+      trace: 'Sandbox · rejected',
+    };
+  }
+
+  const outputs = result.outputs ?? {};
+
+  if (typeof outputs.content === 'string') {
+    return {
+      content: outputs.content,
+      trace:
+        typeof outputs.trace === 'string'
+          ? outputs.trace
+          : `Sandbox · ${result.instructionsExecuted} instructions`,
+    };
+  }
+
+  return {
+    content: JSON.stringify(outputs),
+    trace: `Sandbox · ${result.instructionsExecuted} instructions`,
+  };
+}
+
+/** Single host bridge used by every sandbox-backed plugin tool. */
+export function createSandboxToolExecutor(): SandboxToolExecutor {
+  return async (manifest, input) =>
+    sandboxResultToToolResult(
+      await getMobileSandboxManager().execute(manifest, input)
+    );
+}
 
 export function isValidPluginToolName(name: string): boolean {
   return LOCAL_TOOL_NAME.test(name);
@@ -65,6 +114,8 @@ export type BuildPluginToolInput = {
   isActive: () => boolean;
   requiresApproval: (toolName: string) => Promise<boolean>;
   log: (message: string, detail?: unknown) => void;
+  /** Present when the host can run data-only tool programs in the sandbox. */
+  sandbox?: SandboxToolExecutor;
 };
 
 function formatValidationErrors(errors: string[]): string {
@@ -157,11 +208,27 @@ export function buildPluginAgentTool(input: BuildPluginToolInput): AgentTool {
           });
         }
 
+        const toolContext: PluginSdkToolContext = {
+          signal: controller.signal,
+          log: input.log,
+        };
+        const program = input.definition.program;
+        const run = program
+          ? () => {
+              if (!input.sandbox) {
+                throw new Error('Sandbox execution is unavailable for this plugin tool.');
+              }
+              return input.sandbox(program, args, toolContext);
+            }
+          : () => {
+              if (!input.definition.execute) {
+                throw new Error('Plugin tool has no implementation.');
+              }
+              return input.definition.execute(args, toolContext);
+            };
+
         const result = await withTimeout(
-          input.definition.execute(args, {
-            signal: controller.signal,
-            log: input.log,
-          }),
+          run(),
           timeoutMs,
           traceLabel,
           controller.signal

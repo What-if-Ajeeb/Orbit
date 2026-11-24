@@ -490,7 +490,14 @@ export type PluginToolDefinition = {
   /** Ask the user before every call, on top of the enable-time grant. */
   requiresApproval?: boolean;
   timeoutMs?: number;
-  execute: (
+  /**
+   * Data-only program interpreted by the isolated Android sandbox. When set,
+   * the tool body runs inside the sandbox instead of in the React Native host.
+   * It is never JavaScript or downloaded code.
+   */
+  program?: import('@/lib/sandbox/types').SandboxProgramManifest;
+  /** Host implementation. Omitted only for sandbox-backed tools. */
+  execute?: (
     args: Record<string, unknown>,
     context: PluginSdkToolContext
   ) => Promise<PluginSdkToolResult>;
