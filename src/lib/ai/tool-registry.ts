@@ -18,7 +18,7 @@ export type AgentToolContext = {
 };
 
 export type AgentToolProvenance = {
-  source: 'builtin' | 'plugin' | 'mcp';
+  source: 'builtin' | 'plugin' | 'mcp' | 'connection';
   pluginId?: string;
   trustLevel?: string;
   permissions?: string[];
@@ -37,6 +37,11 @@ export type AgentTool = {
     context: AgentToolContext,
     args: Record<string, unknown>
   ) => Promise<ToolExecution>;
+};
+
+export type AgentToolDescriptor = {
+  definition: LlmToolDefinition;
+  meta?: AgentToolProvenance;
 };
 
 type RegisterOptions = {
@@ -91,6 +96,13 @@ export class AgentToolRegistry {
 
   definitions(): LlmToolDefinition[] {
     return Array.from(this.tools.values(), (tool) => tool.definition);
+  }
+
+  descriptors(): AgentToolDescriptor[] {
+    return Array.from(this.tools.values(), (tool) => ({
+      definition: tool.definition,
+      meta: tool.meta,
+    }));
   }
 
   async execute(

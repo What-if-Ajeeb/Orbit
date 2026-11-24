@@ -7,7 +7,7 @@ export const DATABASE_NAME = 'orbit.db';
  * tasks and the agent conversation) lives in SQLite on the device.
  */
 export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
-  const DATABASE_VERSION = 12;
+  const DATABASE_VERSION = 13;
 
   const result = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
   let currentDbVersion = result?.user_version ?? 0;
@@ -683,6 +683,49 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
     `);
 
     currentDbVersion = 12;
+  }
+
+  // Agent chat v13: conversations are owned by an agent, and per-agent
+  // instructions/tool access live in the same encrypted-on-device SQLite DB.
+  if (currentDbVersion === 12) {
+    const conversationColumns = await db.getAllAsync<{ name: string }>(
+      'PRAGMA table_info(conversations)'
+    );
+    const hasAgentId = conversationColumns.some((column) => column.name === 'agent_id');
+
+    // One transaction keeps the column, backfill, and supporting tables in
+    // lockstep. A crash mid-migration must not leave agent_id NULL forever.
+    await db.withTransactionAsync(async () => {
+      if (!hasAgentId) {
+        await db.execAsync(`
+          ALTER TABLE conversations ADD COLUMN agent_id TEXT;
+          UPDATE conversations SET agent_id = 'master' WHERE agent_id IS NULL;
+        `);
+      }
+
+      await db.execAsync(`
+        CREATE TABLE IF NOT EXISTS agent_configs (
+          user_id INTEGER NOT NULL,
+          agent_id TEXT NOT NULL,
+          instructions TEXT NOT NULL DEFAULT '',
+          memory TEXT NOT NULL DEFAULT '',
+          tool_access_mode TEXT NOT NULL DEFAULT 'selected',
+          allowed_tools TEXT NOT NULL DEFAULT '[]',
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL,
+          PRIMARY KEY (user_id, agent_id),
+          FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_agent_configs_user
+          ON agent_configs (user_id);
+
+        CREATE INDEX IF NOT EXISTS idx_conversations_user_agent
+          ON conversations (user_id, agent_id, updated_at DESC);
+      `);
+    });
+
+    currentDbVersion = 13;
   }
 
   if (currentDbVersion !== DATABASE_VERSION) {

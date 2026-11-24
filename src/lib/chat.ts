@@ -1,13 +1,22 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-import { createSqliteChatStore, type ChatRole, type ChatStore } from './chat-store';
+import {
+  createSqliteChatStore,
+  type ChatMessageMeta,
+  type ChatRole,
+  type ChatStore,
+} from './chat-store';
 import type { ArtifactRef } from './artifacts/types';
 
 export type {
+  ChatAttachment,
   ChatMessage,
+  ChatMessageMeta,
   ChatRole,
   ChatStore,
   Conversation,
+  ToolExecutionEvent,
+  ToolExecutionStatus,
 } from './chat-store';
 export type { ArtifactRef } from './artifacts/types';
 export { createSqliteChatStore } from './chat-store';
@@ -117,8 +126,13 @@ export function getChatStore(db: SQLiteDatabase): ChatStore {
 
 // Function wrappers keep older call sites on the same seam. New code can use
 // getChatStore(db) directly.
-export function listConversations(db: SQLiteDatabase, userId: number, limit = 50) {
-  return getChatStore(db).listConversations(userId, limit);
+export function listConversations(
+  db: SQLiteDatabase,
+  userId: number,
+  limit = 50,
+  agentId?: string | null
+) {
+  return getChatStore(db).listConversations(userId, limit, agentId);
 }
 
 export function getConversation(
@@ -132,9 +146,10 @@ export function getConversation(
 export function createConversation(
   db: SQLiteDatabase,
   userId: number,
-  title = 'New chat'
+  title = 'New chat',
+  agentId?: string | null
 ) {
-  return getChatStore(db).createConversation(userId, title);
+  return getChatStore(db).createConversation(userId, title, agentId);
 }
 
 export function listMessages(
@@ -153,9 +168,18 @@ export function addMessage(
   role: ChatRole,
   content: string,
   traces: string[] = [],
-  artifacts: ArtifactRef[] = []
+  artifacts: ArtifactRef[] = [],
+  meta: ChatMessageMeta = {}
 ) {
-  return getChatStore(db).addMessage(userId, conversationId, role, content, traces, artifacts);
+  return getChatStore(db).addMessage(
+    userId,
+    conversationId,
+    role,
+    content,
+    traces,
+    artifacts,
+    meta
+  );
 }
 
 export function deleteConversation(

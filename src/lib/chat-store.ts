@@ -5,6 +5,40 @@ import { isArtifactType, type ArtifactRef, type ArtifactType } from './artifacts
 
 export type ChatRole = 'user' | 'assistant';
 
+export type ChatAttachment = {
+  id: string;
+  name: string;
+  kind: 'image' | 'document';
+  mimeType: string;
+  uri: string;
+  size: number | null;
+  /** Plain text extracted from small text documents; never contains secrets from SecureStore. */
+  textPreview?: string;
+};
+
+export type ToolExecutionStatus = 'running' | 'success' | 'error' | 'denied';
+
+export type ToolExecutionEvent = {
+  id: string;
+  toolName: string;
+  status: ToolExecutionStatus;
+  startedAt: number;
+  endedAt?: number;
+  durationMs?: number;
+  summary: string;
+  detail?: string;
+  policyDecision?: 'allow' | 'deny' | 'ask';
+};
+
+export type ChatMessageMeta = {
+  attachments?: ChatAttachment[];
+  toolEvents?: ToolExecutionEvent[];
+  agentId?: string | null;
+  /** Legacy persistence fields kept here so meta payloads stay type-safe. */
+  traces?: string[];
+  artifacts?: ArtifactRef[];
+};
+
 export type ChatMessage = {
   id: number;
   role: ChatRole;
@@ -13,13 +47,14 @@ export type ChatMessage = {
   /** Artifacts created or updated by this assistant message. */
   artifacts: ArtifactRef[];
   createdAt: number;
-};
+} & ChatMessageMeta;
 
 export type Conversation = {
   id: number;
   userId: number;
   title: string;
   messageCount: number;
+  agentId: string | null;
   createdAt: number;
   updatedAt: number;
 };
@@ -30,9 +65,13 @@ export type Conversation = {
  * or the agent.
  */
 export type ChatStore = {
-  listConversations(userId: number, limit?: number): Promise<Conversation[]>;
+  listConversations(
+    userId: number,
+    limit?: number,
+    agentId?: string | null
+  ): Promise<Conversation[]>;
   getConversation(userId: number, conversationId: number): Promise<Conversation | null>;
-  createConversation(userId: number, title?: string): Promise<Conversation>;
+  createConversation(userId: number, title?: string, agentId?: string | null): Promise<Conversation>;
   listMessages(
     userId: number,
     conversationId: number,
@@ -44,7 +83,8 @@ export type ChatStore = {
     role: ChatRole,
     content: string,
     traces?: string[],
-    artifacts?: ArtifactRef[]
+    artifacts?: ArtifactRef[],
+    meta?: ChatMessageMeta
   ): Promise<ChatMessage>;
   deleteConversation(userId: number, conversationId: number): Promise<void>;
   clearAllChat(userId: number): Promise<void>;
@@ -63,12 +103,13 @@ type ConversationRow = {
   user_id: number;
   title: string;
   message_count: number;
+  agent_id: string | null;
   created_at: number;
   updated_at: number;
 };
 
 const CONVERSATION_SELECT = `
-  SELECT c.id, c.user_id, c.title, c.created_at, c.updated_at,
+  SELECT c.id, c.user_id, c.title, c.agent_id, c.created_at, c.updated_at,
     (SELECT COUNT(*) FROM messages m WHERE m.conversation_id = c.id) AS message_count
   FROM conversations c
 `;
@@ -135,13 +176,121 @@ function parseArtifacts(meta: string | null): ArtifactRef[] {
   }
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function parseMeta(meta: string | null): Record<string, unknown> {
+  if (!meta) {
+    return {};
+  }
+
+  try {
+    const value: unknown = JSON.parse(meta);
+    return isRecord(value) ? value : {};
+  } catch {
+    return {};
+  }
+}
+
+function parseAttachments(meta: string | null): ChatAttachment[] {
+  const value = parseMeta(meta).attachments;
+
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const attachments: ChatAttachment[] = [];
+
+  for (const item of value) {
+    if (!isRecord(item)) {
+      continue;
+    }
+
+    const { id, name, kind, mimeType, uri, size, textPreview } = item;
+
+    if (
+      typeof id !== 'string' ||
+      typeof name !== 'string' ||
+      (kind !== 'image' && kind !== 'document') ||
+      typeof mimeType !== 'string' ||
+      typeof uri !== 'string'
+    ) {
+      continue;
+    }
+
+    attachments.push({
+      id,
+      name,
+      kind,
+      mimeType,
+      uri,
+      size: typeof size === 'number' && Number.isFinite(size) ? size : null,
+      ...(typeof textPreview === 'string' ? { textPreview } : {}),
+    });
+  }
+
+  return attachments;
+}
+
+function parseToolEvents(meta: string | null): ToolExecutionEvent[] {
+  const value = parseMeta(meta).toolEvents;
+
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const events: ToolExecutionEvent[] = [];
+
+  for (const item of value) {
+    if (!isRecord(item)) {
+      continue;
+    }
+
+    const { id, toolName, status, startedAt, endedAt, durationMs, summary, detail, policyDecision } =
+      item;
+
+    if (
+      typeof id !== 'string' ||
+      typeof toolName !== 'string' ||
+      (status !== 'running' && status !== 'success' && status !== 'error' && status !== 'denied') ||
+      typeof startedAt !== 'number' ||
+      typeof summary !== 'string'
+    ) {
+      continue;
+    }
+
+    events.push({
+      id,
+      toolName,
+      status,
+      startedAt,
+      summary,
+      ...(typeof endedAt === 'number' ? { endedAt } : {}),
+      ...(typeof durationMs === 'number' ? { durationMs } : {}),
+      ...(typeof detail === 'string' ? { detail } : {}),
+      ...(policyDecision === 'allow' || policyDecision === 'deny' || policyDecision === 'ask'
+        ? { policyDecision }
+        : {}),
+    });
+  }
+
+  return events;
+}
+
 function toMessage(row: MessageRow): ChatMessage {
+  const meta = parseMeta(row.meta);
+  const agentId = typeof meta.agentId === 'string' ? meta.agentId : null;
+
   return {
     id: row.id,
     role: row.role === 'assistant' ? 'assistant' : 'user',
     content: row.content,
     traces: parseTraces(row.meta),
     artifacts: parseArtifacts(row.meta),
+    attachments: parseAttachments(row.meta),
+    toolEvents: parseToolEvents(row.meta),
+    agentId,
     createdAt: row.created_at,
   };
 }
@@ -152,6 +301,7 @@ function toConversation(row: ConversationRow): Conversation {
     userId: row.user_id,
     title: row.title,
     messageCount: row.message_count,
+    agentId: row.agent_id,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -176,13 +326,14 @@ export function createSqliteChatStore(db: SQLiteDatabase): ChatStore {
   }
 
   return {
-    async listConversations(userId, limit = 50) {
+    async listConversations(userId, limit = 50, agentId = undefined) {
+      const scoped = agentId === undefined || agentId === null;
       const rows = await db.getAllAsync<ConversationRow>(
         `${CONVERSATION_SELECT}
-         WHERE c.user_id = ?
+         WHERE c.user_id = ? ${scoped ? '' : 'AND c.agent_id = ?'}
          ORDER BY c.updated_at DESC, c.id DESC
          LIMIT ?`,
-        userId,
+        ...(scoped ? [userId] : [userId, agentId]),
         Math.min(Math.max(limit, 1), 100)
       );
 
@@ -191,14 +342,17 @@ export function createSqliteChatStore(db: SQLiteDatabase): ChatStore {
 
     getConversation,
 
-    async createConversation(userId, title = 'New chat') {
+    async createConversation(userId, title = 'New chat', agentId = null) {
       const now = Date.now();
       const clean = cleanTitle(title) || 'New chat';
+      const cleanAgentId = typeof agentId === 'string' && agentId.trim() ? agentId.trim() : null;
 
       const result = await db.runAsync(
-        'INSERT INTO conversations (user_id, title, created_at, updated_at) VALUES (?, ?, ?, ?)',
+        `INSERT INTO conversations (user_id, title, agent_id, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?)`,
         userId,
         clean,
+        cleanAgentId,
         now,
         now
       );
@@ -208,6 +362,7 @@ export function createSqliteChatStore(db: SQLiteDatabase): ChatStore {
         userId,
         title: clean,
         messageCount: 0,
+        agentId: cleanAgentId,
         createdAt: now,
         updatedAt: now,
       };
@@ -232,7 +387,15 @@ export function createSqliteChatStore(db: SQLiteDatabase): ChatStore {
       return rows.map(toMessage);
     },
 
-    async addMessage(userId, conversationId, role, content, traces = [], artifacts = []) {
+    async addMessage(
+      userId,
+      conversationId,
+      role,
+      content,
+      traces = [],
+      artifacts = [],
+      extra: ChatMessageMeta = {}
+    ) {
       const conversation = await getConversation(userId, conversationId);
 
       if (!conversation) {
@@ -240,7 +403,7 @@ export function createSqliteChatStore(db: SQLiteDatabase): ChatStore {
       }
 
       const createdAt = Date.now();
-      const metaPayload: { traces?: string[]; artifacts?: ArtifactRef[] } = {};
+      const metaPayload: ChatMessageMeta = {};
 
       if (traces.length > 0) {
         metaPayload.traces = traces;
@@ -248,6 +411,20 @@ export function createSqliteChatStore(db: SQLiteDatabase): ChatStore {
 
       if (artifacts.length > 0) {
         metaPayload.artifacts = artifacts;
+      }
+
+      if (extra.attachments && extra.attachments.length > 0) {
+        metaPayload.attachments = extra.attachments;
+      }
+
+      if (extra.toolEvents && extra.toolEvents.length > 0) {
+        metaPayload.toolEvents = extra.toolEvents;
+      }
+
+      const agentId = extra.agentId ?? conversation.agentId;
+
+      if (agentId) {
+        metaPayload.agentId = agentId;
       }
 
       const meta = Object.keys(metaPayload).length > 0 ? JSON.stringify(metaPayload) : null;
@@ -295,6 +472,9 @@ export function createSqliteChatStore(db: SQLiteDatabase): ChatStore {
         content,
         traces,
         artifacts,
+        attachments: metaPayload.attachments ?? [],
+        toolEvents: metaPayload.toolEvents ?? [],
+        agentId,
         createdAt,
       };
     },

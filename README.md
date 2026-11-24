@@ -23,6 +23,10 @@ and **expo-notifications**.
 - Glassmorphism UI: frosted panels, ambient glows, and translucent surfaces
 - Light / Dark / System color mode — flat warm-neutral design with a coral accent and serif headings; navigation lives in the left drawer (Recents, New chat)
 - Multi-conversation chat history with per-chat delete and a slide-in history panel
+- Individual AI agents with dedicated chats, instructions/memory, and per-agent tool allowlists
+- Image and text-document attachments, streaming replies, cancellation, retry, and offline/local states
+- Config-driven Google connections (Gmail, Calendar, Drive) using real OAuth and Keystore-backed tokens; unconfigured integrations show a setup state, never a fake “connected” state
+- Tool Marketplace, Connected Accounts, Tool Permissions, and Tool Approvals screens that reuse the existing plugin, MCP, and permission runtimes
 - **Orbit Harness** registry for providers, tools, storage, and MCP servers
 - Harness screen with live plugin status, MCP tool counts, manual sync, and the Cordis plugin tree (bhutu-app, bhutu-tools, bhutu-llm, bhutu-mcp, bhutu-agent)
 - Observability: event-sourced session logs (fork/resume/replay) and granular telemetry (tool durations, token usage, cache hit rates)
@@ -114,6 +118,36 @@ Orbit connects immediately and shows how many tools the server exposes.
 Servers whose names start with `mcp__` appear in the agent's tool list on the next
 message (the list refreshes at most every five minutes, or immediately after a
 manual sync).
+
+## Agent chats, connections, and tool discovery
+
+Open **AI Agents** in the drawer to chat with a specific built-in or dynamic agent.
+Each agent keeps its own conversations in SQLite, with a shared **Conversations**
+screen for search and deletion. **Tools and memory** on an agent screen controls its
+system-prompt instructions, remembered context, and tool allowlist. New agents start
+with a small safe tool list; an explicit `all` mode is available but is never the
+default.
+
+Chat supports image and small text-document attachments. Image bytes are used only
+for the current model request; stored message metadata keeps redacted text previews
+instead of secrets. Streaming is shown live where the provider supports it, and
+**Stop**, **Retry**, and offline/error states use the existing agent loop and
+`AbortController`.
+
+Google account tools are opt-in and config-driven. Set
+`EXPO_PUBLIC_GOOGLE_OAUTH_CLIENT_ID` (optionally
+`EXPO_PUBLIC_GOOGLE_CLIENT_ID` and `EXPO_PUBLIC_GOOGLE_REDIRECT_URI`) for a
+development build. **Connections** then performs a real OAuth code + PKCE flow,
+stores tokens per user in SecureStore, and can refresh, disconnect, and revoke them.
+Both reading and changing connected-account content require explicit approval;
+repeated calls of the same exact tool can reuse that saved grant. Without that
+config, Gmail/Calendar/Drive show a setup state and their agent tools fail closed.
+
+**Marketplace** browses the bundled declarative plugin catalog, MCP tools, and
+connected-account actions. It does not download or execute remote plugin code.
+**Tool permissions** reviews grants, policy rules, and agent allowlists; **Approvals**
+shows pending sensitive requests. Both reuse the same global permission and approval
+surfaces as the rest of Orbit.
 
 ## Agent permissions and the Desktop Companion
 

@@ -85,6 +85,14 @@ export default function AppLayout() {
           >
             <Stack.Screen name="(tabs)" />
             <Stack.Screen name="artifact" />
+            <Stack.Screen name="agents/index" />
+            <Stack.Screen name="agents/[agentId]/index" />
+            <Stack.Screen name="agents/[agentId]/tools" />
+            <Stack.Screen name="conversations" />
+            <Stack.Screen name="connections" />
+            <Stack.Screen name="marketplace" />
+            <Stack.Screen name="tool-permissions" />
+            <Stack.Screen name="approvals" />
             <Stack.Screen name="harness" />
             <Stack.Screen name="permissions" />
             <Stack.Screen name="events" />

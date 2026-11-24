@@ -43,6 +43,23 @@ export type ToolTelemetryPolicy = {
 };
 
 const POLICY_KEY = 'orbit.policy.rules.v1';
+const POLICY_DELETED_KEY = 'orbit.policy.deleted.v1';
+
+const GOOGLE_READ_TOOLS = [
+  'google_gmail_search',
+  'google_gmail_read',
+  'google_calendar_search',
+  'google_drive_search',
+  'google_drive_read',
+];
+
+const GOOGLE_WRITE_TOOLS = [
+  'google_gmail_draft',
+  'google_gmail_send',
+  'google_calendar_create',
+  'google_calendar_update',
+  'google_drive_trash',
+];
 
 type WebStorage = {
   getItem: (key: string) => string | null;
@@ -157,10 +174,148 @@ function defaultRules(): ToolPolicyRule[] {
       enabled: true,
       sandbox: { deniedPaths: ['/etc', '/system', '/var', '/proc', '/sys'] },
     },
+    ...GOOGLE_WRITE_TOOLS.map(
+      (toolName): ToolPolicyRule => ({
+        id: `policy.google.${toolName}`,
+        name: `Connected Google: ${toolName.replace(/^google_/, '').replaceAll('_', ' ')}`,
+        description: 'Changing connected Google data requires explicit approval.',
+        match: 'exact',
+        pattern: toolName,
+        decision: 'ask',
+        enabled: true,
+        sandbox: { allowNetwork: true },
+      })
+    ),
+    ...GOOGLE_READ_TOOLS.map(
+      (toolName): ToolPolicyRule => ({
+        id: `policy.google.${toolName}`,
+        name: `Connected Google: ${toolName.replace(/^google_/, '').replaceAll('_', ' ')}`,
+        description: 'Reading connected Google content requires explicit approval.',
+        match: 'exact',
+        pattern: toolName,
+        decision: 'ask',
+        enabled: true,
+        sandbox: { allowNetwork: true },
+      })
+    ),
   ];
 }
 
-let cachedRules: ToolPolicyRule[] | null = null;
+/**
+ * Stored rules win over defaults so user choices survive upgrades. Explicitly
+ * deleted defaults stay deleted via a separate tombstone list.
+ */
+function withCurrentDefaults(
+  stored: ToolPolicyRule[],
+  deleted: Set<string>
+): ToolPolicyRule[] {
+  const defaults = defaultRules();
+  const storedById = new Map(stored.map((rule) => [rule.id, rule]));
+  const merged = defaults
+    .filter((rule) => !deleted.has(rule.id))
+    .map((rule) => storedById.get(rule.id) ?? rule);
+  const defaultIds = new Set(defaults.map((rule) => rule.id));
+
+  for (const rule of stored) {
+    if (!defaultIds.has(rule.id) && !deleted.has(rule.id)) {
+      merged.push(rule);
+    }
+  }
+
+  return merged;
+}
+
+function parseDeletedIds(raw: string | null): Set<string> {
+  if (!raw) {
+    return new Set<string>();
+  }
+
+  try {
+    return normalizeIdList(JSON.parse(raw));
+  } catch {
+    return new Set<string>();
+  }
+}
+
+let cachedRules: ToolPolicyRule[] = defaultRules();
+let deletedRuleIds = new Set<string>();
+let ruleRevision = 0;
+let writeChain: Promise<void> = Promise.resolve();
+let hydrationPromise: Promise<void> | null = null;
+
+async function hydrateRules(): Promise<void> {
+  if (Platform.OS === 'web') {
+    return;
+  }
+
+  const revision = ++ruleRevision;
+
+  try {
+    const [rawRules, rawDeleted] = await Promise.all([
+      SecureStore.getItemAsync(POLICY_KEY),
+      SecureStore.getItemAsync(POLICY_DELETED_KEY),
+    ]);
+
+    // A write that happened while reading wins; never resurrect stale rules.
+    if (revision !== ruleRevision) {
+      return;
+    }
+
+    deletedRuleIds = parseDeletedIds(rawDeleted);
+    cachedRules = rawRules
+      ? withCurrentDefaults(normalizeList(JSON.parse(rawRules)), deletedRuleIds)
+      : withCurrentDefaults(defaultRules(), deletedRuleIds);
+  } catch {
+    // Ignore corrupt storage; keep defaults.
+  }
+}
+
+function persistRules(rules: ToolPolicyRule[]): void {
+  const normalized = normalizeList(rules);
+  cachedRules = normalized;
+  ruleRevision += 1;
+
+  try {
+    const rawRules = JSON.stringify(normalized);
+    const rawDeleted = JSON.stringify(Array.from(deletedRuleIds));
+
+    if (Platform.OS === 'web') {
+      getWebStorage()?.setItem(POLICY_KEY, rawRules);
+      getWebStorage()?.setItem(POLICY_DELETED_KEY, rawDeleted);
+      return;
+    }
+
+    const write = Promise.all([
+      SecureStore.setItemAsync(POLICY_KEY, rawRules),
+      SecureStore.setItemAsync(POLICY_DELETED_KEY, rawDeleted),
+    ])
+      .then(() => undefined)
+      .catch(() => {
+        // Storage failures must not block policy evaluation.
+      });
+
+    writeChain = writeChain.then(() => write);
+  } catch {
+    // Storage failures must not block policy evaluation.
+  }
+}
+
+/** Reloads persisted rules. Safe to call after sign-in or in tests. */
+export async function reloadPolicyRules(): Promise<void> {
+  await writeChain;
+  hydrationPromise = hydrateRules();
+  return hydrationPromise;
+}
+
+/** Resolves once the initial native SecureStore read has completed. */
+export function waitForPolicyHydration(): Promise<void> {
+  return hydrationPromise ?? Promise.resolve();
+}
+
+/** Resolves once queued native SecureStore writes have completed. */
+export function waitForPolicyWrites(): Promise<void> {
+  return writeChain;
+}
 
 /**
  * Policy engine. Every tool call is evaluated against registered rules; the
@@ -169,61 +324,27 @@ let cachedRules: ToolPolicyRule[] | null = null;
  */
 export class PolicyEngine {
   constructor() {
-    this.restoreDefaults();
-  }
-
-  private loadRules(): ToolPolicyRule[] {
-    if (cachedRules) {
-      return cachedRules.map((rule) => ({ ...rule }));
-    }
-
-    try {
-      const raw =
-        Platform.OS === 'web'
-          ? getWebStorage()?.getItem(POLICY_KEY) ?? null
-          : SecureStore.getItemAsync(POLICY_KEY);
-
-      const value = typeof raw === 'string' ? raw : null;
-
-      if (value) {
-        cachedRules = normalizeList(JSON.parse(value));
-        return cachedRules.map((rule) => ({ ...rule }));
+    if (Platform.OS === 'web') {
+      try {
+        const raw = getWebStorage()?.getItem(POLICY_KEY);
+        const rawDeleted = getWebStorage()?.getItem(POLICY_DELETED_KEY) ?? null;
+        deletedRuleIds = parseDeletedIds(rawDeleted);
+        cachedRules = raw
+          ? withCurrentDefaults(normalizeList(JSON.parse(raw)), deletedRuleIds)
+          : withCurrentDefaults(defaultRules(), deletedRuleIds);
+      } catch {
+        deletedRuleIds = new Set<string>();
+        cachedRules = defaultRules();
       }
-    } catch {
-      // Ignore corrupt storage; fall back to defaults.
+      return;
     }
 
-    return defaultRules().map((rule) => ({ ...rule }));
-  }
-
-  private saveRules(rules: ToolPolicyRule[]): void {
-    const normalized = normalizeList(rules);
-    cachedRules = normalized;
-
-    try {
-      const raw = JSON.stringify(normalized);
-
-      if (Platform.OS === 'web') {
-        getWebStorage()?.setItem(POLICY_KEY, raw);
-      } else {
-        SecureStore.setItemAsync(POLICY_KEY, raw);
-      }
-    } catch {
-      // Storage failures must not block policy evaluation.
-    }
-  }
-
-  private normalizeRules(rules: ToolPolicyRule[]): ToolPolicyRule[] {
-    return normalizeList(rules);
-  }
-
-  restoreDefaults(): void {
-    cachedRules = defaultRules().map((rule) => ({ ...rule }));
-    this.saveRules(cachedRules);
+    cachedRules = defaultRules();
+    hydrationPromise = hydrateRules();
   }
 
   listRules(): ToolPolicyRule[] {
-    return this.loadRules();
+    return cachedRules.map((rule) => ({ ...rule }));
   }
 
   getRule(id: string): ToolPolicyRule | null {
@@ -239,15 +360,14 @@ export class PolicyEngine {
       next.push({ ...rule });
     }
 
-    this.saveRules(next);
+    deletedRuleIds.delete(rule.id);
+    persistRules(next);
   }
 
   updateRule(id: string, patch: Partial<ToolPolicyRule>): void {
-    const next = this.listRules().map((rule) =>
-      rule.id === id ? { ...rule, ...patch } : rule
+    persistRules(
+      this.listRules().map((rule) => (rule.id === id ? { ...rule, ...patch } : rule))
     );
-
-    this.saveRules(next);
   }
 
   setRuleEnabled(id: string, enabled: boolean): void {
@@ -255,7 +375,13 @@ export class PolicyEngine {
   }
 
   deleteRule(id: string): void {
-    this.saveRules(this.listRules().filter((rule) => rule.id !== id));
+    deletedRuleIds.add(id);
+    persistRules(this.listRules().filter((rule) => rule.id !== id));
+  }
+
+  restoreDefaults(): void {
+    deletedRuleIds.clear();
+    persistRules(defaultRules());
   }
 
   /**
@@ -299,6 +425,7 @@ function normalizeList(value: unknown): ToolPolicyRule[] {
     return [];
   }
 
+  const decisions = new Set<PolicyDecision>(['allow', 'deny', 'ask']);
   const seen = new Set<string>();
   const rules: ToolPolicyRule[] = [];
 
@@ -309,19 +436,29 @@ function normalizeList(value: unknown): ToolPolicyRule[] {
 
     const rule = item as Partial<ToolPolicyRule>;
 
-    if (!rule.id || !rule.name || !rule.pattern) {
+    if (
+      typeof rule.id !== 'string' ||
+      !rule.id ||
+      typeof rule.name !== 'string' ||
+      !rule.name ||
+      typeof rule.pattern !== 'string' ||
+      !rule.pattern
+    ) {
       continue;
     }
 
     const normalized: ToolPolicyRule = {
       id: rule.id,
       name: rule.name,
-      description: rule.description ?? '',
-      match: rule.match ?? 'exact',
+      description: typeof rule.description === 'string' ? rule.description : '',
+      match: rule.match === 'prefix' ? 'prefix' : 'exact',
       pattern: rule.pattern,
-      decision: rule.decision ?? 'allow',
-      enabled: rule.enabled ?? true,
-      sandbox: rule.sandbox ?? {},
+      decision: rule.decision && decisions.has(rule.decision) ? rule.decision : 'ask',
+      enabled: typeof rule.enabled === 'boolean' ? rule.enabled : true,
+      sandbox:
+        rule.sandbox && typeof rule.sandbox === 'object' && !Array.isArray(rule.sandbox)
+          ? rule.sandbox
+          : {},
     };
 
     if (!seen.has(normalized.id)) {
@@ -331,6 +468,22 @@ function normalizeList(value: unknown): ToolPolicyRule[] {
   }
 
   return rules;
+}
+
+function normalizeIdList(value: unknown): Set<string> {
+  const ids = new Set<string>();
+
+  if (!Array.isArray(value)) {
+    return ids;
+  }
+
+  for (const item of value) {
+    if (typeof item === 'string' && item.trim()) {
+      ids.add(item.trim());
+    }
+  }
+
+  return ids;
 }
 
 export const policyEngine = new PolicyEngine();

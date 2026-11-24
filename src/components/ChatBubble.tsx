@@ -3,12 +3,13 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useRouter } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { ToolStatusList } from '@/components/ToolStatusList';
 import { useSession } from '@/context/auth';
 import { ArtifactStore } from '@/lib/artifacts/store';
 import { artifactTypeLabel, type ArtifactRef, type ArtifactType } from '@/lib/artifacts/types';
-import type { ChatMessage } from '@/lib/chat';
+import type { ChatAttachment, ChatMessage } from '@/lib/chat';
 import { radius, spacing } from '@/theme';
 
 const TYPE_ICONS: Record<ArtifactType, keyof typeof Ionicons.glyphMap> = {
@@ -99,16 +100,51 @@ type ChatBubbleProps = {
   message: ChatMessage;
 };
 
+function AttachmentCard({ attachment }: { attachment: ChatAttachment }) {
+  const { colors } = useAppTheme();
+  const styles = useStyles(makeStyles);
+
+  return (
+    <View style={styles.attachmentCard}>
+      {attachment.kind === 'image' ? (
+        <Image resizeMode="cover" source={{ uri: attachment.uri }} style={styles.attachmentThumb} />
+      ) : (
+        <View style={styles.attachmentIcon}>
+          <Ionicons name="document-text-outline" size={18} color={colors.accent} />
+        </View>
+      )}
+      <View style={styles.attachmentCopy}>
+        <Text numberOfLines={1} style={styles.attachmentName}>
+          {attachment.name}
+        </Text>
+        <Text style={styles.attachmentMeta}>
+          {attachment.kind === 'image' ? 'Image' : attachment.mimeType}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
 export function ChatBubble({ message }: ChatBubbleProps) {
   const { colors } = useAppTheme();
   const styles = useStyles(makeStyles);
   const isUser = message.role === 'user';
+  const attachments = message.attachments ?? [];
+  const toolEvents = message.toolEvents ?? [];
 
   return (
     <View style={[styles.wrap, isUser ? styles.wrapUser : styles.wrapAssistant]}>
       <View style={[styles.bubble, isUser ? styles.userBubble : styles.assistantBubble]}>
         <Text style={[styles.text, isUser && styles.userText]}>{message.content}</Text>
       </View>
+
+      {attachments.length > 0 ? (
+        <View style={styles.attachments}>
+          {attachments.map((attachment) => (
+            <AttachmentCard key={attachment.id} attachment={attachment} />
+          ))}
+        </View>
+      ) : null}
 
       {message.artifacts.length > 0 ? (
         <View style={styles.artifacts}>
@@ -128,6 +164,8 @@ export function ChatBubble({ message }: ChatBubbleProps) {
           ))}
         </View>
       ) : null}
+
+      <ToolStatusList events={toolEvents} />
     </View>
   );
 }
@@ -177,10 +215,55 @@ const makeStyles = ({ colors }: AppTheme) =>
   userText: {
     color: colors.text,
   },
+  attachments: {
+    gap: 6,
+    paddingTop: 4,
+    alignSelf: 'stretch',
+  },
   artifacts: {
     gap: 6,
     paddingTop: 4,
     alignSelf: 'stretch',
+  },
+  attachmentCard: {
+    minHeight: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    maxWidth: 320,
+  },
+  attachmentThumb: {
+    width: 34,
+    height: 34,
+    borderRadius: radius.sm,
+    backgroundColor: colors.surfaceAlt,
+  },
+  attachmentIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: radius.sm,
+    backgroundColor: colors.surfaceAlt,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  attachmentCopy: {
+    flex: 1,
+    gap: 2,
+  },
+  attachmentName: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  attachmentMeta: {
+    color: colors.textMuted,
+    fontSize: 11,
   },
   card: {
     minHeight: 48,
