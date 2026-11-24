@@ -120,7 +120,7 @@ Reference docs: `docs/PLUGIN_ARCHITECTURE.md`, `docs/PLUGIN_MANIFEST.md`,
 Verification commands for plugin-related changes:
 
 ```bash
-cargo test --manifest-path sandbox-core/Cargo.toml
+cargo test --locked --manifest-path sandbox-core/Cargo.toml
 npx tsc --noEmit
 npx expo lint
 npm test
@@ -136,7 +136,7 @@ Always run these before committing:
 
 ```bash
 # Rust sandbox policy core
-cargo test --manifest-path sandbox-core/Cargo.toml
+cargo test --locked --manifest-path sandbox-core/Cargo.toml
 
 # TypeScript typecheck
 npx tsc --noEmit
@@ -160,7 +160,7 @@ Note: The default Hermes bytecode export may fail in this container (`hermesc` S
 
 | Command | Success signal |
 |---|---|
-| `cargo test --manifest-path sandbox-core/Cargo.toml` | Rust policy-core tests pass |
+| `cargo test --locked --manifest-path sandbox-core/Cargo.toml` | Rust policy-core tests pass |
 | `tsc --noEmit` | No output, exit code 0 |
 | `expo lint` | No output (or only pre-existing warnings), exit code 0 |
 | `npm test` | Vitest suite passes |

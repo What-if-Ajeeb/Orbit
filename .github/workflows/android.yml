@@ -213,13 +213,24 @@ jobs:
             echo "No release signing secrets — build will use the debug keystore"
           fi
 
-      - name: Rust sandbox core tests
-        run: cargo test --manifest-path sandbox-core/Cargo.toml
-
-      - name: Build Rust sandbox library for Android
+      - name: Verify Rust sandbox crate
         run: |
           set -euo pipefail
-          JNI_DIR="modules/orbit-mobile-sandbox/android/src/main/jniLibs"
+          test -f sandbox-core/Cargo.toml
+          test -f sandbox-core/Cargo.lock
+          cargo metadata --manifest-path sandbox-core/Cargo.toml --no-deps --format-version 1 >/dev/null
+
+      - name: Rust sandbox core tests
+        run: cargo test --locked --manifest-path sandbox-core/Cargo.toml
+
+      # cargo-ndk loads crate metadata from the current directory, so this step
+      # must run from sandbox-core. The output path is absolute because Metro
+      # and Gradle consume it from the repository root.
+      - name: Build Rust sandbox library for Android
+        working-directory: sandbox-core
+        run: |
+          set -euo pipefail
+          JNI_DIR="${GITHUB_WORKSPACE}/modules/orbit-mobile-sandbox/android/src/main/jniLibs"
           mkdir -p "$JNI_DIR"
           cargo ndk \
             -t armeabi-v7a \
@@ -227,7 +238,13 @@ jobs:
             -t x86 \
             -t x86_64 \
             -o "$JNI_DIR" \
-            build --manifest-path sandbox-core/Cargo.toml --release
+            build --release --locked
+          for abi in armeabi-v7a arm64-v8a x86 x86_64; do
+            if [ ! -s "$JNI_DIR/$abi/liborbit_sandbox_core.so" ]; then
+              echo "::error::Missing $abi liborbit_sandbox_core.so"
+              exit 1
+            fi
+          done
           find "$JNI_DIR" -name 'liborbit_sandbox_core.so' -print
 
       - name: Expo prebuild (Android)

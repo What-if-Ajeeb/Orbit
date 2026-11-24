@@ -104,15 +104,22 @@ rustup target add aarch64-linux-android armv7-linux-androideabi \
   i686-linux-android x86_64-linux-android
 cargo install cargo-ndk --version 4.1.2 --locked
 
-JNI_DIR="modules/orbit-mobile-sandbox/android/src/main/jniLibs"
+REPO_DIR="$(pwd)"
+JNI_DIR="${REPO_DIR}/modules/orbit-mobile-sandbox/android/src/main/jniLibs"
 mkdir -p "$JNI_DIR"
+cd sandbox-core
 cargo ndk \
   -t armeabi-v7a -t arm64-v8a -t x86 -t x86_64 \
   -o "$JNI_DIR" \
-  build --manifest-path sandbox-core/Cargo.toml --release
+  build --release --locked
+cd "$REPO_DIR"
 
 npx expo run:android
 ```
+
+`cargo ndk` reads crate metadata from the current directory, so it must run from
+`sandbox-core`. Passing `--manifest-path` after `build` is a Cargo argument and
+does not help `cargo-ndk` find the crate.
 
 Generated `.so` files and Rust build output are gitignored. CI
 (`.github/workflows/android.yml`) performs the same steps, verifies the library is
@@ -122,8 +129,8 @@ cannot add or change the native core; a new native build is required.
 ## Verification
 
 ```bash
-cargo test --manifest-path sandbox-core/Cargo.toml
-cargo check --manifest-path sandbox-core/Cargo.toml --target aarch64-linux-android --lib
+cargo test --locked --manifest-path sandbox-core/Cargo.toml
+cargo check --locked --manifest-path sandbox-core/Cargo.toml --target aarch64-linux-android --lib
 npx tsc --noEmit
 npx expo lint
 npm test
