@@ -174,6 +174,14 @@ describe('trusted demand registry search', () => {
     expect(plan.plan.sensitivePermissions).toEqual(['ai.invoke']);
     expect(plan.plan.steps.join(' ')).toContain('Install GitHub Tools 1.2.0');
     expect(plan.plan.steps.join(' ')).toContain('Grant only the listed access');
+    expect(plan.plan.inspection).toMatchObject({
+      pluginId: GITHUB_ID,
+      pluginName: 'GitHub Tools',
+      version: '1.2.0',
+      publisherName: 'ORBIT',
+      publisherVerified: true,
+      compatible: true,
+    });
   });
 });
 
@@ -224,7 +232,8 @@ describe('SmartPluginInstaller', () => {
         pluginId: GITHUB_ID,
         capability: 'agent_github',
         pluginVersion: '1.2.0',
-      })
+      }),
+      expect.anything()
     );
     expect(harness.registry.getRecord(GITHUB_ID)?.status).toBe('running');
 
@@ -265,7 +274,8 @@ describe('SmartPluginInstaller', () => {
     expect(result.version).toBe('1.2.0');
     expect(harness.registry.getRecord(GITHUB_ID)?.manifest.version).toBe('1.2.0');
     expect(approvals.requestInstall).toHaveBeenCalledWith(
-      expect.objectContaining({ requiresUpdate: true })
+      expect.objectContaining({ requiresUpdate: true }),
+      expect.anything()
     );
 
     const state = await instance.getState();
@@ -288,6 +298,94 @@ describe('SmartPluginInstaller', () => {
     const state = await instance.getState();
     expect(state.usage[0].status).toBe('denied');
     expect(await storage.get(DEMAND_STATE_PLUGIN_ID, DEMAND_STATE_KEY)).not.toBeNull();
+  });
+
+  it('exposes the inspection and approval request id in the result and history', async () => {
+    registerGithub(harness);
+    const approvals = {
+      requestInstall: vi.fn(async (_input: unknown, options: { onRequest?: (id: number) => void }) => {
+        options.onRequest?.(42);
+        return true;
+      }),
+    } as unknown as Pick<PluginApprovalService, 'requestInstall'> & {
+      requestInstall: ReturnType<typeof vi.fn>;
+    };
+    const instance = new SmartPluginInstaller({
+      registry: harness.registry,
+      permissions: harness.permissions,
+      approvals,
+      storage,
+      listServers: async () => [],
+      now: () => now,
+    });
+
+    const result = await instance.resolve({
+      task: 'Review the GitHub pull request',
+      mode: 'agent',
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.requestId).toBe(42);
+    expect(result.inspection).toMatchObject({ pluginId: GITHUB_ID, version: '1.2.0' });
+    expect(approvals.requestInstall).toHaveBeenCalledWith(
+      expect.objectContaining({ inspection: expect.objectContaining({ pluginId: GITHUB_ID }) }),
+      expect.objectContaining({ signal: undefined })
+    );
+
+    const state = await instance.getState();
+    expect(state.usage[0]).toMatchObject({ requestId: 42, status: 'installed' });
+    expect(state.usage[0].inspection).toMatchObject({ publisherVerified: true });
+  });
+
+  it('treats a cancelled approval as a no-op', async () => {
+    registerGithub(harness);
+    const controller = new AbortController();
+    controller.abort();
+    const approvals = makeApprovals(false);
+    const instance = new SmartPluginInstaller({
+      registry: harness.registry,
+      permissions: harness.permissions,
+      approvals,
+      storage,
+      listServers: async () => [],
+      now: () => now,
+    });
+
+    const result = await instance.resolve({
+      task: 'Review the GitHub pull request',
+      mode: 'agent',
+      signal: controller.signal,
+    });
+
+    expect(result).toMatchObject({ ok: false, code: 'cancelled' });
+    expect(harness.registry.getRecord(GITHUB_ID)?.status).toBe('available');
+    expect(approvals.requestInstall).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ signal: controller.signal })
+    );
+  });
+
+  it('disables a plugin installed by a failed request without uninstalling it', async () => {
+    registerGithub(harness);
+    const { instance } = installer();
+    const enable = vi
+      .spyOn(harness.registry, 'enable')
+      .mockRejectedValueOnce(new Error('activation failed'));
+
+    const result = await instance.resolve({
+      task: 'Review the GitHub pull request',
+      mode: 'agent',
+    });
+
+    expect(result).toMatchObject({ ok: false, code: 'install-failed' });
+    expect(harness.registry.getRecord(GITHUB_ID)?.enabled).toBe(false);
+    expect(harness.registry.getRecord(GITHUB_ID)?.status).not.toBe('available');
+
+    const state = await instance.getState();
+    expect(state.usage[0]).toMatchObject({ status: 'failed' });
+    expect(state.autoInstalled[GITHUB_ID]).toBeUndefined();
+    enable.mockRestore();
   });
 
   it('reports no capability for an ordinary conversation', async () => {

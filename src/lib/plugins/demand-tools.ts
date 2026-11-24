@@ -150,7 +150,7 @@ const requestTool: AgentTool = {
       required: ['task'],
     },
   },
-  execute: async (_context, args) => {
+  execute: async (context, args) => {
     const installer = getSmartPluginInstaller(getPluginPlatform());
 
     if (!installer) {
@@ -165,6 +165,7 @@ const requestTool: AgentTool = {
       capability: capabilityOf(args.capability) ?? undefined,
       pluginId,
       mode: modeOf(args.mode),
+      signal: context.signal,
     });
 
     const toolNames = result.ok
@@ -184,6 +185,8 @@ const requestTool: AgentTool = {
     return {
       content: toolOk({
         ...result,
+        requestId: result.requestId ?? null,
+        inspection: result.inspection ?? null,
         capabilityLabel: DEMAND_CAPABILITY_LABEL[result.capability],
         toolNames,
         note:

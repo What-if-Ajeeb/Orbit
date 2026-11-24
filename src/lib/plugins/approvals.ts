@@ -19,6 +19,40 @@ export type PluginToolApprovalInput = {
   reason: string;
 };
 
+/** Host-neutral, read-only facts shown before an install is authorized. */
+export type PluginInstallInspection = {
+  pluginId: string;
+  pluginName: string;
+  version: string;
+  publisherId: string;
+  publisherName: string;
+  publisherVerified: boolean;
+  trustLevel: PluginTrustLevel;
+  registry: string;
+  compatible: boolean;
+  minimumOrbitVersion: string;
+  platformSupport: string[];
+  entryPointKind: string;
+  dependencies: {
+    pluginId: string;
+    name: string;
+    version: string;
+    installed: boolean;
+    running: boolean;
+  }[];
+  sensitivePermissions: PluginPermission[];
+  requiresSandbox: boolean;
+  warnings: string[];
+};
+
+export type ApprovalRequestOptions = {
+  timeoutMs?: number;
+  /** Aborting the request denies it, including while it is still queued. */
+  signal?: AbortSignal;
+  /** Receives the native approval request id as soon as it is enqueued. */
+  onRequest?: (requestId: number) => void;
+};
+
 export type PluginInstallApprovalInput = {
   kind: 'install';
   pluginId: string;
@@ -35,10 +69,13 @@ export type PluginInstallApprovalInput = {
     name: string;
     version: string;
     permissions: PluginPermission[];
+    installed?: boolean;
+    running?: boolean;
   }[];
   requiresSandbox: boolean;
   requiresUpdate: boolean;
   steps: string[];
+  inspection?: PluginInstallInspection;
 };
 
 export type PluginApprovalInput =
@@ -54,7 +91,18 @@ export type PluginApprovalRequest = PluginApprovalInput & {
 
 type Resolver = (approved: boolean) => void;
 
+type QueuedRequest = PluginApprovalRequest & {
+  resolve: Resolver;
+  cleanup?: () => void;
+};
+
 const DEFAULT_TIMEOUT_MS = 120_000;
+
+function normalizeOptions(
+  options: number | ApprovalRequestOptions = {}
+): ApprovalRequestOptions {
+  return typeof options === 'number' ? { timeoutMs: options } : options;
+}
 
 /**
  * Host-neutral approval queue. The PluginApprovalHost component renders the
@@ -63,8 +111,8 @@ const DEFAULT_TIMEOUT_MS = 120_000;
  */
 export class PluginApprovalService {
   private nextId = 1;
-  private pending: (PluginApprovalRequest & { resolve: Resolver }) | null = null;
-  private queue: (PluginApprovalRequest & { resolve: Resolver })[] = [];
+  private pending: QueuedRequest | null = null;
+  private queue: QueuedRequest[] = [];
   private listeners = new Set<() => void>();
   private timers = new Map<number, ReturnType<typeof setTimeout>>();
 
@@ -87,15 +135,19 @@ export class PluginApprovalService {
 
   private enqueue(
     input: PluginApprovalInput,
-    timeoutMs = DEFAULT_TIMEOUT_MS
+    options: number | ApprovalRequestOptions = {}
   ): Promise<boolean> {
-    if (this.pending || this.queue.length > 0) {
-      // Only one modal is shown at a time; later requests queue behind it.
-    }
+    const normalized = normalizeOptions(options);
+    const timeoutMs = normalized.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
     return new Promise<boolean>((resolve) => {
+      if (normalized.signal?.aborted) {
+        resolve(false);
+        return;
+      }
+
       const now = Date.now();
-      const request: PluginApprovalRequest & { resolve: Resolver } = {
+      const request: QueuedRequest = {
         ...input,
         id: this.nextId,
         createdAt: now,
@@ -110,6 +162,17 @@ export class PluginApprovalService {
       }, timeoutMs);
       this.timers.set(request.id, timer);
 
+      if (normalized.signal) {
+        const onAbort = () => {
+          this.expire(request.id, false);
+        };
+        normalized.signal.addEventListener('abort', onAbort, { once: true });
+        request.cleanup = () => {
+          normalized.signal?.removeEventListener('abort', onAbort);
+        };
+      }
+
+      normalized.onRequest?.(request.id);
       this.promote();
       this.notify();
     });
@@ -117,23 +180,23 @@ export class PluginApprovalService {
 
   requestPermissions(
     input: Omit<PluginPermissionApprovalInput, 'kind'>,
-    timeoutMs?: number
+    options?: number | ApprovalRequestOptions
   ): Promise<boolean> {
-    return this.enqueue({ ...input, kind: 'permissions' }, timeoutMs);
+    return this.enqueue({ ...input, kind: 'permissions' }, options);
   }
 
   requestTool(
     input: Omit<PluginToolApprovalInput, 'kind'>,
-    timeoutMs?: number
+    options?: number | ApprovalRequestOptions
   ): Promise<boolean> {
-    return this.enqueue({ ...input, kind: 'tool' }, timeoutMs);
+    return this.enqueue({ ...input, kind: 'tool' }, options);
   }
 
   requestInstall(
     input: Omit<PluginInstallApprovalInput, 'kind'>,
-    timeoutMs?: number
+    options?: number | ApprovalRequestOptions
   ): Promise<boolean> {
-    return this.enqueue({ ...input, kind: 'install' }, timeoutMs);
+    return this.enqueue({ ...input, kind: 'install' }, options);
   }
 
   private promote(): void {
@@ -149,13 +212,29 @@ export class PluginApprovalService {
   }
 
   private settle(id: number, approved: boolean): void {
-    const request = this.pending;
+    const pending = this.pending;
+    const isPending = pending?.id === id;
+    const queuedIndex = isPending ? -1 : this.queue.findIndex((item) => item.id === id);
 
-    if (!request || request.id !== id) {
+    if (!isPending && queuedIndex < 0) {
       return;
     }
 
-    this.pending = null;
+    let request: QueuedRequest;
+
+    if (isPending && pending) {
+      request = pending;
+      this.pending = null;
+    } else {
+      const [queued] = this.queue.splice(queuedIndex, 1);
+
+      if (!queued) {
+        return;
+      }
+
+      request = queued;
+    }
+
     const timer = this.timers.get(id);
 
     if (timer) {
@@ -163,6 +242,7 @@ export class PluginApprovalService {
       this.timers.delete(id);
     }
 
+    request.cleanup?.();
     request.resolve(approved);
     this.promote();
     this.notify();
@@ -185,8 +265,9 @@ export class PluginApprovalService {
       return null;
     }
 
-    const { resolve: _resolve, ...request } = this.pending;
+    const { resolve: _resolve, cleanup: _cleanup, ...request } = this.pending;
     void _resolve;
+    void _cleanup;
     return request;
   }
 

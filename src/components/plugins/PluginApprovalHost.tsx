@@ -156,6 +156,25 @@ function PluginApprovalDialog({
                 <Text style={styles.sectionLabel}>WHY THIS IS NEEDED</Text>
                 <Text style={styles.detailText}>{install.capabilityLabel}</Text>
                 <Text style={styles.detailText}>Version {install.pluginVersion}</Text>
+                <Text style={styles.sectionLabel}>INSPECTED PACKAGE</Text>
+                <Text style={styles.detailText}>
+                  {install.inspection?.pluginId ?? install.pluginId} · {install.inspection?.registry ?? 'bundled-catalog'} · request #{request.id}
+                </Text>
+                <Text style={styles.detailText}>
+                  Publisher: {install.inspection?.publisherName ?? 'Unknown'} (
+                  {install.inspection?.publisherVerified ? 'verified' : 'not verified'})
+                </Text>
+                <Text style={styles.detailText}>
+                  Compatibility: {install.inspection?.compatible === false ? 'FAILED' : 'checked'}
+                  {install.inspection?.minimumOrbitVersion
+                    ? ` · ORBIT ${install.inspection.minimumOrbitVersion}+`
+                    : ''}
+                </Text>
+                {install.inspection?.warnings.map((warning, index) => (
+                  <Text key={`${warning}-${index}`} style={styles.detailText}>
+                    · {warning}
+                  </Text>
+                ))}
                 <Text style={styles.sectionLabel}>WHAT WILL HAPPEN</Text>
                 {install.steps.map((step, index) => (
                   <Text key={`${step}-${index}`} style={styles.detailText}>
@@ -167,7 +186,9 @@ function PluginApprovalDialog({
                     <Text style={styles.sectionLabel}>REQUIRED DEPENDENCIES</Text>
                     {install.dependencies.map((dependency) => (
                       <Text key={dependency.pluginId} style={styles.detailText}>
-                        · {dependency.name} {dependency.version}
+                        · {dependency.name} {dependency.version} (
+                        {dependency.installed ? 'installed' : 'will install'},{' '}
+                        {dependency.running ? 'active' : 'will activate'})
                       </Text>
                     ))}
                   </>

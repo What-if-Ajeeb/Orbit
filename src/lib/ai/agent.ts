@@ -442,6 +442,7 @@ export async function runAgent(input: AgentInput): Promise<AgentResult> {
         const policy = policyEngine.evaluate(call.name, toolArgs);
         running.policyDecision = policy.decision;
         onToolEvent?.(running);
+        const registeredTool = agentToolRegistry.get(call.name);
         const secured = await secureExecuteTool({
           db,
           userId,
@@ -456,8 +457,10 @@ export async function runAgent(input: AgentInput): Promise<AgentResult> {
             ruleId: policy.ruleId,
             reason: policy.reason,
           },
-          execute: () =>
-            executeTool(db, userId, call.name, call.arguments, conversationId, signal),
+          timeoutMs: registeredTool?.timeoutMs,
+          signal,
+          execute: (toolSignal) =>
+            executeTool(db, userId, call.name, call.arguments, conversationId, toolSignal),
         });
         const content = secured.content;
         const trace = secured.trace;
@@ -517,7 +520,7 @@ export async function runAgent(input: AgentInput): Promise<AgentResult> {
           null,
           success,
           policy.decision,
-          error
+          secured.errorCode ? `${secured.errorCode}: ${error ?? ''}` : error
         );
         await emit('tool_result', {
           toolName: call.name,

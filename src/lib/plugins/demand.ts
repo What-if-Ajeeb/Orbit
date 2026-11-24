@@ -12,13 +12,17 @@ import type { McpServerConfig } from '@/lib/mcp/settings';
 
 import { buildMcpPluginManifest } from './mcp-bridge';
 import { validateManifest } from './manifest';
-import type { PluginApprovalService } from './approvals';
+import type {
+  PluginApprovalService,
+  PluginInstallInspection,
+} from './approvals';
 import {
   isSensitivePermission,
   PLUGIN_PERMISSION_META,
 } from './permissions';
 import type { PluginRegistry } from './registry';
 import type { PluginKeyValueStorage } from './storage';
+import { PLUGIN_PERMISSIONS, PLUGIN_TRUST_LEVELS } from './types';
 import type {
   PluginCatalogEntry,
   PluginDependency,
@@ -225,6 +229,8 @@ export type DemandPlan = {
   requiresSandbox: boolean;
   updateManifest?: PluginManifest;
   steps: string[];
+  /** Exact facts the user inspects before the install approval. */
+  inspection: PluginInstallInspection;
 };
 
 export type DemandPlanResult =
@@ -238,6 +244,8 @@ export type DemandUsageRecord = {
   mode: DemandMode;
   status: 'reused' | 'installed' | 'updated' | 'enabled' | 'denied' | 'failed';
   createdAt: number;
+  requestId?: number | null;
+  inspection?: PluginInstallInspection | null;
 };
 
 export type AutoInstalledPlugin = {
@@ -265,10 +273,19 @@ export type DemandRequest = {
   pluginId?: string;
   mode?: DemandMode;
   agentId?: string | null;
+  /** Cancels a pending install approval; cancellation never changes plugins. */
+  signal?: AbortSignal;
+};
+
+export type DemandResultMeta = {
+  /** Id of the native approval request, when one was shown. */
+  requestId?: number | null;
+  /** Exact package facts that were inspected before approval. */
+  inspection?: PluginInstallInspection | null;
 };
 
 export type DemandResult =
-  | {
+  | ({
       ok: true;
       action: 'reused' | 'installed' | 'updated' | 'enabled';
       pluginId: string;
@@ -277,18 +294,19 @@ export type DemandResult =
       capability: DemandCapability;
       registry: DemandRegistrySource;
       reason: string;
-    }
-  | {
+    } & DemandResultMeta)
+  | ({
       ok: false;
       code:
         | 'no-capability'
         | 'unavailable'
         | 'denied'
+        | 'cancelled'
         | 'install-failed'
         | 'platform-unavailable';
       error: string;
       candidates: string[];
-    };
+    } & DemandResultMeta);
 
 type RegistryLike = Pick<
   PluginRegistry,
@@ -675,6 +693,78 @@ function emptyDependency(
   };
 }
 
+/**
+ * Read-only package facts for the install dialog and history. They come from
+ * the already validated manifest and registry records; nothing is fetched or
+ * executed while inspecting.
+ */
+function inspectionFor(input: {
+  manifest: PluginManifest;
+  candidate: DemandCandidate;
+  permissions: PluginPermission[];
+  sensitivePermissions: PluginPermission[];
+  dependencies: DemandDependency[];
+  requiresSandbox: boolean;
+}): PluginInstallInspection {
+  const { manifest, candidate, dependencies } = input;
+  const warnings: string[] = [];
+
+  if (!candidate.compatible) {
+    warnings.push('This plugin is not compatible with this ORBIT version or platform.');
+  }
+
+  if (input.permissions.length > 0) {
+    warnings.push(
+      `Access is limited to the ${input.permissions.length} listed permission(s).`
+    );
+  }
+
+  if (input.sensitivePermissions.length > 0) {
+    warnings.push(
+      `Sensitive access: ${input.sensitivePermissions
+        .map((permission) => PLUGIN_PERMISSION_META[permission].label)
+        .join(', ')}.`
+    );
+  }
+
+  if (dependencies.some((dependency) => dependency.requiresUpdate)) {
+    warnings.push('A required dependency will be updated before activation.');
+  }
+
+  if (input.requiresSandbox) {
+    warnings.push('Each sandbox run still needs its own approval.');
+  }
+
+  if (candidate.registry === 'configured-mcp') {
+    warnings.push('This is a server configured on this device; no code is downloaded.');
+  }
+
+  return {
+    pluginId: manifest.pluginId,
+    pluginName: manifest.name,
+    version: manifest.version,
+    publisherId: manifest.publisher.id.slice(0, 120),
+    publisherName: manifest.publisher.name.slice(0, 120),
+    publisherVerified: manifest.publisher.verified,
+    trustLevel: candidate.trustLevel,
+    registry: candidate.registry,
+    compatible: candidate.compatible,
+    minimumOrbitVersion: manifest.minimumOrbitVersion,
+    platformSupport: manifest.platformSupport.slice(),
+    entryPointKind: manifest.entryPoint.kind,
+    dependencies: dependencies.map((dependency) => ({
+      pluginId: dependency.pluginId,
+      name: dependency.name,
+      version: dependency.version,
+      installed: dependency.installed,
+      running: dependency.running,
+    })),
+    sensitivePermissions: input.sensitivePermissions.slice(),
+    requiresSandbox: input.requiresSandbox,
+    warnings: warnings.slice(0, 8),
+  };
+}
+
 export function buildDemandPlan(input: {
   candidate: DemandCandidate;
   capability: DemandCapability;
@@ -803,12 +893,85 @@ export function buildDemandPlan(input: {
       requiresSandbox: permissions.includes('sandbox.execute'),
       ...(requiresUpdate ? { updateManifest: manifest } : {}),
       steps,
+      inspection: inspectionFor({
+        manifest,
+        candidate,
+        permissions,
+        sensitivePermissions,
+        dependencies,
+        requiresSandbox: permissions.includes('sandbox.execute'),
+      }),
     },
   };
 }
 
 export function emptySmartPluginState(): SmartPluginState {
   return { version: 1, autoInstalled: {}, usage: [] };
+}
+
+function normalizeInspection(value: unknown): PluginInstallInspection | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+
+  const raw = value as Partial<PluginInstallInspection>;
+
+  if (
+    typeof raw.pluginId !== 'string' ||
+    !raw.pluginId ||
+    typeof raw.pluginName !== 'string' ||
+    typeof raw.version !== 'string'
+  ) {
+    return null;
+  }
+
+  const asText = (item: unknown, max = 120): string =>
+    typeof item === 'string' ? item.slice(0, max) : '';
+
+  return {
+    pluginId: raw.pluginId.slice(0, 120),
+    pluginName: raw.pluginName.slice(0, 120),
+    version: raw.version.slice(0, 40),
+    publisherId: asText(raw.publisherId),
+    publisherName: asText(raw.publisherName),
+    publisherVerified: raw.publisherVerified === true,
+    trustLevel: PLUGIN_TRUST_LEVELS.includes(raw.trustLevel as PluginTrustLevel)
+      ? (raw.trustLevel as PluginTrustLevel)
+      : 'community',
+    registry:
+      raw.registry === 'configured-mcp' ||
+      raw.registry === 'bundled-catalog' ||
+      raw.registry === 'installed'
+        ? raw.registry
+        : 'bundled-catalog',
+    compatible: raw.compatible === true,
+    minimumOrbitVersion: asText(raw.minimumOrbitVersion, 40),
+    platformSupport: Array.isArray(raw.platformSupport)
+      ? raw.platformSupport.filter((item): item is string => typeof item === 'string').slice(0, 8)
+      : [],
+    entryPointKind: asText(raw.entryPointKind, 20) || 'declarative',
+    dependencies: Array.isArray(raw.dependencies)
+      ? raw.dependencies.slice(0, 12).map((item) => ({
+          pluginId: asText(item?.pluginId),
+          name: asText(item?.name),
+          version: asText(item?.version, 40),
+          installed: item?.installed === true,
+          running: item?.running === true,
+        }))
+      : [],
+    sensitivePermissions: Array.isArray(raw.sensitivePermissions)
+      ? raw.sensitivePermissions.filter((item): item is PluginPermission =>
+          PLUGIN_PERMISSIONS.includes(item as PluginPermission)
+        )
+      : [],
+    requiresSandbox: raw.requiresSandbox === true,
+    warnings: Array.isArray(raw.warnings)
+      ? raw.warnings
+          .filter((item): item is string => typeof item === 'string')
+          .slice(0, 8)
+          .map((item) => item.slice(0, 240))
+      : [],
+  };
 }
 
 export function normalizeSmartPluginState(value: unknown): SmartPluginState {
@@ -883,6 +1046,8 @@ export function normalizeSmartPluginState(value: unknown): SmartPluginState {
       continue;
     }
 
+    const inspection = normalizeInspection(record.inspection);
+
     state.usage.push({
       pluginId: record.pluginId.slice(0, 120),
       capability: record.capability as DemandCapability,
@@ -890,6 +1055,10 @@ export function normalizeSmartPluginState(value: unknown): SmartPluginState {
       mode: record.mode === 'learn' || record.mode === 'auto' ? record.mode : 'agent',
       status: record.status as DemandUsageRecord['status'],
       createdAt: Number.isFinite(record.createdAt) ? Number(record.createdAt) : 0,
+      ...(typeof record.requestId === 'number' && Number.isInteger(record.requestId)
+        ? { requestId: record.requestId }
+        : {}),
+      ...(inspection ? { inspection } : {}),
     });
   }
 
@@ -968,6 +1137,8 @@ export class SmartPluginInstaller {
     pluginName?: string;
     version?: string;
     registry?: DemandRegistrySource;
+    requestId?: number | null;
+    inspection?: PluginInstallInspection | null;
   }): Promise<void> {
     const state = await this.getState();
     const now = this.now();
@@ -978,6 +1149,8 @@ export class SmartPluginInstaller {
       mode: input.mode,
       status: input.status,
       createdAt: now,
+      ...(typeof input.requestId === 'number' ? { requestId: input.requestId } : {}),
+      ...(input.inspection ? { inspection: input.inspection } : {}),
     });
 
     if (state.usage.length > MAX_HISTORY) {
@@ -1161,41 +1334,60 @@ export class SmartPluginInstaller {
       };
     }
 
-    const approved = await this.options.approvals.requestInstall({
-      pluginId: plan.pluginId,
-      pluginName: plan.pluginName,
-      pluginVersion: plan.version,
-      trustLevel: plan.trustLevel,
-      capability: plan.capability,
-      capabilityLabel: DEMAND_CAPABILITY_LABEL[plan.capability],
-      reason: plan.reason,
-      permissions: plan.permissions,
-      sensitivePermissions: plan.sensitivePermissions,
-      dependencies: plan.dependencies.map((dependency) => ({
-        pluginId: dependency.pluginId,
-        name: dependency.name,
-        version: dependency.version,
-        permissions: dependency.permissions,
-      })),
-      requiresSandbox: plan.requiresSandbox,
-      requiresUpdate: plan.requiresUpdate,
-      steps: plan.steps,
-    });
+    let requestId: number | null = null;
+    const approved = await this.options.approvals.requestInstall(
+      {
+        pluginId: plan.pluginId,
+        pluginName: plan.pluginName,
+        pluginVersion: plan.version,
+        trustLevel: plan.trustLevel,
+        capability: plan.capability,
+        capabilityLabel: DEMAND_CAPABILITY_LABEL[plan.capability],
+        reason: plan.reason,
+        permissions: plan.permissions,
+        sensitivePermissions: plan.sensitivePermissions,
+        dependencies: plan.dependencies.map((dependency) => ({
+          pluginId: dependency.pluginId,
+          name: dependency.name,
+          version: dependency.version,
+          permissions: dependency.permissions,
+          installed: dependency.installed,
+          running: dependency.running,
+        })),
+        requiresSandbox: plan.requiresSandbox,
+        requiresUpdate: plan.requiresUpdate,
+        steps: plan.steps,
+        inspection: plan.inspection,
+      },
+      {
+        signal: request.signal,
+        onRequest: (id) => {
+          requestId = id;
+        },
+      }
+    );
+    const meta: DemandResultMeta = { requestId, inspection: plan.inspection };
 
     if (!approved) {
+      const cancelled = request.signal?.aborted === true;
       await this.recordUsage({
         pluginId: plan.pluginId,
         capability: plan.capability,
         status: 'denied',
         mode,
         agentId: request.agentId,
+        requestId,
+        inspection: plan.inspection,
       });
 
       return {
         ok: false,
-        code: 'denied',
-        error: `Installation of ${plan.pluginName} was not approved. Nothing was installed or granted.`,
+        code: cancelled ? 'cancelled' : 'denied',
+        error: cancelled
+          ? `The install request for ${plan.pluginName} was cancelled. Nothing was installed or granted.`
+          : `Installation of ${plan.pluginName} was not approved. Nothing was installed or granted.`,
         candidates: [plan.pluginId],
+        ...meta,
       };
     }
 
@@ -1204,23 +1396,32 @@ export class SmartPluginInstaller {
       : plan.requiresUpdate
         ? 'updated'
         : 'enabled';
+    const created: string[] = [];
 
     try {
       for (const dependency of plan.dependencies) {
-        await this.preparePlugin(
+        const added = await this.preparePlugin(
           dependency.pluginId,
           dependency.permissions,
           `Approved as a dependency of ${plan.pluginName}.`,
           dependency.updateManifest
         );
+
+        if (added) {
+          created.push(dependency.pluginId);
+        }
       }
 
-      await this.preparePlugin(
+      const added = await this.preparePlugin(
         plan.pluginId,
         plan.permissions,
         `Approved for ${DEMAND_CAPABILITY_LABEL[plan.capability].toLowerCase()}: ${plan.reason}`,
         plan.updateManifest
       );
+
+      if (added) {
+        created.push(plan.pluginId);
+      }
 
       await this.recordUsage({
         pluginId: plan.pluginId,
@@ -1231,6 +1432,8 @@ export class SmartPluginInstaller {
         mode,
         agentId: request.agentId,
         registry: plan.registry,
+        requestId,
+        inspection: plan.inspection,
       });
       await this.disableUnused();
 
@@ -1249,14 +1452,35 @@ export class SmartPluginInstaller {
         reason: `${plan.pluginName} was approved, ${
           plan.requiresInstall ? 'installed' : plan.requiresUpdate ? 'updated' : 'activated'
         }, and is ready for this task.`,
+        ...meta,
       };
     } catch (error) {
+      // Compensating action: disable only plugins this request just installed.
+      // Registry updates already restore their own backups; nothing is
+      // uninstalled and pre-existing plugins are never touched.
+      for (const pluginId of [...created].reverse()) {
+        try {
+          const record = platform.getRecord(pluginId);
+
+          if (record && isInstalledStatus(record.status) && record.enabled) {
+            await platform.disable(
+              pluginId,
+              'Rolled back after an on-demand install failed. Nothing was uninstalled.'
+            );
+          }
+        } catch {
+          // Keep the original failure as the result; the registry audits this.
+        }
+      }
+
       await this.recordUsage({
         pluginId: plan.pluginId,
         capability: plan.capability,
         status: 'failed',
         mode,
         agentId: request.agentId,
+        requestId,
+        inspection: plan.inspection,
       });
 
       return {
@@ -1264,6 +1488,7 @@ export class SmartPluginInstaller {
         code: 'install-failed',
         error: errorMessage(error),
         candidates: [plan.pluginId],
+        ...meta,
       };
     }
   }
@@ -1273,7 +1498,7 @@ export class SmartPluginInstaller {
     permissions: PluginPermission[],
     reason: string,
     updateManifest?: PluginManifest | null
-  ): Promise<void> {
+  ): Promise<boolean> {
     const registry = this.options.registry;
     const record = registry.getRecord(pluginId);
     const installed = record ? isInstalledStatus(record.status) : false;
@@ -1308,6 +1533,8 @@ export class SmartPluginInstaller {
     if (!next || !next.enabled) {
       await registry.enable(pluginId);
     }
+
+    return !installed;
   }
 }
 

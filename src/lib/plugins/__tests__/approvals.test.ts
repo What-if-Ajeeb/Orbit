@@ -117,6 +117,36 @@ describe('plugin approval queue', () => {
     expect(service.getPending()).toBeNull();
   });
 
+  it('reports the request id and denies when the caller aborts', async () => {
+    const service = new PluginApprovalService();
+    const controller = new AbortController();
+    const onRequest = vi.fn();
+    const result = service.requestInstall(
+      {
+        pluginId: 'test.plugin',
+        pluginName: 'Test Plugin',
+        pluginVersion: '1.0.0',
+        trustLevel: 'verified',
+        capability: 'agent_github',
+        capabilityLabel: 'GitHub and repository work',
+        reason: 'Review a pull request',
+        permissions: [],
+        sensitivePermissions: [],
+        dependencies: [],
+        requiresSandbox: false,
+        requiresUpdate: false,
+        steps: ['Install Test Plugin 1.0.0.'],
+      },
+      { signal: controller.signal, onRequest }
+    );
+
+    expect(onRequest).toHaveBeenCalledWith(1);
+    expect(service.getPending()?.id).toBe(1);
+    controller.abort();
+    await expect(result).resolves.toBe(false);
+    expect(service.getPending()).toBeNull();
+  });
+
   it('does not let a broken listener block the queue', async () => {
     const service = new PluginApprovalService();
     const healthy = vi.fn();

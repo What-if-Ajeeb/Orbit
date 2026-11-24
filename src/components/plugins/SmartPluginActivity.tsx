@@ -67,7 +67,9 @@ export function SmartPluginActivity() {
           .reverse()
           .map((record, index) => (
             <Text key={`${record.createdAt}-${record.pluginId}-${index}`} style={styles.row}>
-              · {shortTime(record.createdAt)} {record.status} · {record.pluginId} ·{' '}
+              · {shortTime(record.createdAt)} {record.status} · {record.pluginId}
+              {record.inspection ? ` v${record.inspection.version}` : ''}
+              {typeof record.requestId === 'number' ? ` · req#${record.requestId}` : ''} ·{' '}
               {DEMAND_CAPABILITY_LABEL[record.capability]}
             </Text>
           ))}

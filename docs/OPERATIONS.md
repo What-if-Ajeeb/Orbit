@@ -118,6 +118,19 @@ Implemented behavior to preserve when editing:
   compatibility/dependencies/permissions, and requires an `install` approval in
   `PluginApprovalHost` before install/update/enable. It records usage in plugin
   KV storage, disables only its own idle auto-installs, and never uninstalls.
+- Demand plans carry a read-only install inspection (exact id, version,
+  publisher, compatibility, dependencies, warnings) shown in the native
+  approval dialog. Approval cancellation is default-deny, and a failed request
+  disables only the plugins that request just installed; it never uninstalls.
+- Agent tool calls run through one monotonic pipeline in
+  `src/lib/permissions/executor.ts`: classify → authorize → pre-execute checks
+  → guard → execute → post-execute → finalize. Denials are irreversible and a
+  consumed one-time grant cannot authorize another run. The pipeline snapshot
+  is included in the tool result and the permission audit.
+- Tool timeouts are cooperative: a tool may declare `timeoutMs`, the classifier
+  supplies the category default, and the executor owns one `AbortSignal` and
+  one timer per call. A limit produces structured `TOOL_TIMEOUT` /
+  `TOOL_CANCELLED` results; plugin tools already reuse this cancellation seam.
 - Legacy `hooks` rows are data only. `runHookCode()` always throws, no hook code
   is compiled, and failed `executeHook()` results are ignored by the agent.
 - There is no downloaded code loader, notifications/credentials adapter, SDK
