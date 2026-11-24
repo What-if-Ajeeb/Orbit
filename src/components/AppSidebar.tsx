@@ -33,6 +33,10 @@ type NavItem = {
 const MAIN_ITEMS: NavItem[] = [
   { label: 'Today', href: '/', icon: 'planet-outline', activeIcon: 'planet' },
   { label: 'Agent', href: '/chat', icon: 'sparkles-outline', activeIcon: 'sparkles' },
+  { label: 'AI Agents', href: '/agents' as Href, icon: 'people-outline', activeIcon: 'people' },
+  { label: 'Conversations', href: '/conversations' as Href, icon: 'chatbubbles-outline', activeIcon: 'chatbubbles' },
+  { label: 'Connections', href: '/connections' as Href, icon: 'cloud-outline', activeIcon: 'cloud' },
+  { label: 'Marketplace', href: '/marketplace' as Href, icon: 'storefront-outline', activeIcon: 'storefront' },
   { label: 'Tasks', href: '/tasks', icon: 'checkbox-outline', activeIcon: 'checkbox' },
   { label: 'Workflows', href: '/workflows', icon: 'flash-outline', activeIcon: 'flash' },
   { label: 'Artifacts', href: '/artifacts', icon: 'cube-outline', activeIcon: 'cube' },
@@ -57,6 +61,18 @@ const ADVANCED_ITEMS: NavItem[] = [
     href: '/permissions' as Href,
     icon: 'finger-print-outline',
     activeIcon: 'finger-print',
+  },
+  {
+    label: 'Tool permissions',
+    href: '/tool-permissions' as Href,
+    icon: 'key-outline',
+    activeIcon: 'key',
+  },
+  {
+    label: 'Approvals',
+    href: '/approvals' as Href,
+    icon: 'checkmark-done-outline',
+    activeIcon: 'checkmark-done',
   },
 ];
 

@@ -1,5 +1,14 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
+import {
+  defaultAgentConfig,
+  filterAllowedTools,
+  isToolAllowedForAgent,
+  loadAgentConfig,
+  newToolEventId,
+  type AgentConfig,
+} from '../agent-settings';
+import type { ToolExecutionEvent } from '../chat-store';
 import { ensureMcpTools } from '../mcp/registry';
 import { EventStore } from '../events';
 import { TelemetryStore } from '../telemetry';
@@ -18,12 +27,14 @@ import { requestCompletion } from './providers';
 import { isAiConfigured, type AiSettings } from './settings';
 import { executeTool, listAgentTools, agentToolRegistry } from './tools';
 import { parseArtifactToolRef } from './artifact-tools';
+import { toolFail } from './tool-registry';
 import type { ArtifactRef } from '../artifacts/types';
-import type { LlmMessage } from './types';
+import type { LlmAttachment, LlmMessage } from './types';
 
 export type AgentHistoryItem = {
   role: 'user' | 'assistant';
   content: string;
+  attachments?: LlmAttachment[];
 };
 
 export type AgentInput = {
@@ -45,6 +56,8 @@ export type AgentInput = {
   creatorMode?: boolean;
   /** Receives streamed text from providers that support token streaming. */
   onTextDelta?: (delta: string) => void;
+  /** Receives live tool status so the chat UI can show execution progress. */
+  onToolEvent?: (event: ToolExecutionEvent) => void;
   /** Aborts the in-flight completion when the user stops or leaves the screen. */
   signal?: AbortSignal;
 };
@@ -54,6 +67,7 @@ export type AgentResult = {
   traces: string[];
   /** Artifacts created or updated during this turn, for the chat message meta. */
   artifacts: ArtifactRef[];
+  toolEvents: ToolExecutionEvent[];
   mode: 'ai' | 'local';
 };
 
@@ -95,12 +109,21 @@ export async function runAgent(input: AgentInput): Promise<AgentResult> {
     projectLabel,
     creatorMode,
     onTextDelta,
+    onToolEvent,
     signal,
   } = input;
 
   const agent = requestedAgent ?? MASTER_AGENT;
   const activeProjectId = projectId ?? 'orbit-workspace';
   const activeProjectLabel = projectLabel ?? 'Orbit workspace';
+
+  let agentConfig: AgentConfig = defaultAgentConfig(userId, agent.id);
+
+  try {
+    agentConfig = await loadAgentConfig(db, userId, agent.id);
+  } catch (error) {
+    console.warn('Could not load agent configuration; using safe defaults.', error);
+  }
 
   const eventStore = new EventStore(db);
   const telemetry = new TelemetryStore(db);
@@ -131,7 +154,7 @@ export async function runAgent(input: AgentInput): Promise<AgentResult> {
     const local = await runLocalAgent(db, userId, history[history.length - 1]?.content ?? '');
     await emit('turn_started', { mode: 'local', input: history[history.length - 1]?.content ?? '' });
     await emit('turn_ended', { mode: 'local', reply: local.reply });
-    return { ...local, artifacts: [], mode: 'local' };
+    return { ...local, artifacts: [], toolEvents: [], mode: 'local' };
   }
 
   // Phase 4: load active buddy so the system prompt can include personality + state
@@ -146,11 +169,27 @@ export async function runAgent(input: AgentInput): Promise<AgentResult> {
   }
 
   const messages: LlmMessage[] = [
-    { role: 'system', content: buildSystemPrompt(userName, agent.name, Date.now(), buddyCtx) },
+    {
+      role: 'system',
+      content: buildSystemPrompt(userName, agent.name, Date.now(), buddyCtx, {
+        instructions: agentConfig.instructions,
+        memory: agentConfig.memory,
+      }),
+    },
     ...history
-      .filter((item) => item.content.trim().length > 0)
+      .filter((item) => item.content.trim().length > 0 || (item.attachments?.length ?? 0) > 0)
       .slice(-20)
-      .map((item) => ({ role: item.role, content: item.content }) as LlmMessage),
+      .map((item) =>
+        (item.role === 'user'
+          ? {
+              role: 'user',
+              content: item.content,
+              ...(item.attachments && item.attachments.length > 0
+                ? { attachments: item.attachments }
+                : {}),
+            }
+          : { role: 'assistant', content: item.content }) as LlmMessage
+      ),
   ];
 
   // Refresh MCP tools at most every five minutes; a failing server cannot
@@ -200,8 +239,9 @@ export async function runAgent(input: AgentInput): Promise<AgentResult> {
     });
   }
 
-  const toolDefinitions = listAgentTools();
+  const toolDefinitions = filterAllowedTools(listAgentTools(), agentConfig);
   const traces: string[] = [];
+  const toolEvents: ToolExecutionEvent[] = [];
   const artifactRefs = new Map<string, ArtifactRef>();
 
   await emit('turn_started', {
@@ -247,6 +287,7 @@ export async function runAgent(input: AgentInput): Promise<AgentResult> {
           reply: turn.text || fallbackReply(traces),
           traces,
           artifacts: Array.from(artifactRefs.values()),
+          toolEvents,
           mode: 'ai',
         };
       }
@@ -260,6 +301,54 @@ export async function runAgent(input: AgentInput): Promise<AgentResult> {
       for (const call of turn.toolCalls) {
         const toolArgs = parseToolArguments(call.arguments);
 
+        if (!isToolAllowedForAgent(agentConfig, call.name)) {
+          const denied: ToolExecutionEvent = {
+            id: newToolEventId(),
+            toolName: call.name,
+            status: 'denied',
+            startedAt: Date.now(),
+            endedAt: Date.now(),
+            durationMs: 0,
+            summary: `${call.name} is not enabled for ${agent.name}.`,
+            detail: 'Agent tool access is restricted. Enable it in this agent’s tool settings.',
+          };
+          toolEvents.push(denied);
+          onToolEvent?.(denied);
+
+          await emit('tool_call', {
+            toolName: call.name,
+            agentId: agent.id,
+            agentName: agent.name,
+            rawArguments: redactSecrets(call.arguments).slice(0, 2000),
+            unauthorized: true,
+          });
+          await emit('tool_result', {
+            toolName: call.name,
+            success: false,
+            denied: true,
+            reason: 'Agent tool access is restricted.',
+          });
+          await telemetry.recordToolCall(
+            userId,
+            conversationId,
+            call.name,
+            0,
+            null,
+            null,
+            null,
+            false,
+            'deny',
+            'Agent tool access is restricted.'
+          );
+          messages.push({
+            role: 'tool',
+            toolCallId: call.id,
+            name: call.name,
+            content: toolFail(`${call.name} is not enabled for this agent.`),
+          });
+          continue;
+        }
+
         await emit('tool_call', {
           toolName: call.name,
           agentId: agent.id,
@@ -267,7 +356,19 @@ export async function runAgent(input: AgentInput): Promise<AgentResult> {
           rawArguments: redactSecrets(call.arguments).slice(0, 2000),
         });
 
+        const running: ToolExecutionEvent = {
+          id: newToolEventId(),
+          toolName: call.name,
+          status: 'running',
+          startedAt: Date.now(),
+          summary: `Running ${call.name}`,
+        };
+        toolEvents.push(running);
+        onToolEvent?.(running);
+
         const policy = policyEngine.evaluate(call.name, toolArgs);
+        running.policyDecision = policy.decision;
+        onToolEvent?.(running);
         const secured = await secureExecuteTool({
           db,
           userId,
@@ -282,12 +383,34 @@ export async function runAgent(input: AgentInput): Promise<AgentResult> {
             ruleId: policy.ruleId,
             reason: policy.reason,
           },
-          execute: () => executeTool(db, userId, call.name, call.arguments, conversationId),
+          execute: () =>
+            executeTool(db, userId, call.name, call.arguments, conversationId, signal),
         });
         const content = secured.content;
         const trace = secured.trace;
         const success = secured.success;
         const error = secured.error;
+        const denied = !secured.permission.allowed;
+        const status: ToolExecutionEvent['status'] = denied ? 'denied' : success ? 'success' : 'error';
+        const finished: ToolExecutionEvent = {
+          ...running,
+          status,
+          endedAt: Date.now(),
+          durationMs: secured.durationMs,
+          summary: denied
+            ? `${call.name} was not approved.`
+            : success
+              ? `${call.name} completed.`
+              : `${call.name} failed.`,
+          ...(error || trace ? { detail: redactSecrets(error || trace).slice(0, 800) } : {}),
+        };
+        const index = toolEvents.indexOf(running);
+
+        if (index >= 0) {
+          toolEvents[index] = finished;
+        }
+
+        onToolEvent?.(finished);
 
         if (trace) {
           traces.push(trace);
@@ -349,6 +472,7 @@ export async function runAgent(input: AgentInput): Promise<AgentResult> {
       reply: fallbackReply(traces),
       traces,
       artifacts: Array.from(artifactRefs.values()),
+      toolEvents,
       mode: 'ai',
     };
   } catch (error) {
@@ -366,6 +490,7 @@ export async function runAgent(input: AgentInput): Promise<AgentResult> {
         reply: `Your changes were saved, but the AI could not reply. (${reason})`,
         traces,
         artifacts: Array.from(artifactRefs.values()),
+        toolEvents,
         mode: 'ai',
       };
     }

@@ -1,3 +1,4 @@
+import { buildAttachmentText, safeImageAttachments } from './attachment-content';
 import { ollamaChat } from './ollama';
 import {
   aiProviderRegistry,
@@ -161,7 +162,30 @@ function toOpenAiMessages(messages: LlmMessage[]): JsonRecord[] {
       return result;
     }
 
-    return { role: message.role, content: message.content };
+    if (message.role === 'system') {
+      return { role: 'system', content: message.content };
+    }
+
+    const attachments = message.attachments ?? [];
+    const images = safeImageAttachments(attachments);
+    const documentText = buildAttachmentText(attachments.filter((item) => item.kind === 'document'));
+    const text = message.content.trim() ? message.content : documentText || '(see attachment)';
+    const baseText = documentText && text !== documentText ? `${text}\n\n${documentText}` : text;
+
+    if (images.length === 0) {
+      return { role: 'user', content: baseText };
+    }
+
+    return {
+      role: 'user',
+      content: [
+        { type: 'text', text: baseText },
+        ...images.map((image) => ({
+          type: 'image_url',
+          image_url: { url: `data:${image.mimeType};base64,${image.data}` },
+        })),
+      ],
+    };
   });
 }
 
@@ -276,6 +300,7 @@ function toGeminiSchema(value: unknown): unknown {
 
 type GeminiPart = {
   text?: string;
+  inlineData?: { mimeType: string; data: string };
   functionCall?: { name?: string; args?: unknown };
   functionResponse?: { name?: string; response?: unknown };
 };
@@ -335,7 +360,18 @@ function toGeminiContents(
       continue;
     }
 
-    withTools.push({ role: 'user', parts: [{ text: message.content }] });
+    const attachments = message.attachments ?? [];
+    const images = safeImageAttachments(attachments);
+    const documentText = buildAttachmentText(attachments.filter((item) => item.kind === 'document'));
+    const text = message.content.trim() ? message.content : documentText || '(see attachment)';
+    const baseText = documentText && text !== documentText ? `${text}\n\n${documentText}` : text;
+    const parts: GeminiPart[] = [{ text: baseText }];
+
+    for (const image of images) {
+      parts.push({ inlineData: { mimeType: image.mimeType, data: image.data } });
+    }
+
+    withTools.push({ role: 'user', parts });
   }
 
   // Merge adjacent turns with the same role, as Gemini expects an

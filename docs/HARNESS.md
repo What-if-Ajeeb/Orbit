@@ -87,28 +87,67 @@ here. See [`docs/PLUGIN_ARCHITECTURE.md`](PLUGIN_ARCHITECTURE.md) and the relate
 ## How a message flows
 
 ```text
-chat.tsx
-  └─ runAgent()                        src/lib/ai/agent.ts
-       ├─ offline local mode           src/lib/ai/local-agent.ts
-       │    (no provider configured)
-       └─ configured provider (cloud or local server)
-            ├─ ensureMcpTools()        src/lib/mcp/registry.ts
-            │    └─ Streamable HTTP    src/lib/mcp/client.ts
-            ├─ buildSystemPrompt()     src/lib/ai/prompt.ts
-            ├─ requestCompletion()     src/lib/ai/providers.ts
-            │    └─ provider adapter   aiProviderRegistry
-            └─ tool loop (max 6)
-                 └─ secureExecuteTool() src/lib/permissions/executor.ts
-                      ├─ classify + ask  permissionManager
-                      ├─ revalidate      grants / emergency stop
-                      └─ executeTool()  agentToolRegistry
-                           ├─ task tools src/lib/ai/task-tools.ts
-                           ├─ computer   permission/computer-tool.ts
-                           └─ mcp__ tools src/lib/mcp/registry.ts
+chat.tsx / agents/[agentId]/index.tsx
+  └─ AgentChatView                     src/components/AgentChatView.tsx
+       └─ runAgent()                   src/lib/ai/agent.ts
+            ├─ loadAgentConfig()       src/lib/agent-settings.ts
+            │    └─ filterAllowedTools()
+            ├─ offline local mode      src/lib/ai/local-agent.ts
+            │    (no provider configured)
+            └─ configured provider (cloud or local server)
+                 ├─ ensureMcpTools()   src/lib/mcp/registry.ts
+                 │    └─ Streamable HTTP src/lib/mcp/client.ts
+                 ├─ buildSystemPrompt() src/lib/ai/prompt.ts
+                 │    └─ agent instructions + memory
+                 ├─ requestCompletion() src/lib/ai/providers.ts
+                 │    └─ provider adapter aiProviderRegistry
+                 └─ tool loop (max 6)
+                      └─ secureExecuteTool() src/lib/permissions/executor.ts
+                           ├─ classify + ask  permissionManager
+                           ├─ revalidate      grants / emergency stop
+                           └─ executeTool()  agentToolRegistry
+                                ├─ task tools src/lib/ai/task-tools.ts
+                                ├─ computer   permission/computer-tool.ts
+                                ├─ google_*   src/lib/connections/tools.ts
+                                └─ mcp__ tools src/lib/mcp/registry.ts
 ```
 
 The chat store is resolved separately by the screens through `getChatStore(db)`, so
-storage can change without touching the agent.
+storage can change without touching the agent. Agent-scoped conversations, message
+metadata (attachments and tool events), and agent configs live in SQLite v13.
+
+## Per-agent chat and connected tools
+
+`AgentChatView` is the only chat surface. The Master Agent tab and each
+`/agents/<id>` screen render it with a different identity and scope; it loads only
+conversations for that agent, sends the agent id to `runAgent`, and persists tool
+events with the assistant message. Attachments are converted in
+`src/lib/chat-attachments.ts`: picked image bytes stay in memory for the current
+request, and only redacted text previews and metadata reach SQLite or history.
+
+Per-agent instructions, memory, and tool patterns come from `src/lib/agent-settings.ts`.
+The default is `selected` mode with a small safe allowlist. `runAgent` filters every
+registered tool through that allowlist before the model sees it, denies unauthorized
+model-issued calls, and forwards its `AbortController` signal into tool execution.
+Streaming text and tool events are rendered live; the final persisted reply is loaded
+back into the visible message list so it survives the end of the stream.
+
+Google tools are side-effect registrations from `src/lib/connections/tools.ts` into
+the existing `agentToolRegistry`. They call the real Gmail/Calendar/Drive wrappers in
+`src/lib/connections/api.ts`, using OAuth tokens obtained by
+`src/lib/connections/google.ts` and stored per user in SecureStore. Missing config or
+expired credentials produce explicit setup/expired states; no connected state is
+synthesized, and token values are redacted from logs, UI messages, and full tool
+results. Both reads and writes are classified as sensitive and go through
+`secureExecuteTool`, so content from a connected account is not exposed without an
+explicit approval or an existing grant for that exact tool. Plugin JavaScript never
+receives credentials: the plugin SDK credential adapter still throws.
+
+Marketplace, Connections, Tool Permissions, and Approvals are views over existing
+registries and permission stores. They do not start a second agent loop, MCP runtime,
+plugin loader, or approval host. Third-party plugins remain bundled declarative
+manifests; MCP servers are mirrored as synthetic plugins with the same `mcp.connect`
+plus `ai.invoke` gate and sticky revocations.
 
 ## AI provider plugins
 

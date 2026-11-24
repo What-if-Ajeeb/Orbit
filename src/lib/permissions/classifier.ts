@@ -34,6 +34,22 @@ const ARTIFACT_TOOLS = new Set([
   'artifact_list',
 ]);
 
+const GOOGLE_READ_TOOLS = new Set([
+  'google_gmail_search',
+  'google_gmail_read',
+  'google_calendar_search',
+  'google_drive_search',
+  'google_drive_read',
+]);
+
+const GOOGLE_WRITE_TOOLS = new Set([
+  'google_gmail_draft',
+  'google_gmail_send',
+  'google_calendar_create',
+  'google_calendar_update',
+  'google_drive_trash',
+]);
+
 const COMMAND_TOOL_PATTERN =
   /(?:^|_)(?:command|terminal|shell|exec|execute|run)(?:$|_)/i;
 
@@ -243,6 +259,36 @@ export function classifyToolAction(input: ClassifyInput): ClassifiedPermissionAc
   const path = firstString(args, ['path', 'file', 'file_path', 'directory', 'dir', 'cwd']);
   const url = firstString(args, ['url', 'href', 'link', 'website']);
   const display = prettyToolName(rawName);
+
+  if (GOOGLE_READ_TOOLS.has(name) || GOOGLE_WRITE_TOOLS.has(name)) {
+    const writing = GOOGLE_WRITE_TOOLS.has(name);
+    const provider = name.includes('gmail')
+      ? 'Gmail'
+      : name.includes('calendar')
+        ? 'Google Calendar'
+        : 'Google Drive';
+
+    return makeAction(input, {
+      category: 'external_api',
+      risk: writing ? 'high' : 'medium',
+      title: writing
+        ? `Allow ${input.agent.name} to change ${provider}?`
+        : `Allow ${input.agent.name} to read ${provider}?`,
+      summary: writing
+        ? 'This changes data in your connected Google account. Approve only when you trust this exact request.'
+        : 'Orbit will read content from your connected Google account. Tokens stay in Android Keystore and are never passed to plugins.',
+      actions: [`Use ${display} on ${provider}`, ...summarizeArguments(args, 3)],
+      target: {
+        kind: 'service',
+        label: provider,
+        detail: 'Connected Google account',
+      },
+      reason: 'The agent needs the connected account to complete your request.',
+      scopeKey: `google:${rawName}:${input.projectId}`,
+      autoApprove: false,
+      metadata: { connection: 'google', tool: rawName, sensitive: true },
+    });
+  }
 
   if (ARTIFACT_TOOLS.has(name)) {
     const reading = name === 'artifact_read' || name === 'artifact_list';

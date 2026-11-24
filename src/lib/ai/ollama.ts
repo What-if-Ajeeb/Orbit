@@ -1,3 +1,4 @@
+import { buildAttachmentText, safeImageAttachments } from './attachment-content';
 import type { LlmMessage, LlmToolCall, LlmToolDefinition, LlmTurn } from './types';
 
 /** Native Ollama HTTP API base URL — no `/v1` suffix. */
@@ -466,7 +467,24 @@ function toOllamaMessages(messages: LlmMessage[]): JsonRecord[] {
       return result;
     }
 
-    return { role: message.role, content: message.content };
+    if (message.role === 'system') {
+      return { role: 'system', content: message.content };
+    }
+
+    const attachments = message.attachments ?? [];
+    const images = safeImageAttachments(attachments);
+    const documentText = buildAttachmentText(attachments.filter((item) => item.kind === 'document'));
+    const text = message.content.trim() ? message.content : documentText || '(see attachment)';
+    const result: JsonRecord = {
+      role: 'user',
+      content: documentText && text !== documentText ? `${text}\n\n${documentText}` : text,
+    };
+
+    if (images.length > 0) {
+      result.images = images.map((image) => image.data);
+    }
+
+    return result;
   });
 }
 

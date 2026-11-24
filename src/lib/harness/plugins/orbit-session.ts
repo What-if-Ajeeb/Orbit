@@ -1,7 +1,12 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 import { Service, type Context } from 'cordis';
 
-import { getChatStore, type ChatMessage, type Conversation } from '@/lib/chat';
+import {
+  getChatStore,
+  type ChatMessage,
+  type ChatMessageMeta,
+  type Conversation,
+} from '@/lib/chat';
 
 let orbitDb: SQLiteDatabase | null = null;
 
@@ -28,8 +33,12 @@ export class OrbitSession extends Service {
     super(ctx, 'session');
   }
 
-  async listConversations(userId: number, limit?: number): Promise<Conversation[]> {
-    return getChatStore(requireDb()).listConversations(userId, limit);
+  async listConversations(
+    userId: number,
+    limit?: number,
+    agentId?: string | null
+  ): Promise<Conversation[]> {
+    return getChatStore(requireDb()).listConversations(userId, limit, agentId);
   }
 
   async getConversation(
@@ -39,8 +48,12 @@ export class OrbitSession extends Service {
     return getChatStore(requireDb()).getConversation(userId, conversationId);
   }
 
-  async createConversation(userId: number, title?: string): Promise<Conversation> {
-    const created = await getChatStore(requireDb()).createConversation(userId, title);
+  async createConversation(
+    userId: number,
+    title?: string,
+    agentId?: string | null
+  ): Promise<Conversation> {
+    const created = await getChatStore(requireDb()).createConversation(userId, title, agentId);
     this.ctx.emit('session/created', { id: created.id, title: created.title, createdAt: created.createdAt });
     return created;
   }
@@ -58,9 +71,18 @@ export class OrbitSession extends Service {
     conversationId: number,
     role: 'user' | 'assistant',
     content: string,
-    traces: string[] = []
+    traces: string[] = [],
+    meta: ChatMessageMeta = {}
   ): Promise<ChatMessage> {
-    return getChatStore(requireDb()).addMessage(userId, conversationId, role, content, traces);
+    return getChatStore(requireDb()).addMessage(
+      userId,
+      conversationId,
+      role,
+      content,
+      traces,
+      [],
+      meta
+    );
   }
 
   async deleteConversation(userId: number, conversationId: number): Promise<void> {

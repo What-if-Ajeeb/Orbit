@@ -16,7 +16,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { SidebarButton } from '@/components/SidebarButton';
 import { useSidebar } from '@/context/sidebar';
-import { policyEngine, type PolicyDecision, type ToolPolicyRule } from '@/lib/policy';
+import {
+  policyEngine,
+  waitForPolicyHydration,
+  type PolicyDecision,
+  type ToolPolicyRule,
+} from '@/lib/policy';
 import { radius, spacing } from '@/theme';
 import { useAppTheme, useStyles, type AppTheme } from '@/context/theme';
 
@@ -50,6 +55,7 @@ export default function PolicyScreen() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
+      await waitForPolicyHydration();
       setRules(policyEngine.listRules());
     } catch (loadError) {
       console.warn('Could not load policy rules.', loadError);

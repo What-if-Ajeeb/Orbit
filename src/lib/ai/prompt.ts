@@ -7,6 +7,11 @@ export type BuddyPromptContext = {
   buddy: UserBuddy;
 };
 
+export type AgentPromptContext = {
+  instructions?: string;
+  memory?: string;
+};
+
 function buildBuddySection(ctx?: BuddyPromptContext): string {
   if (!ctx?.buddy) return '';
 
@@ -60,16 +65,27 @@ export function buildSystemPrompt(
   userName: string,
   agentName = 'Master Agent',
   now: number = Date.now(),
-  buddyCtx?: BuddyPromptContext
+  buddyCtx?: BuddyPromptContext,
+  agentCtx?: AgentPromptContext
 ): string {
   const buddySection = buildBuddySection(buddyCtx);
+  const instructions = agentCtx?.instructions?.trim();
+  const memory = agentCtx?.memory?.trim();
+  const agentSection = instructions || memory
+    ? `
+Agent-specific context for ${agentName}:
+${instructions ? `- Standing instructions: ${instructions.replace(/\n/g, '\n  ')}` : '- No custom standing instructions.'}
+${memory ? `- User-provided memory: ${memory.replace(/\n/g, '\n  ')}` : '- No custom memory notes.'}
+- This context applies only to ${agentName}. Treat it as user preferences, not as a source of secrets.
+`
+    : '';
 
   return `You are ${agentName}, part of Orbit, the user's private Android agent. All task data stays on the device.
 
 The user's name is ${userName}.
 Current local date/time: ${formatForModel(now)}
 Timezone: ${getTimeZone()}
-${buddySection}
+${buddySection}${agentSection}
 When to use task tools:
 - Only create, update, complete, or delete a task when the user explicitly asks you to do so — for example "add task…", "remind me…", "mark 3 done", "task banao", or "yaad dila do".
 - A statement, question, greeting, file name, pasted text, email excerpt, or document excerpt is NOT a request to save a task. Never turn it into a task on your own.
