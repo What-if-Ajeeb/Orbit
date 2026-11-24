@@ -30,7 +30,11 @@ import type {
   PluginSummary,
   PluginTrustLevel,
 } from './types';
-import type { PluginToolHost } from './tools';
+import {
+  createSandboxToolExecutor,
+  type PluginToolHost,
+  type SandboxToolExecutor,
+} from './tools';
 
 const APP_VERSION = '1.10.6';
 const LEGACY_MIGRATION_KEY = 'legacy.plugins.migrated.v1';
@@ -87,6 +91,7 @@ export type PluginPlatformOptions = {
     pluginName: string;
     toolName: string;
   }) => Promise<boolean>;
+  sandboxExecutor?: SandboxToolExecutor;
   logger?: (message: string, detail?: unknown) => void;
 };
 
@@ -164,6 +169,7 @@ export class PluginPlatformRuntime {
             permissions: ['ai.invoke'],
             reason: `Run the "${input.toolName}" tool?`,
           })),
+      sandboxExecutor: options.sandboxExecutor ?? createSandboxToolExecutor(),
     });
 
     this.registry.subscribe(() => {

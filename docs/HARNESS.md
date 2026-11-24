@@ -70,14 +70,20 @@ Implemented behavior:
   The tool gate is installed in the constructor and denies tools until records
   are synced; it requires both `mcp.connect` and `ai.invoke`, and revocations are
   sticky across re-sync.
-- `src/lib/cordis-tools.ts` exposes only read-only `cordis_plugin_list`,
+- `src/lib/cordis-tools.ts` exposes read-only `cordis_plugin_list`,
   `cordis_plugin_inspect` and `cordis_plugin_permission_audit` agent tools.
+- `src/lib/plugins/demand.ts` resolves a task into the minimum trusted plugin
+  plan. `orbit_plugin_discover` is read-only; `orbit_plugin_request` asks the
+  existing `PluginApprovalService` for explicit consent before calling
+  `PluginRegistry.install`, `update`, `enable` or permission grants. Reused,
+  installed, updated, denied and failed attempts are recorded in plugin KV
+  storage and shown in the Plugin Manager.
 - Legacy hook scripts are disabled: `HookEngine.runHookCode()` throws, stored
   hook rows are never evaluated, and failed `executeHook()` results are ignored
   by the agent.
 
 Current limitations: third-party plugins are declarative only (no downloaded
-code execution), no remote catalog, `notifications`/`credentials` SDK adapters
+code execution), no remote marketplace or unknown-manifest fetch, `notifications`/`credentials` SDK adapters
 are unavailable, there is no SDK file API or `sdk.mcp`, and toolbar/context
 actions have no global host. Plugin-specific
 Vitest files exist under `src/lib/plugins/__tests__/`; no results are asserted

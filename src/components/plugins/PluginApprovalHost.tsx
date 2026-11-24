@@ -88,6 +88,7 @@ function PluginApprovalDialog({
   const styles = useStyles(makeStyles);
   const insets = useSafeAreaInsets();
   const disabled = busy !== null;
+  const install = request.kind === 'install' ? request : null;
 
   return (
     <Modal
@@ -118,14 +119,24 @@ function PluginApprovalDialog({
           <View style={styles.header}>
             <View style={styles.iconBubble}>
               <Ionicons
-                name={request.kind === 'tool' ? 'flash-outline' : 'shield-checkmark-outline'}
+                name={
+                  install
+                    ? 'extension-puzzle-outline'
+                    : request.kind === 'tool'
+                      ? 'flash-outline'
+                      : 'shield-checkmark-outline'
+                }
                 size={21}
                 color={colors.accent}
               />
             </View>
             <View style={styles.headerText}>
               <Text style={styles.eyebrow}>
-                {request.kind === 'tool' ? 'PLUGIN TOOL APPROVAL' : 'PLUGIN PERMISSION REQUEST'}
+                {install
+                  ? 'PLUGIN INSTALL APPROVAL'
+                  : request.kind === 'tool'
+                    ? 'PLUGIN TOOL APPROVAL'
+                    : 'PLUGIN PERMISSION REQUEST'}
               </Text>
               <Text style={styles.title}>{request.pluginName}</Text>
               <Text style={styles.subtitle}>
@@ -139,6 +150,41 @@ function PluginApprovalDialog({
             contentContainerStyle={styles.content}
           >
             <Text style={styles.reason}>{request.reason}</Text>
+
+            {install ? (
+              <View style={styles.installBlock}>
+                <Text style={styles.sectionLabel}>WHY THIS IS NEEDED</Text>
+                <Text style={styles.detailText}>{install.capabilityLabel}</Text>
+                <Text style={styles.detailText}>Version {install.pluginVersion}</Text>
+                <Text style={styles.sectionLabel}>WHAT WILL HAPPEN</Text>
+                {install.steps.map((step, index) => (
+                  <Text key={`${step}-${index}`} style={styles.detailText}>
+                    · {step}
+                  </Text>
+                ))}
+                {install.dependencies.length > 0 ? (
+                  <>
+                    <Text style={styles.sectionLabel}>REQUIRED DEPENDENCIES</Text>
+                    {install.dependencies.map((dependency) => (
+                      <Text key={dependency.pluginId} style={styles.detailText}>
+                        · {dependency.name} {dependency.version}
+                      </Text>
+                    ))}
+                  </>
+                ) : null}
+                {install.sensitivePermissions.length > 0 ? (
+                  <Text style={styles.warningText}>
+                    Sensitive access is listed below and is granted only if you approve.
+                  </Text>
+                ) : null}
+                {install.requiresSandbox ? (
+                  <Text style={styles.warningText}>
+                    This plugin declares sandbox execution. Every run still needs a separate
+                    sandbox approval.
+                  </Text>
+                ) : null}
+              </View>
+            ) : null}
 
             {request.permissions.length > 0 ? (
               <View style={styles.permissionList}>
@@ -174,15 +220,26 @@ function PluginApprovalDialog({
             <View style={styles.note}>
               <Ionicons name="shield-outline" size={15} color={colors.textMuted} />
               <Text style={styles.noteText}>
-                Approving grants only the listed permissions to this plugin. It never
-                grants agent tool permissions or access to other plugins&apos; data.
+                {install
+                  ? install.requiresUpdate
+                    ? 'Approving updates only this reviewed plugin and grants only the listed permissions to it. Nothing is downloaded or installed for other plugins.'
+                    : 'Approving installs only this reviewed plugin and grants only the listed permissions to it. Nothing is downloaded or installed for other plugins.'
+                  : "Approving grants only the listed permissions to this plugin. It never grants agent tool permissions or access to other plugins' data."}
               </Text>
             </View>
           </ScrollView>
 
           <View style={styles.actions}>
             <Button
-              label={request.kind === 'tool' ? 'Run once' : 'Allow'}
+              label={
+                install
+                  ? install.requiresUpdate
+                    ? 'Update & grant'
+                    : 'Install & grant'
+                  : request.kind === 'tool'
+                    ? 'Run once'
+                    : 'Allow'
+              }
               onPress={onAllow}
               loading={busy === 'allow'}
               disabled={disabled}
@@ -264,6 +321,24 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
       color: colors.text,
       fontSize: 13,
       lineHeight: 19,
+    },
+    installBlock: {
+      gap: spacing.xs,
+      borderRadius: radius.md,
+      borderWidth: 1,
+      borderColor: glass.border,
+      backgroundColor: glass.fillSoft,
+      padding: spacing.sm,
+    },
+    detailText: {
+      color: colors.textMuted,
+      fontSize: 11,
+      lineHeight: 16,
+    },
+    warningText: {
+      color: colors.warning,
+      fontSize: 11,
+      lineHeight: 16,
     },
     permissionList: {
       gap: spacing.sm,

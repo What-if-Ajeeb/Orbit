@@ -146,8 +146,10 @@ built-in implementation supplies the matching function.
 
 - No third-party JavaScript execution, remote URL code loading or dynamic
   Cordis remounting.
-- No remote catalog, marketplace, signing verification or plugin bundle
-  installer.
+- No remote marketplace, downloaded bundle or remote manifest fetch. A plugin
+  can be discovered on demand only if it is already in the bundled trusted
+  catalog or is an enabled MCP server configured by the user, and only after the
+  native approval dialog.
 - No `sdk.mcp`, `sdk.plugin.onStatus`, `sdk.ai.getContext()` or
   `sdk.tools.unregister(name)`.
 - Notifications/credentials SDK adapters are not supplied; file permissions

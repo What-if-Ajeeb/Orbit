@@ -265,14 +265,26 @@ What is implemented today:
 - MCP servers mirrored as synthetic `mcp.server.<slug>` plugins with a tool gate
   installed in the constructor; tools are denied until records are synced.
   Revoking `mcp.connect` or `ai.invoke` is sticky across re-sync.
-- Three read-only agent tools: `cordis_plugin_list`,
+- Read-only agent tools: `cordis_plugin_list`,
   `cordis_plugin_inspect`, and `cordis_plugin_permission_audit`.
+- Smart on-demand plugin requests: `orbit_plugin_discover` reads only the bundled
+  trusted catalog and configured MCP servers; `orbit_plugin_request` shows the
+  exact plugin, version, publisher, dependencies, permissions and steps in the
+  native approval dialog before the existing registry installs or updates it.
+  Denials, timeouts and failures change nothing.
+- Demand history and auto-installed state appear in the Plugin Manager.
+  Auto-installed plugins can be disabled when idle but are never auto-uninstalled;
+  manually installed plugins are never disabled by this path.
+- A reviewed built-in tool can run its data-only body in the Android isolated
+  sandbox through the same `PluginRegistry` and approval queue; no second runtime
+  or downloaded code. MCP tools keep their host-side network bridge.
 - Legacy hook code is disabled: stored hook rows are never compiled or
   evaluated, and failed executions are recorded and ignored by the agent.
 
-Limitations: no remote catalog, no downloaded executable plugin code, no
+Limitations: no remote marketplace, no downloaded executable plugin code, no
 notifications/credentials SDK adapter, no SDK file API, no `sdk.mcp`, and no
-global widget or settings-section renderer. Plugin-specific Vitest files live
+global widget or settings-section renderer. On-demand discovery never fetches
+unknown manifests from the network. Plugin-specific Vitest files live
 under `src/lib/plugins/__tests__/`; no results are asserted here. Details are in
 [`docs/PLUGIN_ARCHITECTURE.md`](docs/PLUGIN_ARCHITECTURE.md),
 [`docs/PLUGIN_MANIFEST.md`](docs/PLUGIN_MANIFEST.md),

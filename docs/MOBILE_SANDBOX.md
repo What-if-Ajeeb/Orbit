@@ -72,6 +72,21 @@ There is no JavaScript loader. The existing plugin platform still rejects
 downloaded executable code and legacy hook scripts; `runHookCode()` remains
 disabled.
 
+## Plugin tools
+
+A reviewed built-in plugin can declare a tool with a data-only `program` instead
+of a host `execute` function. `PluginRegistry` keeps ownership, namespacing,
+schema validation, timeouts and permission checks; `buildPluginAgentTool` routes
+only that tool body through the existing `MobileSandboxManager`. The built-in
+diagnostics plugin uses this path for `plugin__orbit_builtin_diagnostics__sandbox_echo`.
+
+This is not a second runtime and not a new entry-point kind. The tool still uses
+the same registry, SDK, approval queue and agent tool registry. On non-Android
+platforms the native transport is unavailable, so the tool fails closed with a
+clear error. MCP servers remain plugin integrations with a host-side network
+bridge; the isolated core has no network API, so their transport is not moved
+into the sandbox.
+
 ## Permission and approval
 
 Before every execution, `MobileSandboxManager` asks the existing

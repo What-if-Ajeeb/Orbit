@@ -82,7 +82,9 @@ subscription disposers and clears that plugin's listeners.
 
 A `PluginToolDefinition` has `name`, `description`, `parameters` (a JSON Schema
 object), optional `outputSchema`, `permissions`, `requiresApproval`, `timeoutMs`,
-and `execute(args, context)`. `execute` must resolve to
+and either `execute(args, context)` or a data-only `program`. `execute` and
+`program` are mutually exclusive in practice: when `program` is set, the tool body
+runs in the Android sandbox and `execute` is omitted. Both resolve to
 `{ content: string, trace: string }`.
 
 ```ts
@@ -101,6 +103,33 @@ const unregister = await sdk.tools.register(
     }),
   }
 );
+```
+
+A reviewed built-in tool can instead declare a data-only sandbox program; this is
+available only when the platform supplies a sandbox executor (Android):
+
+```ts
+{
+  name: 'sandbox_echo',
+  description: 'Echo a value through the isolated sandbox',
+  parameters: {
+    type: 'object',
+    properties: { value: { type: 'string' } },
+    required: ['value'],
+  },
+  program: {
+    pluginId: 'orbit.builtin.diagnostics',
+    version: '1.0.0',
+    program: {
+      version: 1,
+      instructions: [
+        { op: 'load', key: 'input', field: 'value' },
+        { op: 'emit', key: 'content' },
+        { op: 'return' },
+      ],
+    },
+  },
+}
 ```
 
 Registration requires `starting`/`running` status, `ai.invoke` in the manifest,

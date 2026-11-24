@@ -108,6 +108,16 @@ Implemented behavior to preserve when editing:
 - MCP servers are mirrored into synthetic `mcp.server.<slug>` plugins. The gate
   is installed in the constructor, so tools are denied until records are synced;
   it requires `mcp.connect` plus `ai.invoke`, and revocations are sticky.
+- A reviewed plugin tool may declare a data-only `program`; `buildPluginAgentTool`
+  then routes only that tool body through `MobileSandboxManager` and the existing
+  approval queue. No `sandbox` entry kind, second runtime or code loader is added.
+  MCP tool transport stays host-side because the isolated core has no network API.
+- Demand-based installation (`src/lib/plugins/demand.ts` and `demand-runtime.ts`)
+  is a planning layer over the same registry. It searches only the bundled
+  trusted catalog and user-configured MCP servers, validates manifest/trust/
+  compatibility/dependencies/permissions, and requires an `install` approval in
+  `PluginApprovalHost` before install/update/enable. It records usage in plugin
+  KV storage, disables only its own idle auto-installs, and never uninstalls.
 - Legacy `hooks` rows are data only. `runHookCode()` always throws, no hook code
   is compiled, and failed `executeHook()` results are ignored by the agent.
 - There is no downloaded code loader, notifications/credentials adapter, SDK

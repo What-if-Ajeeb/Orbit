@@ -1,3 +1,5 @@
+import type { SandboxProgramManifest } from '@/lib/sandbox/types';
+
 import type { PluginRegistry } from './registry';
 import type {
   PluginImplementation,
@@ -153,8 +155,8 @@ export const DIAGNOSTICS_MANIFEST: PluginManifest = seed({
   minimumOrbitVersion: '1.0.0',
   platformSupport: ALL_PLATFORMS,
   entryPoint: { kind: 'builtin', moduleId: 'orbit-diagnostics' },
-  permissions: ['ui.contribute'],
-  capabilities: ['ui.widgets', 'ui.settings', 'events.subscribe'],
+  permissions: ['ui.contribute', 'ai.invoke'],
+  capabilities: ['ui.widgets', 'ui.settings', 'events.subscribe', 'tools.ai'],
   routes: [{ id: 'home', screen: 'plugin-home', title: 'Plugin Diagnostics' }],
   dashboardWidgets: [
     {
@@ -178,6 +180,20 @@ export const DIAGNOSTICS_MANIFEST: PluginManifest = seed({
   updatePolicy: 'manual',
 });
 
+/** Data-only program executed in the isolated process, never as JavaScript. */
+const DIAGNOSTICS_ECHO_PROGRAM: SandboxProgramManifest = {
+  pluginId: DIAGNOSTICS_PLUGIN_ID,
+  version: DIAGNOSTICS_MANIFEST.version,
+  program: {
+    version: 1,
+    instructions: [
+      { op: 'load', key: 'input', field: 'value' },
+      { op: 'emit', key: 'content' },
+      { op: 'return' },
+    ],
+  },
+};
+
 const diagnosticsImplementation: PluginImplementation = {
   hooks: {
     onStart() {
@@ -193,6 +209,18 @@ const diagnosticsImplementation: PluginImplementation = {
   activate(sdk) {
     sdk.events.subscribe('plugin.error', (event) => {
       sdk.logger.warn('Plugin error observed.', event.payload);
+    });
+
+    void sdk.tools.register({
+      name: 'sandbox_echo',
+      description: 'Echo a short value through the isolated Android sandbox.',
+      parameters: {
+        type: 'object',
+        properties: { value: { type: 'string' } },
+        required: ['value'],
+        additionalProperties: false,
+      },
+      program: DIAGNOSTICS_ECHO_PROGRAM,
     });
   },
 };

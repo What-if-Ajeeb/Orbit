@@ -139,3 +139,32 @@ fn arithmetic_overflow_is_a_controlled_error() {
         .iter()
         .any(|error| error.contains("overflowed")));
 }
+
+#[test]
+fn version_must_have_exactly_three_numeric_parts() {
+    for bad in ["", "1", "1.2", "1.2.3.4", "1..3", "a.b.c", "1.2.x"] {
+        let program = json!({
+            "pluginId": "orbit.example.sandbox",
+            "version": bad,
+            "program": { "version": 1, "instructions": [{ "op": "return" }] }
+        });
+        assert!(
+            !validate_manifest(&program, &default_policy()).ok,
+            "version {bad:?} should be rejected"
+        );
+    }
+}
+
+#[test]
+fn describe_reports_every_enforced_limit() {
+    let response: serde_json::Value =
+        serde_json::from_str(&dispatch_json(r#"{"id":"9","method":"describe","params":{}}"#))
+            .expect("describe returns JSON");
+    let limits = &response["result"]["limits"];
+
+    assert_eq!(limits["maxInstructions"], 256);
+    assert_eq!(limits["maxStackItems"], 64);
+    assert_eq!(limits["maxOutputBytes"], 16 * 1024);
+    assert_eq!(limits["maxValueBytes"], 8 * 1024);
+    assert_eq!(limits["maxEnvelopeBytes"], 64 * 1024);
+}

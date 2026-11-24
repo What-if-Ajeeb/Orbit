@@ -28,6 +28,7 @@ import {
   namespacedPluginToolName,
   pluginToolNamespace,
   type PluginToolHost,
+  type SandboxToolExecutor,
 } from './tools';
 import {
   PLUGIN_PERMISSIONS,
@@ -193,6 +194,8 @@ export type PluginRegistryOptions = {
     pluginName: string;
     toolName: string;
   }) => Promise<boolean>;
+  /** Required only for tools that declare a data-only sandbox program. */
+  sandboxExecutor?: SandboxToolExecutor;
   logger?: (message: string, detail?: unknown) => void;
 };
 
@@ -1786,6 +1789,18 @@ export class PluginRegistry {
       throw new PluginRegistryError('No tool host is available for plugin tools.');
     }
 
+    if (!definition.program && !definition.execute) {
+      throw new PluginRegistryError(
+        `Tool "${definition.name}" needs either an implementation or a sandbox program.`
+      );
+    }
+
+    if (definition.program && !this.options.sandboxExecutor) {
+      throw new PluginRegistryError(
+        'Sandbox-backed plugin tools require a sandbox executor in the platform.'
+      );
+    }
+
     if (!manifest.permissions.includes('ai.invoke')) {
       throw new PluginRegistryError(
         `Plugin "${pluginId}" must request "ai.invoke" before registering tools.`
@@ -1856,6 +1871,7 @@ export class PluginRegistry {
         });
       },
       log: (message, detail) => this.log(message, detail),
+      sandbox: this.options.sandboxExecutor,
     });
 
     this.options.toolHost.register(tool);

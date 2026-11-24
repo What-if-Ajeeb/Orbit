@@ -104,7 +104,9 @@ No hook script behavior is migrated or executed.
 - No legacy executable plugin code, overlay or hook script is imported.
 - No legacy permission grants are imported from old rows.
 - No remote catalog entries, marketplace subscriptions or downloaded plugin
-  bundles are migrated.
+  bundles are migrated. On-demand discovery searches only the bundled trusted
+  catalog and configured MCP servers; it never imports legacy or unknown
+  manifests.
 - No declarative third-party plugin from `plugins/` is auto-installed; it must
   be in the bundled catalog and installed through the UI.
 - Legacy `plugins` rows themselves are not deleted.

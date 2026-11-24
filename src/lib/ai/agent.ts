@@ -6,6 +6,7 @@ import {
   isToolAllowedForAgent,
   loadAgentConfig,
   newToolEventId,
+  saveAgentConfig,
   type AgentConfig,
 } from '../agent-settings';
 import type { ToolExecutionEvent } from '../chat-store';
@@ -94,6 +95,78 @@ function parseToolArguments(raw: string): Record<string, unknown> {
   } catch {
     return {};
   }
+}
+
+type PluginActivation = {
+  action: string;
+  pluginId: string;
+  toolNames: string[];
+};
+
+function parsePluginActivation(content: string): PluginActivation | null {
+  try {
+    const parsed = JSON.parse(content) as Record<string, unknown>;
+
+    if (
+      parsed.ok !== true ||
+      typeof parsed.pluginId !== 'string' ||
+      typeof parsed.action !== 'string' ||
+      !Array.isArray(parsed.toolNames)
+    ) {
+      return null;
+    }
+
+    return {
+      action: parsed.action,
+      pluginId: parsed.pluginId.slice(0, 120),
+      toolNames: parsed.toolNames
+        .filter((name): name is string => typeof name === 'string')
+        .map((name) => name.slice(0, 120))
+        .slice(0, 100),
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * A successful install includes an explicit plugin approval. In selected-mode
+ * agents, grant only the exact tools that the approved plugin registered; do
+ * not broaden access by wildcard or touch unrelated agent settings.
+ */
+async function grantApprovedPluginTools(
+  db: SQLiteDatabase,
+  config: AgentConfig,
+  activation: PluginActivation
+): Promise<AgentConfig> {
+  if (config.toolAccessMode === 'all' || activation.toolNames.length === 0) {
+    return config;
+  }
+
+  const registered = new Set(
+    agentToolRegistry
+      .descriptors()
+      .filter((descriptor) => descriptor.meta?.pluginId === activation.pluginId)
+      .map((descriptor) => descriptor.definition.name)
+  );
+  const approved = activation.toolNames.filter(
+    (name) =>
+      (name.startsWith('plugin__') || name.startsWith('mcp__')) && registered.has(name)
+  );
+
+  if (approved.length === 0) {
+    return config;
+  }
+
+  const next = Array.from(new Set([...config.allowedTools, ...approved])).sort((a, b) =>
+    a.localeCompare(b)
+  );
+
+  if (next.length === config.allowedTools.length) {
+    return config;
+  }
+
+  return saveAgentConfig(db, config.userId, config.agentId, { allowedTools: next });
 }
 
 export async function runAgent(input: AgentInput): Promise<AgentResult> {
@@ -239,7 +312,7 @@ export async function runAgent(input: AgentInput): Promise<AgentResult> {
     });
   }
 
-  const toolDefinitions = filterAllowedTools(listAgentTools(), agentConfig);
+  let toolDefinitions = filterAllowedTools(listAgentTools(), agentConfig);
   const traces: string[] = [];
   const toolEvents: ToolExecutionEvent[] = [];
   const artifactRefs = new Map<string, ArtifactRef>();
@@ -391,6 +464,15 @@ export async function runAgent(input: AgentInput): Promise<AgentResult> {
         const success = secured.success;
         const error = secured.error;
         const denied = !secured.permission.allowed;
+
+        if (success && call.name === 'orbit_plugin_request') {
+          const activation = parsePluginActivation(content);
+
+          if (activation && activation.action !== 'reused') {
+            agentConfig = await grantApprovedPluginTools(db, agentConfig, activation);
+            toolDefinitions = filterAllowedTools(listAgentTools(), agentConfig);
+          }
+        }
         const status: ToolExecutionEvent['status'] = denied ? 'denied' : success ? 'success' : 'error';
         const finished: ToolExecutionEvent = {
           ...running,

@@ -30,8 +30,8 @@ class OrbitMobileSandboxModule : Module() {
   private val waiters = ArrayDeque<(Messenger) -> Unit>()
   private val sequence = AtomicInteger(0)
 
-  private var messenger: Messenger? = null
-  private var connection: ServiceConnection? = null
+  @Volatile private var messenger: Messenger? = null
+  @Volatile private var connection: ServiceConnection? = null
 
   private val replyHandler = Handler(Looper.getMainLooper()) { message ->
     handleReply(message)
@@ -117,7 +117,7 @@ class OrbitMobileSandboxModule : Module() {
         val serviceConnection = object : ServiceConnection {
           override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
             if (service == null) {
-              connection = null
+              releaseConnection()
               rejectAll("SANDBOX_BIND_FAILED", "Sandbox service binder was null.")
               return
             }
@@ -132,9 +132,21 @@ class OrbitMobileSandboxModule : Module() {
           }
 
           override fun onServiceDisconnected(name: ComponentName?) {
-            connection = null
+            // The binding itself stays alive and Android reconnects it because of
+            // BIND_AUTO_CREATE. Keep `connection` so the next call does not create a
+            // second, leaked binding; only the dead messenger is dropped.
             messenger = null
             rejectAll("SANDBOX_DISCONNECTED", "Sandbox service disconnected.")
+          }
+
+          override fun onBindingDied(name: ComponentName?) {
+            releaseConnection()
+            rejectAll("SANDBOX_BIND_FAILED", "Sandbox service binding died.")
+          }
+
+          override fun onNullBinding(name: ComponentName?) {
+            releaseConnection()
+            rejectAll("SANDBOX_BIND_FAILED", "Sandbox service returned no binder.")
           }
         }
 
@@ -145,13 +157,18 @@ class OrbitMobileSandboxModule : Module() {
           Context.BIND_AUTO_CREATE,
         )
         if (!bound) {
-          connection = null
+          releaseConnection()
           rejectAll("SANDBOX_BIND_FAILED", "Unable to bind sandbox service.")
           return@synchronized
         }
       }
 
-      waiters.add { service -> send(service, id, envelope, promise) }
+      waiters.add { service ->
+        // The call may already have timed out or been rejected while it was queued.
+        if (pendingCalls.containsKey(id)) {
+          send(service, id, envelope, promise)
+        }
+      }
     }
   }
 
@@ -193,14 +210,19 @@ class OrbitMobileSandboxModule : Module() {
     }
   }
 
-  private fun shutdownInternal() {
+  /** Unbinds the service (if bound) and forgets the connection and messenger. */
+  private fun releaseConnection() {
     val context = appContext.reactContext?.applicationContext
     val serviceConnection = connection
+    connection = null
+    messenger = null
     if (context != null && serviceConnection != null) {
       runCatching { context.unbindService(serviceConnection) }
     }
-    connection = null
-    messenger = null
+  }
+
+  private fun shutdownInternal() {
+    releaseConnection()
     rejectAll("SANDBOX_SHUT_DOWN", "Sandbox was shut down before the call completed.")
   }
 }

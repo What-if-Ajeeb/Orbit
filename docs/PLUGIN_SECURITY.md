@@ -72,6 +72,29 @@ host-neutral queue in `src/lib/plugins/approvals.ts`:
 update-time permission requests through this host. The UI does not auto-approve
 user-facing grants.
 
+The same queue handles `kind: 'install'` requests from the demand resolver. The
+modal shows the capability reason, version, trust label, planned steps, required
+dependencies, sensitive permissions and sandbox warning. The action is
+**Install & grant** or **Update & grant**; **Deny**, timeout or unmount leaves the
+plugin untouched. There is no bulk approval.
+
+## Demand installation boundaries
+
+`src/lib/plugins/demand.ts` never downloads code or manifests. It searches only
+the bundled trusted catalog (verified `official`/`verified` publishers) and
+enabled, user-configured MCP servers. A candidate must pass `validateManifest()`,
+compatibility checks, dependency version checks, and an entry-point trust check
+before it can reach the approval queue. `orbit_plugin_request` cannot bypass that
+queue: the install/update/enable and scoped permission grant happen only after a
+`true` approval result.
+
+Both agent tools are scoped in `secureExecuteTool()` through the existing
+Permission Manager. Discovery is read-only; requesting is marked as
+approval-gated and delegates the real decision to the plugin approval dialog.
+Successful activations grant only the exact `plugin__`/`mcp__` tools that the
+approved plugin registered, and `runAgent()` recomputes the tool list for the
+next round. If the approved plugin contributes no tool, the result says so.
+
 ## Tool execution boundaries
 
 Plugin tools are registered only while a plugin is `starting`/`running`, and
@@ -88,8 +111,10 @@ rejected. `buildPluginAgentTool()` in `src/lib/plugins/tools.ts` enforces:
 
 `cordis_plugin_list`, `cordis_plugin_inspect` and
 `cordis_plugin_permission_audit` in `src/lib/cordis-tools.ts` are read-only.
-There are no agent tools that install plugins, approve permissions or execute
-plugin code.
+`orbit_plugin_discover` and `orbit_plugin_request` do not install, approve or
+execute anything directly; a request is only a proposal to the user-gated plugin
+approval surface. No agent tool can grant a permission or execute plugin code
+without that surface and the runtime's per-call checks.
 
 MCP execution remains under `src/lib/mcp/registry.ts`. Each configured server
 is mirrored as a synthetic `mcp.server.<slug>` plugin. The plugin runtime
@@ -151,6 +176,14 @@ Every run requires an explicit `sandbox.execute` approval through
 native library, bind failure, or panic fails closed. The existing plugin platform
 still never loads downloaded JavaScript or legacy hook code.
 
+A reviewed built-in tool may supply a data-only `program` on its
+`PluginToolDefinition`. The sandbox is then the tool body: the same registry,
+namespacing, schema checks, timeouts and permission assertions still apply, and
+only the execution of the tool body moves into the isolated process. The
+diagnostics plugin's `sandbox_echo` tool is the reference implementation. There
+is no `sandbox` manifest entry kind and no dynamic code loader. MCP tools keep
+their host-side network bridge because the Rust core has no network API.
+
 This is a process boundary plus a bounded interpreter. It is **not** a claim of
 complete isolation from the Android kernel, Binder, or a device compromise, and it
 must not be used to justify running arbitrary third-party native or JavaScript code.
@@ -159,7 +192,7 @@ must not be used to justify running arbitrary third-party native or JavaScript c
 
 - Plugin containment is application-level for declarative plugins, not a sandbox
   around arbitrary native or JavaScript code. The Android mobile sandbox is a
-  separate, bounded, data-only execution path.
+  bounded, data-only execution path for tools that explicitly declare a program.
 - Triple-dot identifiers are namespaces, not verified publisher identities.
 - `publisher.verified` is advisory metadata. Trust levels do not grant
   permissions, but they do gate which entry-point kinds and plugin ids may be

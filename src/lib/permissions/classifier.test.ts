@@ -21,6 +21,24 @@ function classify(toolName: string) {
   });
 }
 
+describe('demand plugin tool classification', () => {
+  it('keeps discovery read-only and auto-approved', () => {
+    const action = classify('orbit_plugin_discover');
+
+    expect(action.risk).toBe('low');
+    expect(action.autoApprove).toBe(true);
+    expect(action.metadata).toMatchObject({ pluginDemand: true });
+  });
+
+  it('lets the plugin approval dialog decide installation and grants', () => {
+    const action = classify('orbit_plugin_request');
+
+    expect(action.risk).toBe('medium');
+    expect(action.autoApprove).toBe(true);
+    expect(action.metadata).toMatchObject({ pluginDemand: true, approvalGated: true });
+  });
+});
+
 describe('Google permission classification', () => {
   it('requires explicit approval for content reads', () => {
     const action = classify('google_gmail_read');
