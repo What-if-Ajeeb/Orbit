@@ -37,6 +37,8 @@ export type SandboxPolicyDescription = {
     maxInstructions: number;
     maxOutputBytes: number;
     maxValueBytes: number;
+    maxStackItems?: number;
+    maxEnvelopeBytes?: number;
   };
 };
 

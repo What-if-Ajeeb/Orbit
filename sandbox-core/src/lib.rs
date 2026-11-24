@@ -159,16 +159,19 @@ pub fn dispatch_json(raw: &str) -> String {
 }
 
 fn describe() -> Result<Value, (&'static str, String)> {
+    let policy = default_policy();
     Ok(json!({
         "coreVersion": CORE_VERSION,
-        "policyVersion": POLICY_VERSION,
+        "policyVersion": policy.version,
         "isolation": "android-isolated-process",
         "executionFormat": "deterministic-json-program",
-        "allowedOperations": default_policy().allowed_operations,
+        "allowedOperations": policy.allowed_operations,
         "limits": {
-            "maxInstructions": default_policy().max_instructions,
-            "maxOutputBytes": default_policy().max_output_bytes,
-            "maxValueBytes": default_policy().max_value_bytes,
+            "maxInstructions": policy.max_instructions,
+            "maxStackItems": policy.max_stack_items,
+            "maxOutputBytes": policy.max_output_bytes,
+            "maxValueBytes": policy.max_value_bytes,
+            "maxEnvelopeBytes": MAX_ENVELOPE_BYTES,
         },
     }))
 }
@@ -394,12 +397,12 @@ fn is_valid_version(version: &str) -> bool {
     if version.is_empty() || version.len() > VERSION_MAX_LEN {
         return false;
     }
-    let mut parts = version.split('.');
-    let valid = parts
-        .by_ref()
-        .take(3)
-        .all(|part| !part.is_empty() && part.chars().all(|ch| ch.is_ascii_digit()));
-    valid && parts.next().is_none()
+    // Exactly MAJOR.MINOR.PATCH. The previous check also accepted "1" and "1.2".
+    let parts: Vec<&str> = version.split('.').collect();
+    parts.len() == 3
+        && parts
+            .iter()
+            .all(|part| !part.is_empty() && part.chars().all(|ch| ch.is_ascii_digit()))
 }
 
 fn is_valid_emit_key(key: &str) -> bool {
@@ -497,7 +500,6 @@ pub fn execute_program(manifest: &Value, input: &Value, policy: &Policy) -> Exec
         executed += 1;
 
         match outcome {
-            Ok(Some(_)) if op == "return" => break,
             Ok(_) => {}
             Err(message) => {
                 errors.push(format!("Instruction {index} failed: {message}"));
