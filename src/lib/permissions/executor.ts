@@ -4,6 +4,7 @@ import { toolFail, type ToolExecution } from '../ai/tool-registry';
 import type { PolicyDecision } from '../policy';
 import type {
   AgentIdentity,
+  ClassifiedPermissionAction,
   PairedDeviceRecord,
   PermissionCategory,
   PermissionDenialReason,
@@ -13,10 +14,23 @@ import { ensureAndroidRuntimePermission } from './android';
 import { classifyToolAction } from './classifier';
 import { blockedCommandReason, validatePath } from './command-policy';
 import { listPairedDevices } from './devices';
+import {
+  executionLimitFor,
+  ToolLimitError,
+  withToolLimit,
+  type ToolFailureCode,
+} from './execution-limit';
+import {
+  formatPipeline,
+  ToolExecutionPipeline,
+  type ToolPipelineSnapshot,
+} from './execution-pipeline';
 import { permissionManager } from './manager';
 import { truncate } from './redact';
 
 type JsonObject = Record<string, unknown>;
+
+export type { ToolFailureCode } from './execution-limit';
 
 export type SecureToolExecution = {
   success: boolean;
@@ -24,11 +38,15 @@ export type SecureToolExecution = {
   trace: string;
   durationMs: number;
   error?: string;
+  /** Structured machine-readable failure, when the limit stopped the call. */
+  errorCode?: ToolFailureCode;
+  /** Ordered, one-way record of the guards that ran for this call. */
+  pipeline: ToolPipelineSnapshot;
   permission: {
     requestId: string | null;
     allowed: boolean;
     via?: string;
-    reason?: string;
+    reason?: PermissionDenialReason;
     risk: RiskLevel;
     category: PermissionCategory;
   };
@@ -48,15 +66,12 @@ type SecureToolInput = {
     ruleId: string | null;
     reason?: string;
   };
-  execute: () => Promise<ToolExecution>;
+  /** Tool-declared cooperative limit; the classifier default is used if absent. */
+  timeoutMs?: number;
+  /** User stop / navigation signal. Aborting denies the in-flight call. */
+  signal?: AbortSignal;
+  execute: (signal: AbortSignal) => Promise<ToolExecution>;
 };
-
-class ExecutionTimeoutError extends Error {
-  constructor(timeoutMs: number) {
-    super(`Execution timed out after ${Math.round(timeoutMs / 1000)}s.`);
-    this.name = 'ExecutionTimeoutError';
-  }
-}
 
 function parseArguments(rawArguments: string): JsonObject | null {
   try {
@@ -69,35 +84,6 @@ function parseArguments(rawArguments: string): JsonObject | null {
   }
 }
 
-function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new ExecutionTimeoutError(timeoutMs)), timeoutMs);
-
-    promise.then(
-      (value) => {
-        clearTimeout(timer);
-        resolve(value);
-      },
-      (error: unknown) => {
-        clearTimeout(timer);
-        reject(error);
-      }
-    );
-  });
-}
-
-function executionTimeoutFor(category: PermissionCategory): number {
-  if (category === 'computer_access' || category === 'terminal_commands') {
-    return 60_000;
-  }
-
-  if (category === 'background_automation' || category === 'browser_automation') {
-    return 45_000;
-  }
-
-  return 20_000;
-}
-
 function commandFrom(args: JsonObject): string {
   const value = args.command ?? args.cmd ?? args.script ?? args.shell;
   return typeof value === 'string' ? value.trim() : '';
@@ -108,19 +94,30 @@ function pathFrom(args: JsonObject): string {
   return typeof value === 'string' ? value.trim() : '';
 }
 
-function deniedResult(input: SecureToolInput, reason: PermissionDenialReason, message: string, requestId: string | null): SecureToolExecution {
+function deniedResult(
+  input: SecureToolInput,
+  reason: PermissionDenialReason,
+  message: string,
+  requestId: string | null,
+  pipeline: ToolExecutionPipeline,
+  action?: ClassifiedPermissionAction
+): SecureToolExecution {
+  pipeline.deny(reason, message);
+  pipeline.finish();
+
   return {
     success: false,
     content: toolFail(message),
     trace: `DENIED ${input.toolName}`,
     durationMs: 0,
     error: message,
+    pipeline: pipeline.snapshot(),
     permission: {
       requestId,
       allowed: false,
       reason,
-      risk: 'medium',
-      category: 'background_automation',
+      risk: action?.risk ?? 'medium',
+      category: action?.category ?? 'background_automation',
     },
   };
 }
@@ -129,10 +126,15 @@ function deniedResult(input: SecureToolInput, reason: PermissionDenialReason, me
  * The single execution boundary for every agent tool call. Nothing protected
  * runs unless the Permission Manager issued a fresh, scoped authorization and
  * that authorization is revalidated immediately before execution.
+ *
+ * Stages are monotonic: classify → authorize → pre-execute checks → guard →
+ * execute → post-execute → finalize. A denial is never reversible and a
+ * consumed one-time grant can never authorize a second execution.
  */
 export async function secureExecuteTool(input: SecureToolInput): Promise<SecureToolExecution> {
   permissionManager.attach(input.db);
 
+  const pipeline = new ToolExecutionPipeline(input.toolName);
   const args = parseArguments(input.rawArguments);
 
   if (!args) {
@@ -140,7 +142,8 @@ export async function secureExecuteTool(input: SecureToolInput): Promise<SecureT
       input,
       'invalid_request',
       'Arguments must be a JSON object. Nothing was executed.',
-      null
+      null,
+      pipeline
     );
   }
 
@@ -162,6 +165,7 @@ export async function secureExecuteTool(input: SecureToolInput): Promise<SecureT
     projectLabel: input.projectLabel,
     devices,
   });
+  pipeline.enter('classify', `category=${action.category} risk=${action.risk}`);
 
   if (action.category === 'computer_access' && devices.length === 0) {
     const message =
@@ -177,20 +181,7 @@ export async function secureExecuteTool(input: SecureToolInput): Promise<SecureT
       detail: message,
     });
 
-    return {
-      success: false,
-      content: toolFail(message),
-      trace: `BLOCKED ${input.toolName} · no paired computer`,
-      durationMs: 0,
-      error: message,
-      permission: {
-        requestId: null,
-        allowed: false,
-        reason: 'invalid_request',
-        risk: action.risk,
-        category: action.category,
-      },
-    };
+    return deniedResult(input, 'invalid_request', message, null, pipeline, action);
   }
 
   const outcome = await permissionManager.requestToolPermission({
@@ -201,23 +192,19 @@ export async function secureExecuteTool(input: SecureToolInput): Promise<SecureT
   });
 
   if (!outcome.allowed) {
-    return {
-      success: false,
-      content: toolFail(outcome.message),
-      trace: `DENIED ${input.toolName}`,
-      durationMs: 0,
-      error: outcome.message,
-      permission: {
-        requestId: outcome.request?.id ?? null,
-        allowed: false,
-        reason: outcome.reason,
-        risk: action.risk,
-        category: action.category,
-      },
-    };
+    return deniedResult(
+      input,
+      outcome.reason,
+      outcome.message,
+      outcome.request?.id ?? null,
+      pipeline,
+      action
+    );
   }
 
+  pipeline.enter('authorize', outcome.via);
   const authorization = outcome.authorization;
+  pipeline.enter('pre_execute');
 
   if (
     action.category === 'camera_microphone' ||
@@ -232,20 +219,14 @@ export async function secureExecuteTool(input: SecureToolInput): Promise<SecureT
         'android_permission_denied',
         android.message
       );
-      return {
-        success: false,
-        content: toolFail(android.message),
-        trace: `BLOCKED ${input.toolName} · Android permission`,
-        durationMs: 0,
-        error: android.message,
-        permission: {
-          requestId: outcome.request.id,
-          allowed: false,
-          reason: 'android_permission_denied',
-          risk: action.risk,
-          category: action.category,
-        },
-      };
+      return deniedResult(
+        input,
+        'android_permission_denied',
+        android.message,
+        outcome.request.id,
+        pipeline,
+        action
+      );
     }
   }
 
@@ -257,20 +238,7 @@ export async function secureExecuteTool(input: SecureToolInput): Promise<SecureT
 
     if (blocked) {
       await permissionManager.blockExecution(authorization, 'command_blocked', blocked);
-      return {
-        success: false,
-        content: toolFail(blocked),
-        trace: `BLOCKED ${input.toolName} · unsafe command`,
-        durationMs: 0,
-        error: blocked,
-        permission: {
-          requestId: outcome.request.id,
-          allowed: false,
-          reason: 'command_blocked',
-          risk: action.risk,
-          category: action.category,
-        },
-      };
+      return deniedResult(input, 'command_blocked', blocked, outcome.request.id, pipeline, action);
     }
   }
 
@@ -279,25 +247,20 @@ export async function secureExecuteTool(input: SecureToolInput): Promise<SecureT
 
     if (pathError) {
       await permissionManager.blockExecution(authorization, 'command_blocked', pathError);
-      return {
-        success: false,
-        content: toolFail(pathError),
-        trace: `BLOCKED ${input.toolName} · path restriction`,
-        durationMs: 0,
-        error: pathError,
-        permission: {
-          requestId: outcome.request.id,
-          allowed: false,
-          reason: 'command_blocked',
-          risk: action.risk,
-          category: action.category,
-        },
-      };
+      return deniedResult(
+        input,
+        'command_blocked',
+        pathError,
+        outcome.request.id,
+        pipeline,
+        action
+      );
     }
   }
 
   // Revalidate the authorization immediately before handing control to the
   // tool. This consumes one-time grants and checks emergency stop again.
+  pipeline.enter('guard');
   const validation = await permissionManager.beginExecution(authorization, {
     agentId: input.agent.id,
     toolName: input.toolName,
@@ -305,35 +268,41 @@ export async function secureExecuteTool(input: SecureToolInput): Promise<SecureT
   });
 
   if (!validation.ok) {
-    return {
-      success: false,
-      content: toolFail(validation.message),
-      trace: `BLOCKED ${input.toolName}`,
-      durationMs: 0,
-      error: validation.message,
-      permission: {
-        requestId: outcome.request.id,
-        allowed: false,
-        reason: validation.reason,
-        risk: action.risk,
-        category: action.category,
-      },
-    };
+    return deniedResult(
+      input,
+      validation.reason,
+      validation.message,
+      outcome.request.id,
+      pipeline,
+      action
+    );
   }
 
+  pipeline.markExecuted();
   const start = Date.now();
-  const timeoutMs = executionTimeoutFor(action.category);
+  const timeoutMs = executionLimitFor(input.timeoutMs, action);
 
   try {
-    const execution = await withTimeout(input.execute(), timeoutMs);
+    const execution = await withToolLimit(
+      (toolSignal) => input.execute(toolSignal),
+      { timeoutMs, signal: input.signal }
+    );
     const durationMs = Date.now() - start;
-    await permissionManager.finishExecution(authorization, true);
+    pipeline.enter('post_execute');
+    await permissionManager.finishExecution(
+      authorization,
+      true,
+      undefined,
+      formatPipeline(pipeline.snapshot())
+    );
+    pipeline.finish();
 
     return {
       success: true,
       content: execution.content,
       trace: execution.trace,
       durationMs,
+      pipeline: pipeline.snapshot(),
       permission: {
         requestId: outcome.request.id,
         allowed: true,
@@ -344,25 +313,43 @@ export async function secureExecuteTool(input: SecureToolInput): Promise<SecureT
     };
   } catch (error) {
     const durationMs = Date.now() - start;
-    const message =
-      error instanceof ExecutionTimeoutError
+    const limited = error instanceof ToolLimitError ? error : null;
+    const message = limited
+      ? limited.message
+      : error instanceof Error && error.message
         ? error.message
-        : error instanceof Error
-          ? error.message
-          : 'Tool execution failed.';
+        : 'Tool execution failed.';
+    const reason: PermissionDenialReason | undefined = limited
+      ? limited.code === 'TOOL_TIMEOUT'
+        ? 'execution_timeout'
+        : 'user_cancelled'
+      : undefined;
+    const trace = limited
+      ? `${limited.code === 'TOOL_TIMEOUT' ? 'TIMEOUT' : 'CANCELLED'} ${input.toolName}`
+      : `FAILED ${input.toolName}`;
 
-    await permissionManager.finishExecution(authorization, false, truncate(message, 300));
+    pipeline.enter('post_execute', limited?.code ?? 'error');
+    pipeline.finish();
+    await permissionManager.finishExecution(
+      authorization,
+      false,
+      truncate(message, 300),
+      formatPipeline(pipeline.snapshot())
+    );
 
     return {
       success: false,
       content: toolFail(message),
-      trace: `FAILED ${input.toolName}`,
+      trace,
       durationMs,
       error: message,
+      ...(limited ? { errorCode: limited.code } : {}),
+      pipeline: pipeline.snapshot(),
       permission: {
         requestId: outcome.request.id,
-        allowed: true,
-        via: outcome.via,
+        // The permission itself was granted; a limit stopped the tool body.
+        allowed: !limited,
+        ...(reason ? { reason } : {}),
         risk: action.risk,
         category: action.category,
       },
@@ -376,12 +363,17 @@ export function secureDeniedResult(
   category: PermissionCategory = 'background_automation',
   risk: RiskLevel = 'medium'
 ): SecureToolExecution {
+  const pipeline = new ToolExecutionPipeline(toolName);
+  pipeline.deny('policy_denied', message);
+  pipeline.finish();
+
   return {
     success: false,
     content: toolFail(message),
     trace: `DENIED ${toolName}`,
     durationMs: 0,
     error: message,
+    pipeline: pipeline.snapshot(),
     permission: {
       requestId: null,
       allowed: false,

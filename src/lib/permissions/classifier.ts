@@ -68,6 +68,22 @@ const BACKGROUND_PATTERN = /(?:background|cron|schedule|automation|job|queue)/i;
 
 const RISK_ORDER: Record<RiskLevel, number> = { low: 0, medium: 1, high: 2 };
 
+/**
+ * Default cooperative execution limit for a classified action. A tool may
+ * declare a shorter limit; the executor clamps both to a safe maximum.
+ */
+export function executionTimeoutForCategory(category: PermissionCategory): number {
+  if (category === 'computer_access' || category === 'terminal_commands') {
+    return 60_000;
+  }
+
+  if (category === 'background_automation' || category === 'browser_automation') {
+    return 45_000;
+  }
+
+  return 20_000;
+}
+
 function asString(value: unknown): string {
   return typeof value === 'string' ? value : '';
 }

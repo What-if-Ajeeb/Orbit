@@ -842,13 +842,15 @@ export class PermissionManager {
   async finishExecution(
     authorization: PermissionAuthorization,
     success: boolean,
-    error?: string
+    error?: string,
+    detail?: string
   ): Promise<void> {
     if (!this.store) {
       return;
     }
 
     const status = success ? 'completed' : 'failed';
+    const suffix = detail ? ` ${detail}` : '';
     await this.store.updateRequestStatus(authorization.requestId, status, null, Date.now());
     await this.audit({
       userId: authorization.userId,
@@ -861,8 +863,8 @@ export class PermissionManager {
       toolName: authorization.toolName,
       projectId: authorization.projectId,
       detail: success
-        ? `Execution completed for ${authorization.toolName}.`
-        : `Execution failed for ${authorization.toolName}: ${error ?? 'unknown error'}`,
+        ? `Execution completed for ${authorization.toolName}.${suffix}`
+        : `Execution failed for ${authorization.toolName}: ${error ?? 'unknown error'}.${suffix}`,
     });
   }
 

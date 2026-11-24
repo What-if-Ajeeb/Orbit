@@ -62,7 +62,8 @@ host-neutral queue in `src/lib/plugins/approvals.ts`:
 
 - one modal is shown at a time; later requests are queued;
 - **Allow** or **Deny** resolves only the pending request;
-- each request defaults to deny after 120 seconds;
+- each request defaults to deny after 120 seconds, an `AbortSignal`, or unmount;
+- a request id is passed to the caller and shown in the install dialog;
 - the service has a `denyAll()` method, but the current `PluginApprovalHost`
   does not call it on unmount; pending requests therefore expire by timeout
   instead of being rejected immediately;
@@ -73,10 +74,21 @@ update-time permission requests through this host. The UI does not auto-approve
 user-facing grants.
 
 The same queue handles `kind: 'install'` requests from the demand resolver. The
-modal shows the capability reason, version, trust label, planned steps, required
-dependencies, sensitive permissions and sandbox warning. The action is
-**Install & grant** or **Update & grant**; **Deny**, timeout or unmount leaves the
-plugin untouched. There is no bulk approval.
+modal shows the capability reason, a read-only inspection (exact plugin id,
+version, publisher and verification, registry, compatibility, ORBIT minimum,
+dependency states and warnings), planned steps, required dependencies, sensitive
+permissions and sandbox warning. The action is **Install & grant** or
+**Update & grant**; **Deny**, cancellation, timeout or unmount leaves the plugin
+untouched. There is no bulk approval.
+
+Every agent tool call also passes through one monotonic pipeline in
+`src/lib/permissions/executor.ts`: classify → authorize → pre-execute checks →
+guard → execute → post-execute → finalize. A denial cannot be reversed, a
+consumed one-time grant cannot authorize another run, and the pipeline snapshot
+is written to both the tool result and the permission audit. Tool bodies get one
+`AbortSignal` and one cooperative timer; a declared `timeoutMs` is clamped and
+otherwise falls back to the category default. A limit returns structured
+`TOOL_TIMEOUT` / `TOOL_CANCELLED` and records a failed execution.
 
 ## Demand installation boundaries
 

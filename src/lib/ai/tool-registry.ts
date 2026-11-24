@@ -33,6 +33,11 @@ export type AgentTool = {
   definition: LlmToolDefinition;
   /** Where the tool came from. Used by the harness and diagnostics. */
   meta?: AgentToolProvenance;
+  /**
+   * Cooperative execution limit in milliseconds. It is host metadata and is
+   * never sent to the model; the permission executor owns the timer.
+   */
+  timeoutMs?: number;
   execute: (
     context: AgentToolContext,
     args: Record<string, unknown>

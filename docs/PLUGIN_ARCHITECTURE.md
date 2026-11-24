@@ -130,10 +130,15 @@ testing, research, build, MCP), then searches only two trusted sources:
 Candidates are validated for manifest correctness, platform/version
 compatibility, publisher trust, dependency versions and permissions before a
 plan is produced. The plan names the exact install or update, required
-dependencies, permissions and sandbox need. `SmartPluginInstaller` then calls
-`PluginApprovalService.requestInstall()`; only an explicit approval allows the
-existing `PluginRegistry.install/update/enable` lifecycle to run. Denial,
-timeout or failure performs no install, grant or activation.
+dependencies, permissions and sandbox need, plus a read-only `inspection` of the
+validated manifest (id, version, publisher, compatibility, dependency states and
+warnings). `SmartPluginInstaller` then calls
+`PluginApprovalService.requestInstall()` with the inspection, a request-id
+callback and an abort signal; only an explicit approval allows the existing
+`PluginRegistry.install/update/enable` lifecycle to run. Denial, cancellation,
+timeout or failure performs no install, grant or activation. If activation fails
+after an install, only plugins created by that request are disabled as a
+compensating rollback; nothing is uninstalled.
 
 Installed running plugins are reused. Updates are applied from the trusted
 catalog with `PluginRegistry.update()` and its backup/rollback path. Demand
