@@ -14,11 +14,15 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { GlassBackdrop } from '@/components/GlassBackdrop';
-import { GlassView } from '@/components/GlassView';
 import { Button } from '@/components/Button';
 import { CompanionPairingModal } from '@/components/permissions/CompanionPairingModal';
+import { EmptyState } from '@/components/EmptyState';
+import { GlassBackdrop } from '@/components/GlassBackdrop';
+import { GlassView } from '@/components/GlassView';
 import { ScreenHeader } from '@/components/ScreenHeader';
+import { SettingsNavRow } from '@/components/SettingsNavRow';
+import { SettingsSection } from '@/components/SettingsSection';
+import { StatusPill, type StatusTone } from '@/components/StatusPill';
 import { useAppTheme, useStyles, type AppTheme } from '@/context/theme';
 import { useSession } from '@/context/auth';
 import { useSidebar } from '@/context/sidebar';
@@ -42,10 +46,11 @@ import {
 } from '@/lib/permissions';
 import { SafetyTrash } from '@/lib/safety/trash';
 import type { ActivityRecord, ActiveOperation } from '@/lib/safety/types';
-import { radius, spacing } from '@/theme';
+import { layout, radius, spacing, typography } from '@/theme';
 
 type IconName = keyof typeof Ionicons.glyphMap;
 type Tone = 'accent' | 'success' | 'warning' | 'danger' | 'muted';
+type Tab = 'overview' | 'activity' | 'grants' | 'audit';
 
 const REQUEST_META: Record<
   PermissionRequestStatus,
@@ -69,10 +74,10 @@ const GRANT_STATUS_META: Record<
   PermissionGrantRecord['status'],
   { label: string; tone: Tone }
 > = {
-  active: { label: 'ACTIVE', tone: 'success' },
-  consumed: { label: 'USED', tone: 'muted' },
-  expired: { label: 'EXPIRED', tone: 'muted' },
-  revoked: { label: 'REVOKED', tone: 'danger' },
+  active: { label: 'Active', tone: 'success' },
+  consumed: { label: 'Used', tone: 'muted' },
+  expired: { label: 'Expired', tone: 'muted' },
+  revoked: { label: 'Revoked', tone: 'danger' },
 };
 
 const AUDIT_META: Record<
@@ -121,8 +126,38 @@ const AUDIT_META: Record<
   agent_created: { label: 'Agent created', icon: 'sparkles-outline', tone: 'accent' },
 };
 
+const ACTIVITY_META: Record<
+  ActivityRecord['status'],
+  { label: string; icon: IconName; tone: Tone }
+> = {
+  running: { label: 'Running', icon: 'sync-outline', tone: 'accent' },
+  pending: { label: 'Awaiting approval', icon: 'time-outline', tone: 'warning' },
+  approved: { label: 'Approved, awaiting execution', icon: 'checkmark-outline', tone: 'accent' },
+  success: { label: 'Completed', icon: 'checkmark-circle-outline', tone: 'success' },
+  denied: { label: 'Denied', icon: 'close-circle-outline', tone: 'danger' },
+  failed: { label: 'Failed', icon: 'alert-circle-outline', tone: 'danger' },
+  cancelled: { label: 'Cancelled', icon: 'ban-outline', tone: 'muted' },
+  stopped: { label: 'Stopped', icon: 'stop-circle-outline', tone: 'warning' },
+  blocked: { label: 'Blocked', icon: 'shield-outline', tone: 'danger' },
+  unknown: { label: 'Unconfirmed', icon: 'help-circle-outline', tone: 'warning' },
+  restored: { label: 'Restored', icon: 'refresh-outline', tone: 'success' },
+};
+
+const OPERATION_TONES: Record<ActiveOperation['status'], Tone> = {
+  running: 'accent',
+  cancelling: 'warning',
+  stopped: 'warning',
+  completed: 'success',
+  failed: 'danger',
+  unknown: 'muted',
+};
+
 function iconOrFallback(name: string): IconName {
   return name in Ionicons.glyphMap ? (name as IconName) : 'shield-outline';
+}
+
+function statusTone(tone: Tone): StatusTone {
+  return tone === 'muted' ? 'neutral' : tone;
 }
 
 function toneColor(tone: Tone, colors: AppTheme['colors']): string {
@@ -181,6 +216,18 @@ function grantExpiryLabel(grant: PermissionGrantRecord): string {
   return `Expires ${formatDateTime(grant.expiresAt)}`;
 }
 
+function grantScopeLabel(scope: PermissionGrantRecord['scope']): string {
+  if (scope === 'once') {
+    return 'One-time approval';
+  }
+
+  if (scope === 'session') {
+    return 'This app session';
+  }
+
+  return 'Saved approval';
+}
+
 function shortFingerprint(value: string): string {
   if (value.length <= 24) {
     return value;
@@ -192,6 +239,15 @@ function shortFingerprint(value: string): string {
 function trashIdFor(entry: ActivityRecord): string | null {
   const trashId = entry.metadata.trashId;
   return typeof trashId === 'string' ? trashId : null;
+}
+
+function preferenceIdentity(preference: PermissionPreferenceRecord): string {
+  return [
+    preference.agentId,
+    preference.toolName,
+    preference.scopeKey,
+    preference.resourceKey,
+  ].join('|');
 }
 
 function StatTile({
@@ -211,57 +267,29 @@ function StatTile({
   return (
     <View style={styles.statTile}>
       <View style={[styles.statIcon, { backgroundColor: toneSoftColor(tone, colors) }]}>
-        <Ionicons name={icon} size={16} color={toneColor(tone, colors)} />
+        <Ionicons name={icon} size={15} color={toneColor(tone, colors)} />
       </View>
       <Text style={styles.statValue}>{value}</Text>
-      <Text style={styles.statLabel}>{label}</Text>
+      <Text style={styles.statLabel} numberOfLines={1}>
+        {label}
+      </Text>
     </View>
   );
 }
 
-function SectionHeading({
-  title,
-  caption,
-  action,
-  onAction,
-}: {
-  title: string;
-  caption?: string;
-  action?: string;
-  onAction?: () => void;
-}) {
+function SectionAction({ label, onPress }: { label: string; onPress: () => void }) {
   const { colors } = useAppTheme();
   const styles = useStyles(makeStyles);
 
   return (
-    <View style={styles.sectionHeading}>
-      <View style={styles.sectionHeadingText}>
-        <Text style={styles.sectionTitle}>{title}</Text>
-        {caption ? <Text style={styles.sectionCaption}>{caption}</Text> : null}
-      </View>
-      {action && onAction ? (
-        <Pressable
-          accessibilityRole="button"
-          onPress={onAction}
-          style={({ pressed }) => [styles.sectionAction, pressed && styles.pressed]}
-        >
-          <Text style={styles.sectionActionText}>{action}</Text>
-          <Ionicons name="chevron-forward" size={12} color={colors.accent} />
-        </Pressable>
-      ) : null}
-    </View>
-  );
-}
-
-function EmptyState({ icon, text }: { icon: IconName; text: string }) {
-  const { colors } = useAppTheme();
-  const styles = useStyles(makeStyles);
-
-  return (
-    <View style={styles.empty}>
-      <Ionicons name={icon} size={22} color={colors.textFaint} />
-      <Text style={styles.emptyText}>{text}</Text>
-    </View>
+    <Pressable
+      accessibilityRole="button"
+      onPress={onPress}
+      style={({ pressed }) => [styles.sectionAction, pressed && styles.pressed]}
+    >
+      <Text style={styles.sectionActionText}>{label}</Text>
+      <Ionicons name="chevron-forward" size={13} color={colors.accent} />
+    </Pressable>
   );
 }
 
@@ -277,19 +305,15 @@ function DeviceRow({
   const { colors } = useAppTheme();
   const styles = useStyles(makeStyles);
   const paired = device.status === 'paired';
+  const tone: Tone = paired ? 'success' : device.status === 'revoked' ? 'danger' : 'muted';
 
   return (
     <View style={styles.item}>
-      <View
-        style={[
-          styles.itemIcon,
-          { backgroundColor: paired ? colors.successSoft : colors.surfaceAlt },
-        ]}
-      >
+      <View style={[styles.itemIcon, { backgroundColor: toneSoftColor(tone, colors) }]}>
         <Ionicons
           name="desktop-outline"
           size={18}
-          color={paired ? colors.success : colors.textFaint}
+          color={toneColor(tone, colors)}
         />
       </View>
       <View style={styles.itemBody}>
@@ -297,21 +321,11 @@ function DeviceRow({
           <Text style={styles.itemTitle} numberOfLines={1}>
             {device.name}
           </Text>
-          <View
-            style={[
-              styles.statusPill,
-              { backgroundColor: paired ? colors.successSoft : colors.dangerSoft },
-            ]}
-          >
-            <Text
-              style={[
-                styles.statusPillText,
-                { color: paired ? colors.success : colors.danger },
-              ]}
-            >
-              {paired ? 'CONNECTED' : device.status.toUpperCase()}
-            </Text>
-          </View>
+          <StatusPill
+            label={paired ? 'Connected' : device.status === 'revoked' ? 'Revoked' : 'Offline'}
+            tone={statusTone(tone)}
+            showDot
+          />
         </View>
         <Text style={styles.itemMeta} numberOfLines={1}>
           {device.platform} · {device.endpoint}
@@ -321,7 +335,7 @@ function DeviceRow({
         </Text>
         <Text style={styles.itemMeta}>
           Paired {formatDateTime(device.pairedAt)}
-          {device.lastSeenAt ? ` · seen ${formatRelative(device.lastSeenAt)}` : ' · never used'}
+          {device.lastSeenAt ? ` · last seen ${formatRelative(device.lastSeenAt)}` : ' · never used'}
         </Text>
         {device.capabilities.length > 0 ? (
           <Text style={styles.itemMeta} numberOfLines={2}>
@@ -353,15 +367,23 @@ function DeviceRow({
 
 function AgentRow({
   entry,
+  capabilities,
+  lastActivity,
+  pendingApprovals,
   busy,
   onRevoke,
 }: {
   entry: AgentGrantSummary;
+  capabilities: string[];
+  lastActivity: number | null;
+  pendingApprovals: number;
   busy: boolean;
   onRevoke: () => void;
 }) {
   const { colors } = useAppTheme();
   const styles = useStyles(makeStyles);
+  const authorized = entry.permissions > 0;
+  const roleLabel = entry.agent.role.charAt(0).toUpperCase() + entry.agent.role.slice(1);
 
   return (
     <View style={styles.item}>
@@ -373,39 +395,36 @@ function AgentRow({
           <Text style={styles.itemTitle} numberOfLines={1}>
             {entry.agent.name}
           </Text>
-          <View
-            style={[
-              styles.statusPill,
-              {
-                backgroundColor:
-                  entry.permissions > 0 ? colors.successSoft : colors.surfaceAlt,
-              },
-            ]}
-          >
-            <Text
-              style={[
-                styles.statusPillText,
-                {
-                  color: entry.permissions > 0 ? colors.success : colors.textFaint,
-                },
-              ]}
-            >
-              {entry.permissions > 0 ? 'AUTHORIZED' : 'NO GRANTS'}
-            </Text>
-          </View>
+          <StatusPill
+            label={authorized ? `${entry.permissions} grant${entry.permissions === 1 ? '' : 's'}` : 'No grants'}
+            tone={authorized ? 'success' : 'neutral'}
+            showDot={authorized}
+          />
         </View>
         <Text style={styles.itemMeta} numberOfLines={2}>
-          {entry.agent.description}
+          {roleLabel} · {entry.agent.description}
         </Text>
-        <Text style={styles.itemMeta}>
-          {entry.permissions > 0
-            ? `${entry.permissions} saved permission${entry.permissions === 1 ? '' : 's'}${
-                entry.lastUsedAt ? ` · last used ${formatRelative(entry.lastUsedAt)}` : ' · never used'
-              }`
-            : 'No saved grants · asks every time'}
+        <Text style={styles.itemMeta} numberOfLines={2}>
+          {capabilities.length > 0
+            ? `Capability scope: ${capabilities.slice(0, 3).join(' · ')}${capabilities.length > 3 ? ` · +${capabilities.length - 3}` : ''}`
+            : 'Capability scope: none saved'}
         </Text>
+        <Text style={styles.itemMeta} numberOfLines={1}>
+          {entry.lastUsedAt
+            ? `Last grant used ${formatRelative(entry.lastUsedAt)}`
+            : 'No saved grant used yet'}
+          {lastActivity ? ` · Last activity ${formatRelative(lastActivity)}` : ''}
+        </Text>
+        {pendingApprovals > 0 ? (
+          <StatusPill
+            label={`${pendingApprovals} awaiting approval`}
+            tone="warning"
+            icon="time-outline"
+            style={styles.inlinePill}
+          />
+        ) : null}
       </View>
-      {entry.permissions > 0 ? (
+      {authorized ? (
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={`Revoke all permissions for ${entry.agent.name}`}
@@ -420,7 +439,7 @@ function AgentRow({
           {busy ? (
             <ActivityIndicator size="small" color={colors.danger} />
           ) : (
-            <Text style={styles.smallActionText}>Revoke</Text>
+            <Text style={styles.smallActionText}>Revoke all</Text>
           )}
         </Pressable>
       ) : null}
@@ -440,7 +459,7 @@ function GrantRow({
   const { colors } = useAppTheme();
   const styles = useStyles(makeStyles);
   const status = GRANT_STATUS_META[grant.status];
-  const risk = RISK_META[grant.risk];
+  const riskTone: Tone = RISK_META[grant.risk].colorToken;
 
   return (
     <View style={styles.item}>
@@ -457,44 +476,27 @@ function GrantRow({
         />
       </View>
       <View style={styles.itemBody}>
-        <Text style={styles.itemTitle} numberOfLines={2}>
-          {grant.title}
+        <View style={styles.itemTitleRow}>
+          <Text style={styles.itemTitle} numberOfLines={2}>
+            {grant.title}
+          </Text>
+          <StatusPill label={status.label} tone={statusTone(status.tone)} showDot />
+        </View>
+        <Text style={styles.itemMeta} numberOfLines={1}>
+          Agent: {grant.agentName} · Project: {grant.projectLabel}
         </Text>
         <Text style={styles.itemMeta} numberOfLines={1}>
-          {grant.agentName} · {grant.projectLabel}
+          Capability: {CATEGORY_META[grant.category].label} · Tool: {grant.toolName}
         </Text>
         <Text style={styles.itemMeta} numberOfLines={1}>
-          {grant.toolName} · {grant.scope === 'once' ? 'one-time' : grant.scope === 'session' ? 'session-only' : 'persistent'}
-        </Text>
-        <Text style={styles.itemMeta} numberOfLines={1}>
-          Resource: {grant.resourceKey}
+          Scope: {grantScopeLabel(grant.scope)} · Resource: {grant.resourceKey}
         </Text>
         <View style={styles.chipRow}>
-          <View
-            style={[
-              styles.statusPill,
-              { backgroundColor: toneSoftColor(status.tone, colors) },
-            ]}
-          >
-            <Text style={[styles.statusPillText, { color: toneColor(status.tone, colors) }]}>
-              {status.label}
-            </Text>
-          </View>
-          <View
-            style={[
-              styles.statusPill,
-              { backgroundColor: toneSoftColor(risk.colorToken, colors) },
-            ]}
-          >
-            <Text
-              style={[
-                styles.statusPillText,
-                { color: toneColor(risk.colorToken, colors) },
-              ]}
-            >
-              {risk.shortLabel}
-            </Text>
-          </View>
+          <StatusPill
+            label={RISK_META[grant.risk].shortLabel}
+            tone={statusTone(riskTone)}
+            icon="shield-outline"
+          />
           <Text style={styles.grantUsage}>
             {grant.useCount} use{grant.useCount === 1 ? '' : 's'}
           </Text>
@@ -528,6 +530,7 @@ function RequestRow({ request }: { request: PermissionRequestRecord }) {
   const { colors } = useAppTheme();
   const styles = useStyles(makeStyles);
   const meta = REQUEST_META[request.status];
+  const riskTone: Tone = RISK_META[request.risk].colorToken;
 
   return (
     <View style={styles.item}>
@@ -535,25 +538,28 @@ function RequestRow({ request }: { request: PermissionRequestRecord }) {
         <Ionicons name={meta.icon} size={18} color={toneColor(meta.tone, colors)} />
       </View>
       <View style={styles.itemBody}>
-        <Text style={styles.itemTitle} numberOfLines={2}>
-          {request.title}
+        <View style={styles.itemTitleRow}>
+          <Text style={styles.itemTitle} numberOfLines={2}>
+            {request.title}
+          </Text>
+          <StatusPill label={meta.label} tone={statusTone(meta.tone)} showDot />
+        </View>
+        <Text style={styles.itemMeta} numberOfLines={1}>
+          Agent: {request.agentName} · Project: {request.projectLabel}
         </Text>
         <Text style={styles.itemMeta} numberOfLines={1}>
-          {request.agentName} · {request.projectLabel}
+          Capability: {CATEGORY_META[request.category].label} · Tool: {request.toolName}
         </Text>
-        <Text style={styles.itemMeta}>
-          {request.risk.toUpperCase()} risk · {formatRelative(request.createdAt)}
+        <Text style={styles.itemMeta} numberOfLines={1}>
+          Resource: {request.resourceKey} · {formatRelative(request.createdAt)}
         </Text>
-      </View>
-      <View
-        style={[
-          styles.statusPill,
-          { backgroundColor: toneSoftColor(meta.tone, colors) },
-        ]}
-      >
-        <Text style={[styles.statusPillText, { color: toneColor(meta.tone, colors) }]}>
-          {meta.label}
-        </Text>
+        <View style={styles.chipRow}>
+          <StatusPill
+            label={RISK_META[request.risk].shortLabel}
+            tone={statusTone(riskTone)}
+            icon="shield-outline"
+          />
+        </View>
       </View>
     </View>
   );
@@ -576,26 +582,15 @@ function AuditRow({ entry }: { entry: PermissionAuditRecord }) {
         </View>
         <Text style={styles.auditDetail}>{entry.detail}</Text>
       </View>
+      {entry.risk ? (
+        <StatusPill
+          label={RISK_META[entry.risk].label}
+          tone={RISK_META[entry.risk].colorToken}
+        />
+      ) : null}
     </View>
   );
 }
-
-const ACTIVITY_META: Record<
-  ActivityRecord['status'],
-  { label: string; icon: IconName; tone: Tone }
-> = {
-  running: { label: 'Running', icon: 'sync-outline', tone: 'accent' },
-  pending: { label: 'Awaiting approval', icon: 'time-outline', tone: 'warning' },
-  approved: { label: 'Approved, awaiting execution', icon: 'checkmark-outline', tone: 'accent' },
-  success: { label: 'Completed', icon: 'checkmark-circle-outline', tone: 'success' },
-  denied: { label: 'Denied', icon: 'close-circle-outline', tone: 'danger' },
-  failed: { label: 'Failed', icon: 'alert-circle-outline', tone: 'danger' },
-  cancelled: { label: 'Cancelled', icon: 'ban-outline', tone: 'muted' },
-  stopped: { label: 'Stopped', icon: 'stop-circle-outline', tone: 'warning' },
-  blocked: { label: 'Blocked', icon: 'shield-outline', tone: 'danger' },
-  unknown: { label: 'Unconfirmed', icon: 'help-circle-outline', tone: 'warning' },
-  restored: { label: 'Restored', icon: 'refresh-outline', tone: 'success' },
-};
 
 function ActivityRow({
   entry,
@@ -618,21 +613,29 @@ function ActivityRow({
         <Ionicons name={meta.icon} size={18} color={toneColor(meta.tone, colors)} />
       </View>
       <View style={styles.itemBody}>
-        <Text style={styles.itemTitle} numberOfLines={2}>
-          {entry.action}
-        </Text>
+        <View style={styles.itemTitleRow}>
+          <Text style={styles.itemTitle} numberOfLines={2}>
+            {entry.action}
+          </Text>
+          <StatusPill label={meta.label} tone={statusTone(meta.tone)} showDot />
+        </View>
         <Text style={styles.itemMeta} numberOfLines={1}>
-          {formatDateTime(entry.createdAt)} · {entry.agentName}
+          {formatDateTime(entry.createdAt)} · Agent: {entry.agentName} · {entry.toolName}
         </Text>
         {entry.resourceLabel ? (
           <Text style={styles.itemMeta} numberOfLines={1}>
             Resource: {entry.resourceLabel}
           </Text>
         ) : null}
-        <Text style={styles.itemMeta} numberOfLines={1}>
-          {entry.permissionUsed || 'No permission used'} · {meta.label}
-          {entry.external ? ' · external' : entry.reversible ? ' · reversible' : ''}
-        </Text>
+        <View style={styles.chipRow}>
+          <StatusPill label={entry.permissionUsed || 'No permission used'} tone="neutral" />
+          {entry.external ? (
+            <StatusPill label="External" tone="warning" icon="cloud-outline" />
+          ) : null}
+          {entry.reversible ? (
+            <StatusPill label="Reversible" tone="success" icon="refresh-outline" />
+          ) : null}
+        </View>
         {outcome ? (
           <Text style={[styles.itemMeta, entry.error ? styles.dangerText : undefined]} numberOfLines={2}>
             {outcome}
@@ -671,24 +674,40 @@ function OperationRow({
 }) {
   const { colors } = useAppTheme();
   const styles = useStyles(makeStyles);
+  const tone = OPERATION_TONES[operation.status];
 
   return (
     <View style={styles.item}>
-      <View style={[styles.itemIcon, { backgroundColor: colors.warningSoft }]}>
-        <Ionicons name="sync-outline" size={18} color={colors.warning} />
+      <View style={[styles.itemIcon, { backgroundColor: toneSoftColor(tone, colors) }]}>
+        <Ionicons name="sync-outline" size={18} color={toneColor(tone, colors)} />
       </View>
       <View style={styles.itemBody}>
-        <Text style={styles.itemTitle} numberOfLines={2}>
-          {operation.detail}
-        </Text>
+        <View style={styles.itemTitleRow}>
+          <Text style={styles.itemTitle} numberOfLines={2}>
+            {operation.detail}
+          </Text>
+          <StatusPill
+            label={operation.status.charAt(0).toUpperCase() + operation.status.slice(1)}
+            tone={statusTone(tone)}
+            showDot
+          />
+        </View>
         <Text style={styles.itemMeta} numberOfLines={1}>
-          {operation.agentName} · {operation.toolName}
+          Agent: {operation.agentName} · Tool: {operation.toolName}
         </Text>
-        <Text style={styles.itemMeta}>
-          {operation.status}
-          {operation.cancellable ? ' · cancellable' : ' · cannot be cancelled'}
-          {operation.external ? ' · external result may persist' : ''}
-        </Text>
+        <View style={styles.chipRow}>
+          <StatusPill
+            label={operation.cancellable ? 'Cancellable' : 'Cannot be cancelled'}
+            tone={operation.cancellable ? 'info' : 'warning'}
+          />
+          {operation.external ? (
+            <StatusPill
+              label="External result may persist"
+              tone="warning"
+              icon="alert-circle-outline"
+            />
+          ) : null}
+        </View>
       </View>
       <Pressable
         accessibilityRole="button"
@@ -731,25 +750,29 @@ function SavedChoiceRow({
   }
 
   const label = denial ? 'Never allow' : 'Ask every time';
+  const tone: Tone = denial ? 'danger' : 'warning';
 
   return (
     <View style={styles.item}>
-      <View style={[styles.itemIcon, { backgroundColor: colors.dangerSoft }]}>
+      <View style={[styles.itemIcon, { backgroundColor: toneSoftColor(tone, colors) }]}>
         <Ionicons
           name={denial ? 'ban-outline' : 'help-circle-outline'}
           size={18}
-          color={denial ? colors.danger : colors.warning}
+          color={toneColor(tone, colors)}
         />
       </View>
       <View style={styles.itemBody}>
-        <Text style={styles.itemTitle} numberOfLines={2}>
-          {label}
+        <View style={styles.itemTitleRow}>
+          <Text style={styles.itemTitle} numberOfLines={2}>
+            {label}
+          </Text>
+          <StatusPill label="Saved choice" tone={statusTone(tone)} />
+        </View>
+        <Text style={styles.itemMeta} numberOfLines={1}>
+          Agent: {entry.agentId} · Tool: {entry.toolName}
         </Text>
         <Text style={styles.itemMeta} numberOfLines={1}>
-          {entry.agentId} · {entry.toolName}
-        </Text>
-        <Text style={styles.itemMeta} numberOfLines={1}>
-          Resource: {entry.resourceKey}
+          Scope: {entry.scopeKey} · Resource: {entry.resourceKey}
         </Text>
       </View>
       <Pressable
@@ -783,6 +806,7 @@ export default function PermissionsScreen() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [pairingOpen, setPairingOpen] = useState(false);
+  const [tab, setTab] = useState<Tab>('overview');
 
   const load = useCallback(
     async (spinner: boolean) => {
@@ -870,11 +894,14 @@ export default function PermissionsScreen() {
             void runAction('emergency-stop', async () => {
               await permissionManager.emergencyStop(activeUser.id);
               const report = permissionManager.getStopReport();
+              const stopRequested = report?.stopRequested.length ?? 0;
+              const cancelledRequests = report?.cancelledRequests ?? 0;
+              const revokedGrants = report?.revokedGrants ?? 0;
               const uncancellable = report?.uncancellable.length ?? 0;
               setNotice(
-                `Emergency stop is active. Stop requested for ${report?.stopRequested.length ?? 0} operation(s); cancelled ${report?.cancelledRequests ?? 0} pending request(s); revoked ${report?.revokedGrants ?? 0} grant(s).` +
+                `Emergency stop is active. Stop requested for ${stopRequested} operation${stopRequested === 1 ? '' : 's'}; cancelled ${cancelledRequests} pending request${cancelledRequests === 1 ? '' : 's'}; revoked ${revokedGrants} grant${revokedGrants === 1 ? '' : 's'}.` +
                   (uncancellable > 0
-                    ? ` ${uncancellable} operation(s) could not be cancelled and may have completed outside ORBIT.`
+                    ? ` ${uncancellable} operation${uncancellable === 1 ? '' : 's'} could not be cancelled and may have completed outside ORBIT.`
                     : '')
               );
             });
@@ -978,7 +1005,7 @@ export default function PermissionsScreen() {
           text: 'Revoke',
           style: 'destructive',
           onPress: () => {
-            void runAction(`choice-${denial?.id ?? preference?.agentId ?? 'preference'}`, async () => {
+            void runAction(`choice-${denial?.id ?? (preference ? preferenceIdentity(preference) : 'preference')}`, async () => {
               const removed = denial
                 ? await permissionManager.revokeDenial(activeUser.id, denial.id)
                 : preference
@@ -1054,7 +1081,7 @@ export default function PermissionsScreen() {
   }[] = [
     ...denials.map((denial) => ({ key: denial.id, denial })),
     ...preferences.map((preference) => ({
-      key: `${preference.agentId}-${preference.toolName}`,
+      key: preferenceIdentity(preference),
       preference,
     })),
   ];
@@ -1063,14 +1090,51 @@ export default function PermissionsScreen() {
       (request) => request.status === 'denied' || request.status === 'blocked'
     ).length ?? 0;
   const agents = summarizeAgents(data?.grants ?? [], data?.dynamicAgents ?? []);
+
+  const agentCapabilities = new Map<string, string[]>();
+  const agentLastActivity = new Map<string, number>();
+  const agentPending = new Map<string, number>();
+
+  for (const grant of data?.grants ?? []) {
+    if (grant.status !== 'active') {
+      continue;
+    }
+
+    const labels = agentCapabilities.get(grant.agentId) ?? [];
+    const label = CATEGORY_META[grant.category].shortLabel;
+
+    if (!labels.includes(label)) {
+      labels.push(label);
+    }
+
+    agentCapabilities.set(grant.agentId, labels);
+  }
+
+  for (const entry of data?.activity ?? []) {
+    if (!agentLastActivity.has(entry.agentId)) {
+      agentLastActivity.set(entry.agentId, entry.createdAt);
+    }
+  }
+
+  for (const request of data?.pending ?? []) {
+    agentPending.set(request.agentId, (agentPending.get(request.agentId) ?? 0) + 1);
+  }
+
   const pending = data?.pending.length ?? 0;
   const stopped = data?.emergencyStop ?? false;
+
+  const tabs: { key: Tab; label: string; count?: number }[] = [
+    { key: 'overview', label: 'Overview' },
+    { key: 'activity', label: 'Activity', count: activity.length },
+    { key: 'grants', label: 'Grants', count: activeGrants.length },
+    { key: 'audit', label: 'Audit' },
+  ];
 
   if (loading && !data) {
     return (
       <View style={styles.root}>
         <GlassBackdrop />
-        <View style={styles.loading}>
+        <View style={[styles.loading, { paddingTop: insets.top }]}>
           <ActivityIndicator color={colors.accent} />
         </View>
       </View>
@@ -1084,7 +1148,10 @@ export default function PermissionsScreen() {
       <ScrollView
         contentContainerStyle={[
           styles.content,
-          { paddingTop: insets.top + spacing.md, paddingBottom: spacing.xl },
+          {
+            paddingTop: insets.top + spacing.md,
+            paddingBottom: insets.bottom + spacing.xl,
+          },
         ]}
         showsVerticalScrollIndicator={false}
         refreshControl={
@@ -1101,7 +1168,7 @@ export default function PermissionsScreen() {
       >
         <ScreenHeader
           eyebrow="AGENT PERMISSIONS"
-          title="Control room"
+          title="Safety dashboard"
           subtitle="Who can act, on what, and for how long."
           left={
             <Pressable
@@ -1168,15 +1235,27 @@ export default function PermissionsScreen() {
               />
             </View>
             <View style={styles.emergencyText}>
-              <Text style={styles.emergencyTitle}>
-                {stopped ? 'All agents are stopped' : 'Agents can request access'}
-              </Text>
+              <View style={styles.inlineRow}>
+                <Text style={styles.emergencyTitle}>
+                  {stopped ? 'All agents are stopped' : 'Agents can request access'}
+                </Text>
+                <StatusPill
+                  label={stopped ? 'Stopped' : 'Active'}
+                  tone={stopped ? 'danger' : 'success'}
+                  showDot
+                />
+              </View>
               <Text style={styles.emergencyCaption}>
                 {stopped
                   ? data?.emergencyStopReason ||
                     'Emergency stop is active. Pending approvals are cancelled.'
                   : 'Every protected action pauses here for your decision. High-risk actions always ask.'}
               </Text>
+              {stopped && data?.stoppedAgents.length ? (
+                <Text style={styles.emergencyCaption}>
+                  Stopped agents: {data.stoppedAgents.join(', ')}
+                </Text>
+              ) : null}
             </View>
           </View>
           <Button
@@ -1215,218 +1294,306 @@ export default function PermissionsScreen() {
           />
         </View>
 
-        <SectionHeading
-          title="Connected tools & computers"
-          caption="Computer access only works through an explicitly paired ORBIT Desktop Companion. Connected MCP and plugin tools stay permission-scoped."
-          action={pairingOpen ? undefined : 'Pair'}
-          onAction={() => setPairingOpen(true)}
-        />
+        <View accessibilityRole="tablist" style={styles.segmented}>
+          {tabs.map((option) => {
+            const active = tab === option.key;
 
-        <GlassView style={styles.card}>
-          {devices.length === 0 ? (
-            <EmptyState
-              icon="desktop-outline"
-              text="No computer is paired. Add ORBIT Desktop Companion to run approved work outside this phone."
-            />
-          ) : (
-            devices.map((device, index) => (
-              <View key={device.id} style={index > 0 ? styles.divider : undefined}>
-                <DeviceRow
-                  device={device}
-                  busy={busyKey === `device-${device.id}`}
-                  onRevoke={() => revokeDevice(device)}
+            return (
+              <Pressable
+                key={option.key}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: active }}
+                onPress={() => setTab(option.key)}
+                style={[styles.segment, active && styles.segmentActive]}
+              >
+                <Text style={[styles.segmentText, active && styles.segmentTextActive]}>
+                  {option.label}
+                </Text>
+                {option.count ? (
+                  <View style={[styles.segmentCount, active && styles.segmentCountActive]}>
+                    <Text style={[styles.segmentCountText, active && styles.segmentCountTextActive]}>
+                      {option.count}
+                    </Text>
+                  </View>
+                ) : null}
+              </Pressable>
+            );
+          })}
+        </View>
+
+        {tab === 'overview' ? (
+          <>
+            <SettingsSection
+              title="Connected tools & computers"
+              description="Computer access only works through an explicitly paired ORBIT Desktop Companion. Connected tools stay permission-scoped."
+              action={<SectionAction label="Pair" onPress={() => setPairingOpen(true)} />}
+            >
+              <GlassView style={styles.card}>
+                {devices.length === 0 ? (
+                  <EmptyState
+                    icon="desktop-outline"
+                    title="No paired computers"
+                    message="Add ORBIT Desktop Companion to run approved work outside this phone."
+                  />
+                ) : (
+                  devices.map((device, index) => (
+                    <View key={device.id} style={index > 0 ? styles.divider : undefined}>
+                      <DeviceRow
+                        device={device}
+                        busy={busyKey === `device-${device.id}`}
+                        onRevoke={() => revokeDevice(device)}
+                      />
+                    </View>
+                  ))
+                )}
+              </GlassView>
+            </SettingsSection>
+
+            <SettingsSection
+              title="Agents"
+              description="Built-in and dynamic agents. Grants never inherit across agents; revoking one leaves the others untouched."
+            >
+              <GlassView style={styles.card}>
+                {agents.length === 0 ? (
+                  <EmptyState
+                    icon="people-outline"
+                    title="No agents registered"
+                    message="Built-in agents will appear here as soon as they are available."
+                  />
+                ) : (
+                  agents.map((entry, index) => (
+                    <View key={entry.agent.id} style={index > 0 ? styles.divider : undefined}>
+                      <AgentRow
+                        entry={entry}
+                        capabilities={agentCapabilities.get(entry.agent.id) ?? []}
+                        lastActivity={agentLastActivity.get(entry.agent.id) ?? null}
+                        pendingApprovals={agentPending.get(entry.agent.id) ?? 0}
+                        busy={busyKey === `agent-${entry.agent.id}`}
+                        onRevoke={() => revokeAgent(entry)}
+                      />
+                    </View>
+                  ))
+                )}
+              </GlassView>
+            </SettingsSection>
+
+            <SettingsSection
+              title="Active operations"
+              description="Running tool calls with real cancellation states. External actions may complete even after a stop."
+            >
+              <GlassView style={styles.card}>
+                {activeOperations.length === 0 ? (
+                  <EmptyState
+                    icon="sync-outline"
+                    title="No active operations"
+                    message="No tool call is running right now."
+                  />
+                ) : (
+                  activeOperations.map((operation, index) => (
+                    <View key={operation.id} style={index > 0 ? styles.divider : undefined}>
+                      <OperationRow
+                        operation={operation}
+                        busy={busyKey === `operation-${operation.id}`}
+                        onStop={() => stopOperation(operation)}
+                      />
+                    </View>
+                  ))
+                )}
+              </GlassView>
+            </SettingsSection>
+
+            <SettingsSection
+              title="More details"
+              description="Review decisions, saved approvals, and the append-only audit trail."
+            >
+              <GlassView style={styles.card}>
+                <SettingsNavRow
+                  icon="receipt-outline"
+                  title="Activity & decisions"
+                  description="Recent decisions and timestamped agent activity."
+                  badge={`${activity.length}`}
+                  onPress={() => setTab('activity')}
                 />
-              </View>
-            ))
-          )}
-        </GlassView>
-
-        <SectionHeading
-          title="Agents"
-          caption="Built-in and dynamic agents. Grants never inherit across agents; revoking one leaves the others untouched."
-        />
-
-        <GlassView style={styles.card}>
-          {agents.length === 0 ? (
-            <EmptyState
-              icon="people-outline"
-              text="No agents are registered. Built-in agents will appear here as soon as they are available."
-            />
-          ) : (
-            agents.map((entry, index) => (
-              <View key={entry.agent.id} style={index > 0 ? styles.divider : undefined}>
-                <AgentRow
-                  entry={entry}
-                  busy={busyKey === `agent-${entry.agent.id}`}
-                  onRevoke={() => revokeAgent(entry)}
+                <View style={styles.divider} />
+                <SettingsNavRow
+                  icon="shield-checkmark-outline"
+                  title="Grants & saved choices"
+                  description="Active, temporary, and past grants with revoke controls."
+                  badge={`${activeGrants.length}`}
+                  onPress={() => setTab('grants')}
                 />
-              </View>
-            ))
-          )}
-        </GlassView>
-
-        <SectionHeading
-          title="Active saved grants"
-          caption={`${activeGrants.length} grant${activeGrants.length === 1 ? '' : 's'} · persistent grants expire after 30 days`}
-          action={activeGrants.length > 1 ? 'Revoke all' : undefined}
-          onAction={revokeAllGrants}
-        />
-
-        <GlassView style={styles.card}>
-          {activeGrants.length === 0 ? (
-            <EmptyState
-              icon="shield-outline"
-              text="No saved grants. Approvals are one-time unless you choose “Always allow” for a low or medium-risk request."
-            />
-          ) : (
-            activeGrants.map((grant, index) => (
-              <View key={grant.id} style={index > 0 ? styles.divider : undefined}>
-                <GrantRow
-                  grant={grant}
-                  busy={busyKey === `grant-${grant.id}`}
-                  onRevoke={() => revokeGrant(grant)}
+                <View style={styles.divider} />
+                <SettingsNavRow
+                  icon="document-text-outline"
+                  title="Audit history"
+                  description="Consent and execution events."
+                  onPress={() => setTab('audit')}
                 />
-              </View>
-            ))
-          )}
-        </GlassView>
+              </GlassView>
+            </SettingsSection>
+          </>
+        ) : null}
 
-        <SectionHeading
-          title="Temporary & past grants"
-          caption="One-time approvals, expired grants, and revoked history."
-        />
+        {tab === 'activity' ? (
+          <>
+            <SettingsSection
+              title="Recent decisions"
+              description="Allow once, Always allow, Deny, cancel, and emergency stop outcomes."
+            >
+              <GlassView style={styles.card}>
+                {requests.length === 0 ? (
+                  <EmptyState
+                    icon="receipt-outline"
+                    title="No decisions yet"
+                    message="The next protected tool call will appear here."
+                  />
+                ) : (
+                  requests.map((request, index) => (
+                    <View key={request.id} style={index > 0 ? styles.divider : undefined}>
+                      <RequestRow request={request} />
+                    </View>
+                  ))
+                )}
+              </GlassView>
+            </SettingsSection>
 
-        <GlassView style={styles.card}>
-          {pastGrants.length === 0 ? (
-            <EmptyState
-              icon="hourglass-outline"
-              text="No temporary or past grants yet. Consumed one-time approvals appear here with their final status."
-            />
-          ) : (
-            pastGrants.map((grant, index) => (
-              <View key={grant.id} style={index > 0 ? styles.divider : undefined}>
-                <GrantRow
-                  grant={grant}
-                  busy={busyKey === `grant-${grant.id}`}
-                  onRevoke={() => revokeGrant(grant)}
+            <SettingsSection
+              title="Agent activity"
+              description="Timestamp, agent, action, resource, permission used, status, and the real result or error."
+            >
+              <GlassView style={styles.card}>
+                {activity.length === 0 ? (
+                  <EmptyState
+                    icon="receipt-outline"
+                    title="No activity yet"
+                    message="Requests, approvals, denials, and execution results appear here."
+                  />
+                ) : (
+                  activity.map((entry, index) => (
+                    <View key={entry.id} style={index > 0 ? styles.divider : undefined}>
+                      <ActivityRow
+                        entry={entry}
+                        restoring={busyKey === `restore-${trashIdFor(entry) ?? ''}`}
+                        onRestore={restoreTrash}
+                      />
+                    </View>
+                  ))
+                )}
+              </GlassView>
+            </SettingsSection>
+          </>
+        ) : null}
+
+        {tab === 'grants' ? (
+          <>
+            <SettingsSection
+              title="Active saved grants"
+              description="Persistent grants expire after 30 days. Every grant stays scoped to its agent, tool, and resource."
+              action={
+                activeGrants.length > 1 ? (
+                  <SectionAction label="Revoke all" onPress={revokeAllGrants} />
+                ) : undefined
+              }
+            >
+              <GlassView style={styles.card}>
+                {activeGrants.length === 0 ? (
+                  <EmptyState
+                    icon="shield-outline"
+                    title="No saved grants"
+                    message="Approvals are one-time unless you choose “Always allow” for a low or medium-risk request."
+                  />
+                ) : (
+                  activeGrants.map((grant, index) => (
+                    <View key={grant.id} style={index > 0 ? styles.divider : undefined}>
+                      <GrantRow
+                        grant={grant}
+                        busy={busyKey === `grant-${grant.id}`}
+                        onRevoke={() => revokeGrant(grant)}
+                      />
+                    </View>
+                  ))
+                )}
+              </GlassView>
+            </SettingsSection>
+
+            <SettingsSection
+              title="Temporary & past grants"
+              description="One-time approvals, expired grants, and revoked history."
+            >
+              <GlassView style={styles.card}>
+                {pastGrants.length === 0 ? (
+                  <EmptyState
+                    icon="hourglass-outline"
+                    title="No past grants"
+                    message="Consumed one-time approvals appear here with their final status."
+                  />
+                ) : (
+                  pastGrants.map((grant, index) => (
+                    <View key={grant.id} style={index > 0 ? styles.divider : undefined}>
+                      <GrantRow
+                        grant={grant}
+                        busy={busyKey === `grant-${grant.id}`}
+                        onRevoke={() => revokeGrant(grant)}
+                      />
+                    </View>
+                  ))
+                )}
+              </GlassView>
+            </SettingsSection>
+
+            <SettingsSection
+              title="Saved choices"
+              description="Never Allow and Ask Every Time are exact-scope decisions. Revoke them to allow a new request."
+            >
+              <GlassView style={styles.card}>
+                {savedChoices.length === 0 ? (
+                  <EmptyState
+                    icon="options-outline"
+                    title="No saved choices"
+                    message="Every protected action will be asked about until you choose one."
+                  />
+                ) : (
+                  savedChoices.map(({ key, denial, preference }, index) => (
+                    <View key={key} style={index > 0 ? styles.divider : undefined}>
+                      <SavedChoiceRow
+                        denial={denial}
+                        preference={preference}
+                        busy={
+                          busyKey ===
+                          `choice-${denial?.id ?? (preference ? preferenceIdentity(preference) : 'preference')}`
+                        }
+                        onRevoke={() => revokeSavedChoice(denial, preference)}
+                      />
+                    </View>
+                  ))
+                )}
+              </GlassView>
+            </SettingsSection>
+          </>
+        ) : null}
+
+        {tab === 'audit' ? (
+          <SettingsSection
+            title="Audit history"
+            description="Redacted, append-only consent and execution events."
+          >
+            <GlassView style={styles.card}>
+              {audit.length === 0 ? (
+                <EmptyState
+                  icon="document-text-outline"
+                  title="No audit entries yet"
+                  message="Requests, grants, revocations, and executions are recorded here."
                 />
-              </View>
-            ))
-          )}
-        </GlassView>
-
-        <SectionHeading
-          title="Recent decisions"
-          caption="Allow once, Always allow, Deny, cancel, and emergency stop outcomes."
-        />
-
-        <GlassView style={styles.card}>
-          {requests.length === 0 ? (
-            <EmptyState
-              icon="receipt-outline"
-              text="No permission decisions yet. The next protected tool call will appear here."
-            />
-          ) : (
-            requests.map((request, index) => (
-              <View key={request.id} style={index > 0 ? styles.divider : undefined}>
-                <RequestRow request={request} />
-              </View>
-            ))
-          )}
-        </GlassView>
-
-        <SectionHeading
-          title="Active operations"
-          caption="Running tool calls with real cancellation states. External actions may complete even after a stop."
-        />
-
-        <GlassView style={styles.card}>
-          {activeOperations.length === 0 ? (
-            <EmptyState
-              icon="sync-outline"
-              text="No tool call is running right now."
-            />
-          ) : (
-            activeOperations.map((operation, index) => (
-              <View key={operation.id} style={index > 0 ? styles.divider : undefined}>
-                <OperationRow
-                  operation={operation}
-                  busy={busyKey === `operation-${operation.id}`}
-                  onStop={() => stopOperation(operation)}
-                />
-              </View>
-            ))
-          )}
-        </GlassView>
-
-        <SectionHeading
-          title="Agent activity"
-          caption="Timestamp, agent, action, resource, permission used, status, and the real result or error."
-        />
-
-        <GlassView style={styles.card}>
-          {activity.length === 0 ? (
-            <EmptyState
-              icon="receipt-outline"
-              text="No activity yet. Requests, approvals, denials, and execution results appear here."
-            />
-          ) : (
-            activity.map((entry, index) => (
-              <View key={entry.id} style={index > 0 ? styles.divider : undefined}>
-                <ActivityRow
-                  entry={entry}
-                  restoring={busyKey === `restore-${trashIdFor(entry) ?? ''}`}
-                  onRestore={restoreTrash}
-                />
-              </View>
-            ))
-          )}
-        </GlassView>
-
-        <SectionHeading
-          title="Saved choices"
-          caption="Never Allow and Ask Every Time are exact-scope decisions. Revoke them to allow a new request."
-        />
-
-        <GlassView style={styles.card}>
-          {savedChoices.length === 0 ? (
-            <EmptyState
-              icon="options-outline"
-              text="No saved choices. Every protected action will be asked about until you choose one."
-            />
-          ) : (
-            savedChoices.map(({ key, denial, preference }, index) => (
-              <View key={key} style={index > 0 ? styles.divider : undefined}>
-                <SavedChoiceRow
-                  denial={denial}
-                  preference={preference}
-                  busy={busyKey === `choice-${denial?.id ?? preference?.agentId ?? 'preference'}`}
-                  onRevoke={() => revokeSavedChoice(denial, preference)}
-                />
-              </View>
-            ))
-          )}
-        </GlassView>
-
-        <SectionHeading
-          title="Audit history"
-          caption="Redacted, append-only consent and execution events."
-        />
-
-        <GlassView style={styles.card}>
-          {audit.length === 0 ? (
-            <EmptyState
-              icon="document-text-outline"
-              text="No audit entries yet. Requests, grants, revocations, and executions are recorded here."
-            />
-          ) : (
-            audit.map((entry, index) => (
-              <View key={entry.id} style={index > 0 ? styles.divider : undefined}>
-                <AuditRow entry={entry} />
-              </View>
-            ))
-          )}
-        </GlassView>
+              ) : (
+                audit.map((entry, index) => (
+                  <View key={entry.id} style={index > 0 ? styles.divider : undefined}>
+                    <AuditRow entry={entry} />
+                  </View>
+                ))
+              )}
+            </GlassView>
+          </SettingsSection>
+        ) : null}
 
         <View style={styles.footerRow}>
           <Ionicons name="lock-closed-outline" size={13} color={colors.textFaint} />
@@ -1469,9 +1636,9 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
       paddingHorizontal: spacing.lg,
     },
     backButton: {
-      width: 40,
-      height: 40,
-      borderRadius: 13,
+      width: layout.iconButton,
+      height: layout.iconButton,
+      borderRadius: radius.md,
       backgroundColor: glass.fillStrong,
       borderWidth: 1,
       borderColor: glass.border,
@@ -1500,18 +1667,15 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
     bannerTextError: {
       flex: 1,
       color: colors.danger,
-      fontSize: 13,
-      lineHeight: 19,
+      ...typography.bodySmall,
     },
     bannerTextNotice: {
       flex: 1,
       color: colors.success,
-      fontSize: 13,
-      lineHeight: 19,
+      ...typography.bodySmall,
     },
     card: {
       padding: spacing.md,
-      marginTop: spacing.sm,
     },
     emergencyCard: {
       marginTop: spacing.lg,
@@ -1525,13 +1689,22 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
     emergencyIcon: {
       width: 46,
       height: 46,
-      borderRadius: 15,
+      borderRadius: radius.md,
       alignItems: 'center',
       justifyContent: 'center',
     },
     emergencyText: {
       flex: 1,
-      gap: 3,
+      gap: 4,
+    },
+    inlineRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flexWrap: 'wrap',
+      gap: spacing.xs,
+    },
+    inlinePill: {
+      marginTop: 2,
     },
     emergencyTitle: {
       color: colors.text,
@@ -1552,8 +1725,8 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
     statTile: {
       flexGrow: 1,
       flexBasis: '46%',
-      gap: 3,
-      borderRadius: radius.lg,
+      gap: 2,
+      borderRadius: radius.md,
       borderWidth: 1,
       borderColor: glass.border,
       borderTopColor: glass.borderBright,
@@ -1561,16 +1734,16 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
       padding: spacing.md,
     },
     statIcon: {
-      width: 30,
-      height: 30,
+      width: 28,
+      height: 28,
       borderRadius: 10,
       alignItems: 'center',
       justifyContent: 'center',
-      marginBottom: 3,
+      marginBottom: 2,
     },
     statValue: {
       color: colors.text,
-      fontSize: 23,
+      fontSize: 21,
       fontWeight: '700',
       letterSpacing: -0.5,
     },
@@ -1578,27 +1751,53 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
       color: colors.textMuted,
       fontSize: 11,
     },
-    sectionHeading: {
+    segmented: {
       flexDirection: 'row',
-      alignItems: 'flex-end',
-      justifyContent: 'space-between',
-      gap: spacing.sm,
-      marginTop: spacing.xl,
+      marginTop: spacing.md,
+      borderRadius: radius.md,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+      overflow: 'hidden',
     },
-    sectionHeadingText: {
+    segment: {
       flex: 1,
-      gap: 2,
+      minHeight: layout.touchTarget,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 5,
+      paddingHorizontal: 4,
     },
-    sectionTitle: {
-      color: colors.text,
-      fontSize: 17,
-      fontWeight: '700',
-      letterSpacing: -0.2,
+    segmentActive: {
+      backgroundColor: colors.accentSoft,
     },
-    sectionCaption: {
+    segmentText: {
+      color: colors.textMuted,
+      fontSize: 13,
+      fontWeight: '600',
+    },
+    segmentTextActive: {
+      color: colors.accent,
+    },
+    segmentCount: {
+      minWidth: 18,
+      paddingHorizontal: 4,
+      paddingVertical: 1,
+      borderRadius: radius.pill,
+      backgroundColor: colors.surfaceAlt,
+      alignItems: 'center',
+    },
+    segmentCountActive: {
+      backgroundColor: `${colors.accent}33`,
+    },
+    segmentCountText: {
       color: colors.textFaint,
-      fontSize: 11,
-      lineHeight: 16,
+      fontSize: 10,
+      fontWeight: '700',
+    },
+    segmentCountTextActive: {
+      color: colors.accent,
     },
     sectionAction: {
       flexDirection: 'row',
@@ -1611,17 +1810,9 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
       fontSize: 12,
       fontWeight: '600',
     },
-    empty: {
-      alignItems: 'center',
-      gap: spacing.sm,
-      paddingVertical: spacing.lg,
-      paddingHorizontal: spacing.md,
-    },
-    emptyText: {
-      color: colors.textMuted,
-      fontSize: 12,
-      lineHeight: 17,
-      textAlign: 'center',
+    divider: {
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
     },
     item: {
       flexDirection: 'row',
@@ -1629,37 +1820,33 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
       gap: spacing.sm + 2,
       paddingVertical: spacing.sm + 2,
     },
-    divider: {
-      borderTopWidth: 1,
-      borderTopColor: colors.border,
-    },
     itemIcon: {
       width: 38,
       height: 38,
-      borderRadius: 13,
+      borderRadius: radius.sm,
       alignItems: 'center',
       justifyContent: 'center',
     },
     itemBody: {
       flex: 1,
-      gap: 3,
+      gap: 4,
     },
     itemTitleRow: {
       flexDirection: 'row',
       alignItems: 'center',
+      flexWrap: 'wrap',
       gap: spacing.xs,
     },
     itemTitle: {
-      flex: 1,
+      flexShrink: 1,
       color: colors.text,
-      fontSize: 14,
+      ...typography.body,
       fontWeight: '600',
-      lineHeight: 19,
     },
     itemMeta: {
       color: colors.textFaint,
       fontSize: 11,
-      lineHeight: 15,
+      lineHeight: 16,
     },
     dangerText: {
       color: colors.danger,
@@ -1680,21 +1867,10 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
       fontSize: 11,
       fontWeight: '700',
     },
-    statusPill: {
-      alignSelf: 'flex-start',
-      borderRadius: radius.pill,
-      paddingHorizontal: spacing.sm,
-      paddingVertical: 3,
-    },
-    statusPillText: {
-      fontSize: 8,
-      fontWeight: '800',
-      letterSpacing: 0.8,
-    },
     revokeButton: {
       width: 34,
       height: 34,
-      borderRadius: 11,
+      borderRadius: radius.sm,
       backgroundColor: colors.dangerSoft,
       borderWidth: 1,
       borderColor: `${colors.danger}47`,
@@ -1702,9 +1878,9 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
       justifyContent: 'center',
     },
     smallAction: {
-      minWidth: 58,
-      height: 30,
-      borderRadius: 10,
+      minWidth: 66,
+      height: 32,
+      borderRadius: radius.sm,
       backgroundColor: colors.dangerSoft,
       borderWidth: 1,
       borderColor: `${colors.danger}47`,
@@ -1714,7 +1890,7 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
     },
     smallActionText: {
       color: colors.danger,
-      fontSize: 10,
+      fontSize: 11,
       fontWeight: '700',
     },
     chipRow: {
@@ -1726,7 +1902,7 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
     },
     grantUsage: {
       color: colors.textFaint,
-      fontSize: 10,
+      fontSize: 11,
     },
     auditRow: {
       flexDirection: 'row',
@@ -1737,13 +1913,13 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
     auditDot: {
       width: 26,
       height: 26,
-      borderRadius: 9,
+      borderRadius: radius.sm,
       alignItems: 'center',
       justifyContent: 'center',
     },
     auditBody: {
       flex: 1,
-      gap: 2,
+      gap: 3,
     },
     auditTitleRow: {
       flexDirection: 'row',

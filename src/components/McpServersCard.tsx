@@ -14,8 +14,11 @@ import {
 } from 'react-native';
 
 import { Button } from '@/components/Button';
+import { EmptyState } from '@/components/EmptyState';
 import { FormError } from '@/components/FormError';
 import { GlassView } from '@/components/GlassView';
+import { SettingsSection } from '@/components/SettingsSection';
+import { StatusPill, type StatusTone } from '@/components/StatusPill';
 import { TextField } from '@/components/TextField';
 import {
   getMcpStatuses,
@@ -28,8 +31,7 @@ import {
   saveMcpServers,
   type McpServerConfig,
 } from '@/lib/mcp/settings';
-import { radius, spacing } from '@/theme';
-
+import { layout, radius, spacing, typography } from '@/theme';
 
 type McpServersCardProps = {
   onNotice: (message: string) => void;
@@ -44,6 +46,13 @@ type Draft = {
   enabled: boolean;
 };
 
+type ServerStatusView = {
+  label: string;
+  tone: StatusTone;
+  detail?: string;
+  detailTone?: StatusTone;
+};
+
 const EMPTY_DRAFT: Draft = {
   id: null,
   name: '',
@@ -54,6 +63,56 @@ const EMPTY_DRAFT: Draft = {
 
 function toolLabel(count: number): string {
   return `${count} tool${count === 1 ? '' : 's'}`;
+}
+
+function serverStatusView(
+  server: McpServerConfig,
+  status: McpServerSyncStatus | undefined,
+  syncError: string | null
+): ServerStatusView {
+  if (!server.enabled) {
+    return {
+      label: 'Disabled',
+      tone: 'neutral',
+      detail: 'Its tools are not available to the agent.',
+    };
+  }
+
+  if (syncError) {
+    return {
+      label: 'Not verified',
+      tone: 'danger',
+      detail: 'The last sync failed. Sync again to verify this server.',
+      detailTone: 'danger',
+    };
+  }
+
+  if (!status) {
+    return {
+      label: 'Not synced',
+      tone: 'warning',
+      detail: 'Sync tools to check this server.',
+      detailTone: 'warning',
+    };
+  }
+
+  if (!status.ok) {
+    return {
+      label: 'Failed',
+      tone: 'danger',
+      detail: status.error ?? 'Could not connect.',
+      detailTone: 'danger',
+    };
+  }
+
+  return {
+    label: 'Connected',
+    tone: 'success',
+    detail:
+      status.toolCount > 0
+        ? `${toolLabel(status.toolCount)} available`
+        : 'Connected with no tools found.',
+  };
 }
 
 export function McpServersCard({ onNotice, onError }: McpServersCardProps) {
@@ -67,6 +126,7 @@ export function McpServersCard({ onNotice, onError }: McpServersCardProps) {
   const [formError, setFormError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [syncError, setSyncError] = useState<string | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -78,13 +138,18 @@ export function McpServersCard({ onNotice, onError }: McpServersCardProps) {
         if (platform.isReady()) {
           try {
             await platform.syncMcpServers(list, { refreshTools: false });
-          } catch (syncError) {
             if (active) {
-              onError(
-                syncError instanceof Error
-                  ? syncError.message
-                  : 'Could not sync MCP plugin records.'
-              );
+              setSyncError(null);
+            }
+          } catch (error) {
+            if (active) {
+              const message =
+                error instanceof Error
+                  ? error.message
+                  : 'Could not sync MCP plugin records.';
+
+              setSyncError(message);
+              onError(message);
             }
           }
         }
@@ -108,10 +173,39 @@ export function McpServersCard({ onNotice, onError }: McpServersCardProps) {
   );
 
   const enabledCount = servers.filter((server) => server.enabled).length;
+  const enabledIds = useMemo(
+    () => new Set(servers.filter((server) => server.enabled).map((server) => server.id)),
+    [servers]
+  );
+  const hasFailedServer = statuses.some(
+    (status) => !status.ok && enabledIds.has(status.serverId)
+  );
+
+  const summary: ServerStatusView = isSyncing
+    ? { label: 'Syncing…', tone: 'info' }
+    : syncError
+      ? { label: 'Sync failed', tone: 'danger', detail: syncError }
+      : servers.length === 0
+        ? { label: 'Not configured', tone: 'neutral' }
+        : hasFailedServer
+          ? { label: 'Connection failed', tone: 'danger' }
+          : toolCount > 0
+            ? { label: toolLabel(toolCount), tone: 'success' }
+            : enabledCount > 0
+              ? { label: 'No tools yet', tone: 'warning' }
+              : { label: 'All disabled', tone: 'neutral' };
+
+  const editingServer = draft?.id
+    ? servers.find((server) => server.id === draft.id)
+    : undefined;
+  const editingStatus = editingServer
+    ? serverStatusView(editingServer, statusById.get(editingServer.id), syncError)
+    : null;
 
   const syncServers = useCallback(
     async (list: McpServerConfig[], announce: boolean) => {
       setIsSyncing(true);
+      setSyncError(null);
 
       if (announce) {
         onError(null);
@@ -124,8 +218,12 @@ export function McpServersCard({ onNotice, onError }: McpServersCardProps) {
         });
 
         if (!tools) {
+          const message =
+            'MCP sync failed. Plugin records were updated; tools were not refreshed.';
+
+          setSyncError(message);
           if (announce) {
-            onError('MCP sync failed. Plugin records were updated; tools were not refreshed.');
+            onError(message);
           }
           return null;
         }
@@ -146,11 +244,13 @@ export function McpServersCard({ onNotice, onError }: McpServersCardProps) {
         }
 
         return tools;
-      } catch (syncError) {
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : 'MCP sync failed.';
+
+        setSyncError(message);
         if (announce) {
-          onError(
-            syncError instanceof Error ? syncError.message : 'MCP sync failed.'
-          );
+          onError(message);
         }
 
         return null;
@@ -182,7 +282,7 @@ export function McpServersCard({ onNotice, onError }: McpServersCardProps) {
     }
 
     if (!draft.url.trim()) {
-      setFormError('Server URL required hai.');
+      setFormError('Server URL is required.');
       return;
     }
 
@@ -206,11 +306,7 @@ export function McpServersCard({ onNotice, onError }: McpServersCardProps) {
       const saved = await saveMcpServers(next);
       setServers(saved);
       setDraft(null);
-      onNotice(
-        config.enabled
-          ? `${config.name} saved. Tools sync ho rahe hain…`
-          : `${config.name} saved (disabled).`
-      );
+      onNotice(`${config.name} saved.`);
 
       const result = await syncServers(saved, false);
 
@@ -218,9 +314,13 @@ export function McpServersCard({ onNotice, onError }: McpServersCardProps) {
         const status = result?.statuses.find((item) => item.serverId === config.id);
 
         if (status?.ok) {
-          onNotice(`${config.name} connected · ${toolLabel(status.toolCount)} available.`);
+          onNotice(
+            `${config.name} connected · ${toolLabel(status.toolCount)} available.`
+          );
         } else if (status) {
           onError(`${config.name}: ${status.error ?? 'could not connect.'}`);
+        } else if (result) {
+          onNotice(`${config.name} saved. Connection could not be confirmed.`);
         }
       }
     } catch {
@@ -251,7 +351,7 @@ export function McpServersCard({ onNotice, onError }: McpServersCardProps) {
   function confirmRemove(server: McpServerConfig) {
     Alert.alert(
       'Remove server?',
-      `${server.name} ke saare tools agent se hat jayenge.`,
+      `Removing ${server.name} also removes its tools from the agent.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -287,6 +387,8 @@ export function McpServersCard({ onNotice, onError }: McpServersCardProps) {
           onNotice(`${server.name} enabled · ${toolLabel(status.toolCount)} available.`);
         } else if (status) {
           onError(`${server.name}: ${status.error ?? 'could not connect.'}`);
+        } else {
+          onNotice(`${server.name} enabled. Connection could not be confirmed.`);
         }
       } else if (!enabled) {
         onNotice(`${server.name} disabled.`);
@@ -299,450 +401,380 @@ export function McpServersCard({ onNotice, onError }: McpServersCardProps) {
 
   return (
     <GlassView style={styles.card}>
-      <View style={styles.headerRow}>
-        <View style={styles.headerText}>
-          <Text style={styles.title}>MCP servers</Text>
-          <Text style={styles.caption}>
-            Connect external tools — mail, files, PDFs. The agent uses them when needed.
-          </Text>
-        </View>
-
-        <View style={[styles.badge, toolCount > 0 ? styles.badgeOn : styles.badgeOff]}>
-          <Text
-            style={[
-              styles.badgeText,
-              { color: toolCount > 0 ? colors.success : colors.textMuted },
-            ]}
-          >
-            {toolCount > 0 ? `${toolCount} TOOLS` : enabledCount > 0 ? 'SYNC' : 'NONE'}
-          </Text>
-        </View>
-      </View>
-
-      {servers.length === 0 ? (
-        <View style={styles.empty}>
-          <Ionicons
-            name="extension-puzzle-outline"
-            size={20}
-            color={colors.textFaint}
+      <SettingsSection
+        title="MCP servers"
+        description="Connect external tools — mail, files, PDFs. The agent uses them when needed."
+        action={
+          <StatusPill
+            label={summary.label}
+            tone={summary.tone}
+            showDot={summary.tone === 'success' || summary.tone === 'danger'}
           />
-          <Text style={styles.emptyText}>
-            No servers added yet. You need an endpoint URL and an optional bearer token.
-          </Text>
-        </View>
-      ) : (
-        <View style={styles.list}>
-          {servers.map((server) => {
-            const status = statusById.get(server.id);
-            const label = !server.enabled
-              ? 'Disabled'
-              : status
-                ? status.ok
-                  ? `${toolLabel(status.toolCount)} available`
-                  : `Connection failed — ${status.error ?? 'unknown error'}`
-                : 'Not synced yet';
-            const tone = !server.enabled
-              ? colors.textFaint
-              : status
-                ? status.ok
-                  ? colors.success
-                  : colors.danger
-                : colors.textMuted;
+        }
+      >
+        {servers.length === 0 ? (
+          <EmptyState
+            icon="server-outline"
+            title="No MCP servers yet"
+            message="Add a server with a streamable HTTP endpoint. A bearer token is optional."
+            actionLabel="Add server"
+            onAction={() => openEditor()}
+          />
+        ) : (
+          <View style={styles.list}>
+            {servers.map((server, index) => {
+              const view = serverStatusView(
+                server,
+                statusById.get(server.id),
+                syncError
+              );
+              const detailColor =
+                view.detailTone === 'danger'
+                  ? colors.danger
+                  : view.detailTone === 'warning'
+                    ? colors.warning
+                    : colors.textMuted;
 
-            return (
-              <View key={server.id} style={styles.serverRow}>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={`Edit ${server.name}`}
-                  onPress={() => openEditor(server)}
-                  style={({ pressed }) => [
-                    styles.serverMain,
-                    pressed && styles.pressed,
+              return (
+                <View
+                  key={server.id}
+                  style={[
+                    styles.serverRow,
+                    index === servers.length - 1 && styles.lastRow,
                   ]}
                 >
-                  <View style={[styles.dot, { backgroundColor: tone }]} />
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`Edit ${server.name}`}
+                    onPress={() => openEditor(server)}
+                    style={({ pressed }) => [
+                      styles.serverMain,
+                      pressed && styles.pressed,
+                    ]}
+                  >
+                    <View style={styles.iconWrap}>
+                      <Ionicons name="server-outline" size={17} color={colors.accent} />
+                    </View>
 
-                  <View style={styles.serverText}>
-                    <Text numberOfLines={1} style={styles.serverName}>
-                      {server.name}
-                    </Text>
-                    <Text numberOfLines={1} style={styles.serverUrl}>
-                      {server.url}
-                    </Text>
-                    <Text numberOfLines={2} style={[styles.serverStatus, { color: tone }]}>
-                      {label}
-                    </Text>
-                  </View>
+                    <View style={styles.serverText}>
+                      <Text numberOfLines={1} style={styles.serverName}>
+                        {server.name}
+                      </Text>
+                      <Text numberOfLines={1} style={styles.serverUrl}>
+                        {server.url}
+                      </Text>
+                      {view.detail ? (
+                        <Text
+                          numberOfLines={2}
+                          style={[styles.serverDetail, { color: detailColor }]}
+                        >
+                          {view.detail}
+                        </Text>
+                      ) : null}
+                    </View>
 
-                  <Ionicons name="create-outline" size={17} color={colors.textFaint} />
-                </Pressable>
+                    <View style={styles.statusColumn}>
+                      <StatusPill
+                        label={view.label}
+                        tone={view.tone}
+                        showDot={view.tone === 'success' || view.tone === 'danger'}
+                      />
+                    </View>
 
-                <Switch
-                  accessibilityLabel={`${server.name} enabled`}
-                  value={server.enabled}
-                  onValueChange={(value) => {
-                    void toggleServer(server, value);
-                  }}
-                  trackColor={{ false: colors.border, true: colors.blue }}
-                  thumbColor={colors.white}
-                  ios_backgroundColor={colors.border}
-                />
-              </View>
-            );
-          })}
-        </View>
-      )}
+                    <Ionicons
+                      name="chevron-forward"
+                      size={16}
+                      color={colors.textFaint}
+                    />
+                  </Pressable>
 
-      {draft ? (
-        <GlassView style={styles.editor}>
-          <Text style={styles.editorTitle}>
-            {draft.id ? 'Edit server' : 'Add server'}
-          </Text>
+                  <Switch
+                    accessibilityLabel={`${server.name} enabled`}
+                    value={server.enabled}
+                    onValueChange={(value) => {
+                      void toggleServer(server, value);
+                    }}
+                    trackColor={{ false: colors.border, true: colors.blue }}
+                    thumbColor={colors.white}
+                    ios_backgroundColor={colors.border}
+                  />
+                </View>
+              );
+            })}
+          </View>
+        )}
 
-          <FormError message={formError} />
-
-          <TextField
-            label="Name"
-            value={draft.name}
-            onChangeText={(value) => updateDraft({ name: value })}
-            placeholder="Gmail"
-            autoCapitalize="words"
-            autoCorrect={false}
-          />
-
-          <TextField
-            label="Server URL"
-            value={draft.url}
-            onChangeText={(value) => updateDraft({ url: value })}
-            placeholder="https://mcp.example.com/mcp"
-            autoCapitalize="none"
-            autoCorrect={false}
-            keyboardType="url"
-            hint="Streamable HTTP endpoint."
-          />
-
-          <TextField
-            label="Bearer token"
-            value={draft.token}
-            onChangeText={(value) => updateDraft({ token: value })}
-            placeholder="optional token"
-            autoCapitalize="none"
-            autoCorrect={false}
-            secureTextEntry
-            hint="Optional. Token encrypted SecureStore me save hota hai."
-          />
-
-          <View style={styles.toggleRow}>
-            <View style={styles.toggleText}>
-              <Text style={styles.toggleLabel}>Enabled</Text>
-              <Text style={styles.toggleHint}>
-                Off karne par tools agent se hat jayenge.
+        {draft ? (
+          <View style={styles.editor}>
+            <View style={styles.editorHeader}>
+              <Text style={styles.editorTitle}>
+                {draft.id ? 'Edit server' : 'Add server'}
               </Text>
+              {editingStatus ? (
+                <StatusPill label={editingStatus.label} tone={editingStatus.tone} />
+              ) : null}
             </View>
-            <Switch
-              accessibilityLabel="Server enabled"
-              value={draft.enabled}
-              onValueChange={(value) => updateDraft({ enabled: value })}
-              trackColor={{ false: colors.border, true: colors.blue }}
-              thumbColor={colors.white}
-              ios_backgroundColor={colors.border}
-            />
-          </View>
 
-          <View style={styles.editorActions}>
+            <FormError message={formError} />
+
+            <TextField
+              label="Name"
+              value={draft.name}
+              onChangeText={(value) => updateDraft({ name: value })}
+              placeholder="Gmail"
+              autoCapitalize="words"
+              autoCorrect={false}
+              hint="A short label for this server."
+            />
+
+            <TextField
+              label="Server URL"
+              value={draft.url}
+              onChangeText={(value) => updateDraft({ url: value })}
+              placeholder="https://mcp.example.com/mcp"
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="url"
+              hint="Use a streamable HTTP endpoint."
+            />
+
+            <TextField
+              label="Bearer token"
+              value={draft.token}
+              onChangeText={(value) => updateDraft({ token: value })}
+              placeholder="optional token"
+              autoCapitalize="none"
+              autoCorrect={false}
+              secureTextEntry
+              hint="Optional. Stored encrypted on this device."
+            />
+
+            <View style={styles.toggleRow}>
+              <View style={styles.toggleText}>
+                <Text style={styles.toggleLabel}>Enabled</Text>
+                <Text style={styles.toggleHint}>
+                  Disabled servers remove their tools from the agent.
+                </Text>
+              </View>
+              <Switch
+                accessibilityLabel="Server enabled"
+                value={draft.enabled}
+                onValueChange={(value) => updateDraft({ enabled: value })}
+                trackColor={{ false: colors.border, true: colors.blue }}
+                thumbColor={colors.white}
+                ios_backgroundColor={colors.border}
+              />
+            </View>
+
+            <View style={styles.editorActions}>
+              <Button
+                label="Cancel"
+                variant="secondary"
+                onPress={closeEditor}
+                disabled={isSaving}
+                style={styles.flexButton}
+              />
+              <Button
+                label={draft.id ? 'Save changes' : 'Add server'}
+                onPress={() => {
+                  void saveDraft();
+                }}
+                loading={isSaving || isSyncing}
+                style={styles.flexButton}
+              />
+            </View>
+
+            {draft.id ? (
+              <Button
+                label="Remove server"
+                variant="danger"
+                onPress={() => {
+                  const server = servers.find((item) => item.id === draft.id);
+
+                  if (server) {
+                    confirmRemove(server);
+                  }
+                }}
+                disabled={isSaving}
+                style={styles.removeButton}
+              />
+            ) : null}
+          </View>
+        ) : servers.length > 0 ? (
+          <View style={styles.footerRow}>
             <Button
-              label="Cancel"
+              label="Add server"
               variant="secondary"
-              onPress={closeEditor}
-              disabled={isSaving}
+              onPress={() => openEditor()}
               style={styles.flexButton}
             />
-            <Button
-              label={draft.id ? 'Save' : 'Add'}
-              onPress={() => {
-                void saveDraft();
-              }}
-              loading={isSaving}
-              style={styles.flexButton}
-            />
-          </View>
-
-          {draft.id ? (
             <Pressable
               accessibilityRole="button"
-              disabled={isSaving}
+              accessibilityLabel="Sync MCP tools"
+              accessibilityState={{ disabled: isSyncing, busy: isSyncing }}
+              disabled={isSyncing}
               onPress={() => {
-                const server = servers.find((item) => item.id === draft.id);
-
-                if (server) {
-                  confirmRemove(server);
-                }
+                void syncServers(servers, true);
               }}
-              style={({ pressed }) => [styles.remove, pressed && styles.pressed]}
-            >
-              <Ionicons name="trash-outline" size={13} color={colors.danger} />
-              <Text style={styles.removeText}>Remove server</Text>
-            </Pressable>
-          ) : null}
-        </GlassView>
-      ) : (
-        <View style={styles.footerRow}>
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => openEditor()}
-            style={({ pressed }) => [styles.addButton, pressed && styles.pressed]}
-          >
-            <Ionicons name="add" size={16} color={colors.accent} />
-            <Text style={styles.addText}>Add server</Text>
-          </Pressable>
-
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Sync MCP tools"
-            disabled={isSyncing || servers.length === 0}
-            onPress={() => {
-              void syncServers(servers, true);
-            }}
-            style={({ pressed }) => [
-              styles.syncButton,
-              (isSyncing || servers.length === 0) && styles.disabled,
-              pressed && styles.pressed,
-            ]}
-          >
-            {isSyncing ? (
-              <ActivityIndicator size="small" color={colors.accent} />
-            ) : (
-              <Ionicons
-                name="refresh"
-                size={15}
-                color={servers.length === 0 ? colors.textFaint : colors.accent}
-              />
-            )}
-            <Text
-              style={[
-                styles.syncText,
-                { color: servers.length === 0 ? colors.textFaint : colors.accent },
+              style={({ pressed }) => [
+                styles.syncButton,
+                isSyncing && styles.disabled,
+                pressed && styles.pressed,
               ]}
             >
-              Sync
-            </Text>
-          </Pressable>
-        </View>
-      )}
+              {isSyncing ? (
+                <ActivityIndicator size="small" color={colors.accent} />
+              ) : (
+                <Ionicons name="refresh-outline" size={17} color={colors.accent} />
+              )}
+              <Text style={styles.syncText}>Sync tools</Text>
+            </Pressable>
+          </View>
+        ) : null}
 
-      <Text style={styles.note}>
-        MCP tools cloud AI mode me available hote hain. Server results untrusted data
-        ki tarah treat hote hain.
-      </Text>
+        <Text style={styles.note}>
+          MCP tools are available in cloud AI mode. Server results are treated as
+          untrusted data.
+        </Text>
+      </SettingsSection>
     </GlassView>
   );
 }
 
-const makeStyles = ({ colors, glass }: AppTheme) =>
+const makeStyles = ({ colors }: AppTheme) =>
   StyleSheet.create({
-  card: {
-    padding: spacing.md + 2,
-    marginTop: spacing.sm,
-    gap: spacing.md,
-  },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.md,
-  },
-  headerText: {
-    flex: 1,
-    gap: 4,
-  },
-  title: {
-    color: colors.text,
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  caption: {
-    color: colors.textMuted,
-    fontSize: 13,
-    lineHeight: 19,
-  },
-  badge: {
-    borderRadius: radius.pill,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 4,
-  },
-  badgeOn: {
-    backgroundColor: colors.successSoft,
-  },
-  badgeOff: {
-    backgroundColor: colors.surfaceAlt,
-  },
-  badgeText: {
-    fontSize: 9,
-    fontWeight: '700',
-    letterSpacing: 0.9,
-  },
-  empty: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    backgroundColor: glass.fillSoft,
-    borderWidth: 1,
-    borderStyle: 'dashed',
-    borderColor: glass.border,
-    borderTopColor: glass.borderBright,
-    borderRadius: radius.md,
-    padding: spacing.md,
-  },
-  emptyText: {
-    flex: 1,
-    color: colors.textMuted,
-    fontSize: 12,
-    lineHeight: 18,
-  },
-  list: {
-    gap: spacing.sm,
-  },
-  serverRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    backgroundColor: glass.fillSoft,
-    borderWidth: 1,
-    borderColor: glass.border,
-    borderTopColor: glass.borderBright,
-    borderRadius: radius.md,
-    paddingVertical: spacing.sm,
-    paddingLeft: spacing.md,
-    paddingRight: spacing.sm,
-  },
-  serverMain: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  dot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  serverText: {
-    flex: 1,
-    gap: 2,
-  },
-  serverName: {
-    color: colors.text,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  serverUrl: {
-    color: colors.textFaint,
-    fontSize: 11,
-  },
-  serverStatus: {
-    fontSize: 11,
-    fontWeight: '500',
-  },
-  editor: {
-    borderColor: colors.border,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    gap: spacing.md,
-  },
-  editorTitle: {
-    color: colors.text,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  toggleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-  },
-  toggleText: {
-    flex: 1,
-    gap: 2,
-  },
-  toggleLabel: {
-    color: colors.text,
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  toggleHint: {
-    color: colors.textFaint,
-    fontSize: 11,
-    lineHeight: 16,
-  },
-  editorActions: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
-  flexButton: {
-    flex: 1,
-  },
-  remove: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 4,
-  },
-  removeText: {
-    color: colors.danger,
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  footerRow: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
-  addButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    minHeight: 44,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderStyle: 'dashed',
-    borderColor: colors.borderFocus,
-    backgroundColor: colors.accentSoft,
-    borderTopColor: glass.borderBright,
-  },
-  addText: {
-    color: colors.accent,
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  syncButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    minHeight: 44,
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: glass.border,
-    borderTopColor: glass.borderBright,
-    backgroundColor: glass.fill,
-  },
-  syncText: {
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  disabled: {
-    opacity: 0.55,
-  },
-  pressed: {
-    opacity: 0.78,
-  },
-  note: {
-    color: colors.textFaint,
-    fontSize: 11,
-    lineHeight: 16,
-    borderTopWidth: 1,
-    borderTopColor: glass.border,
-    paddingTop: spacing.sm,
-  },
+    card: {
+      padding: spacing.md + 2,
+      marginTop: spacing.sm,
+    },
+    list: {
+      gap: spacing.xs,
+    },
+    serverRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      minHeight: layout.touchTarget + 20,
+      paddingVertical: spacing.sm,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.border,
+    },
+    lastRow: {
+      borderBottomWidth: 0,
+    },
+    serverMain: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+    },
+    iconWrap: {
+      width: 36,
+      height: 36,
+      borderRadius: 11,
+      backgroundColor: colors.accentSoft,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    serverText: {
+      flex: 1,
+      gap: 2,
+    },
+    serverName: {
+      color: colors.text,
+      ...typography.body,
+      fontWeight: '600',
+    },
+    serverUrl: {
+      color: colors.textFaint,
+      ...typography.caption,
+    },
+    serverDetail: {
+      ...typography.caption,
+      fontWeight: '500',
+    },
+    statusColumn: {
+      maxWidth: 112,
+    },
+    editor: {
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
+      borderRadius: radius.md,
+      backgroundColor: colors.surfaceAlt,
+      padding: spacing.md,
+      gap: spacing.md,
+    },
+    editorHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: spacing.sm,
+      minHeight: 28,
+    },
+    editorTitle: {
+      color: colors.text,
+      ...typography.body,
+      fontWeight: '600',
+    },
+    toggleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.md,
+    },
+    toggleText: {
+      flex: 1,
+      gap: 2,
+    },
+    toggleLabel: {
+      color: colors.text,
+      ...typography.bodySmall,
+      fontWeight: '600',
+    },
+    toggleHint: {
+      color: colors.textFaint,
+      ...typography.caption,
+    },
+    editorActions: {
+      flexDirection: 'row',
+      gap: spacing.sm,
+    },
+    flexButton: {
+      flex: 1,
+    },
+    removeButton: {
+      alignSelf: 'stretch',
+    },
+    footerRow: {
+      flexDirection: 'row',
+      gap: spacing.sm,
+    },
+    syncButton: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+      minHeight: layout.touchTarget + 4,
+      borderRadius: radius.pill,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
+      backgroundColor: colors.surfaceAlt,
+    },
+    syncText: {
+      color: colors.accent,
+      ...typography.button,
+    },
+    disabled: {
+      opacity: 0.5,
+    },
+    pressed: {
+      opacity: 0.78,
+    },
+    note: {
+      color: colors.textFaint,
+      ...typography.caption,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border,
+      paddingTop: spacing.sm,
+    },
   });

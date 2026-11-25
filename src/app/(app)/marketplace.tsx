@@ -13,11 +13,14 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Button } from '@/components/Button';
+import { EmptyState } from '@/components/EmptyState';
 import { FormError } from '@/components/FormError';
 import { GlassBackdrop } from '@/components/GlassBackdrop';
 import { GlassView } from '@/components/GlassView';
 import { ScreenHeader } from '@/components/ScreenHeader';
+import { SettingsSection } from '@/components/SettingsSection';
 import { SidebarButton } from '@/components/SidebarButton';
+import { StatusPill, type StatusTone } from '@/components/StatusPill';
 import { usePluginActions } from '@/components/plugins/usePluginActions';
 import { useSession } from '@/context/auth';
 import { usePluginSnapshot } from '@/context/plugins';
@@ -29,7 +32,7 @@ import { listGoogleConnectionStates } from '@/lib/connections/google';
 import type { ConnectionState } from '@/lib/connections/types';
 import { getMcpStatuses, getMcpToolCount } from '@/lib/mcp/registry';
 import type { PluginSummary } from '@/lib/plugins/types';
-import { radius, spacing } from '@/theme';
+import { radius, spacing, typography } from '@/theme';
 
 type Filter = 'all' | 'plugins' | 'tools' | 'installed';
 
@@ -64,6 +67,32 @@ function isInstalled(summary: PluginSummary): boolean {
     summary.status !== 'available' &&
     summary.status !== 'installing'
   );
+}
+
+function pluginStatus(summary: PluginSummary): { label: string; tone: StatusTone } {
+  if (summary.legacy) {
+    return { label: 'Legacy', tone: 'danger' };
+  }
+
+  switch (summary.status) {
+    case 'running':
+      return { label: 'Running', tone: 'success' };
+    case 'error':
+      return { label: 'Error', tone: 'danger' };
+    case 'disabled':
+      return { label: 'Disabled', tone: 'neutral' };
+    case 'available':
+      return { label: 'Available', tone: 'accent' };
+    case 'installed':
+    case 'enabled':
+      return { label: 'Installed', tone: 'info' };
+    case 'installing':
+      return { label: 'Installing…', tone: 'warning' };
+    default:
+      return isInstalled(summary)
+        ? { label: 'Installed', tone: 'info' }
+        : { label: 'Available', tone: 'accent' };
+  }
 }
 
 export default function MarketplaceScreen() {
@@ -164,13 +193,21 @@ export default function MarketplaceScreen() {
   const mcpStatuses = getMcpStatuses();
   const toolCount = getMcpToolCount();
 
+  function resetFilters() {
+    setQuery('');
+    setFilter('all');
+  }
+
   return (
     <View style={styles.root}>
       <GlassBackdrop />
       <ScrollView
         contentContainerStyle={[
           styles.content,
-          { paddingTop: insets.top + spacing.md, paddingBottom: insets.bottom + spacing.xl },
+          {
+            paddingTop: insets.top + spacing.md,
+            paddingBottom: insets.bottom + spacing.xl,
+          },
         ]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
@@ -190,188 +227,258 @@ export default function MarketplaceScreen() {
           </View>
         ) : null}
 
-        <TextInput
-          value={query}
-          onChangeText={setQuery}
-          placeholder="Search tools and plugins"
-          placeholderTextColor={colors.textFaint}
-          accessibilityLabel="Search tools and plugins"
-          style={styles.search}
-        />
+        <View style={styles.searchWrap}>
+          <Ionicons name="search-outline" size={18} color={colors.textFaint} />
+          <TextInput
+            value={query}
+            onChangeText={setQuery}
+            placeholder="Search tools and plugins"
+            placeholderTextColor={colors.textFaint}
+            accessibilityLabel="Search tools and plugins"
+            style={styles.search}
+          />
+          {query ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Clear search"
+              hitSlop={10}
+              onPress={() => setQuery('')}
+            >
+              <Ionicons name="close-circle" size={18} color={colors.textFaint} />
+            </Pressable>
+          ) : null}
+        </View>
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filters}>
-          {FILTERS.map((item) => (
-            <Pressable
-              key={item.id}
-              accessibilityRole="button"
-              accessibilityState={{ selected: filter === item.id }}
-              onPress={() => setFilter(item.id)}
-              style={[
-                styles.filter,
-                filter === item.id && styles.filterActive,
-              ]}
-            >
-              <Text style={[styles.filterText, filter === item.id && styles.filterTextActive]}>
-                {item.label}
-              </Text>
-            </Pressable>
-          ))}
+          {FILTERS.map((item) => {
+            const selected = filter === item.id;
+
+            return (
+              <Pressable
+                key={item.id}
+                accessibilityRole="button"
+                accessibilityState={{ selected }}
+                onPress={() => setFilter(item.id)}
+                style={[
+                  styles.filter,
+                  selected && styles.filterActive,
+                ]}
+              >
+                <Text style={[styles.filterText, selected && styles.filterTextActive]}>
+                  {item.label}
+                </Text>
+              </Pressable>
+            );
+          })}
         </ScrollView>
 
         {(filter === 'all' || filter === 'plugins' || filter === 'installed') && (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Plugins</Text>
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => router.push('/plugins' as Href)}
-                style={styles.sectionAction}
-              >
-                <Text style={styles.sectionActionText}>Manage</Text>
-              </Pressable>
-            </View>
+          <GlassView style={styles.panel}>
+            <SettingsSection
+              title="Plugins"
+              description="Bundled extensions available on this device."
+              action={
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => router.push('/plugins' as Href)}
+                  style={styles.sectionAction}
+                >
+                  <Text style={styles.sectionActionText}>Manage</Text>
+                </Pressable>
+              }
+            >
+              {plugins.length === 0 ? (
+                <EmptyState
+                  icon="extension-puzzle-outline"
+                  title="No plugins found"
+                  message="No bundled plugins match this search or filter."
+                  actionLabel="Clear filters"
+                  onAction={resetFilters}
+                />
+              ) : (
+                <View style={styles.list}>
+                  {plugins.map((summary) => {
+                    const installed = isInstalled(summary);
+                    const busy = actions.busyPluginId === summary.manifest.pluginId;
+                    const pluginId = summary.manifest.pluginId;
+                    const state = pluginStatus(summary);
 
-            {plugins.length === 0 ? (
-              <Text style={styles.emptyText}>
-                No plugins match this search. Bundled plugins are available on this device.
-              </Text>
-            ) : (
-              plugins.map((summary) => {
-                const installed = isInstalled(summary);
-                const busy = actions.busyPluginId === summary.manifest.pluginId;
-                const pluginId = summary.manifest.pluginId;
+                    return (
+                      <View key={pluginId} style={styles.card}>
+                        <View style={styles.cardTop}>
+                          <View style={styles.iconWrap}>
+                            <Ionicons
+                              name="extension-puzzle-outline"
+                              size={20}
+                              color={colors.accent}
+                            />
+                          </View>
+                          <View style={styles.cardCopy}>
+                            <Text style={styles.cardTitle}>
+                              {summary.manifest.name}
+                            </Text>
+                            <Text style={styles.cardDescription} numberOfLines={2}>
+                              {summary.manifest.description}
+                            </Text>
+                            <View style={styles.metaRow}>
+                              <StatusPill
+                                label={state.label}
+                                tone={state.tone}
+                                showDot={
+                                  state.tone === 'success' || state.tone === 'danger'
+                                }
+                              />
+                              <Text style={styles.cardMeta}>
+                                v{summary.manifest.version} · {summary.trustLevel}
+                              </Text>
+                            </View>
+                          </View>
+                        </View>
 
-                return (
-                  <GlassView key={pluginId} style={styles.card}>
-                    <View style={styles.cardTop}>
-                      <View style={styles.iconWrap}>
-                        <Ionicons name="extension-puzzle-outline" size={21} color={colors.accent} />
+                        <View style={styles.cardActions}>
+                          {!installed ? (
+                            <Button
+                              label="Install"
+                              onPress={() => void actions.install(pluginId)}
+                              disabled={busy}
+                              loading={busy}
+                            />
+                          ) : summary.enabled ? (
+                            <Button
+                              label="Disable"
+                              variant="secondary"
+                              onPress={() => void actions.disable(pluginId)}
+                              disabled={busy}
+                              loading={busy}
+                            />
+                          ) : (
+                            <Button
+                              label="Enable"
+                              onPress={() => void actions.enable(pluginId)}
+                              disabled={busy}
+                              loading={busy}
+                            />
+                          )}
+                          <Button
+                            label="Details"
+                            variant="ghost"
+                            onPress={() =>
+                              router.push(
+                                `/plugins/${encodeURIComponent(pluginId)}` as Href
+                              )
+                            }
+                          />
+                        </View>
                       </View>
-                      <View style={styles.cardCopy}>
-                        <Text style={styles.cardTitle}>{summary.manifest.name}</Text>
-                        <Text style={styles.cardDescription} numberOfLines={2}>
-                          {summary.manifest.description}
-                        </Text>
-                        <Text style={styles.cardMeta}>
-                          {summary.manifest.category} · v{summary.manifest.version} ·{' '}
-                          {summary.trustLevel}
-                        </Text>
-                      </View>
-                    </View>
-
-                    <View style={styles.cardActions}>
-                      {!installed ? (
-                        <Button
-                          label="Install"
-                          onPress={() => void actions.install(pluginId)}
-                          disabled={busy}
-                          loading={busy}
-                        />
-                      ) : summary.enabled ? (
-                        <Button
-                          label="Disable"
-                          variant="secondary"
-                          onPress={() => void actions.disable(pluginId)}
-                          disabled={busy}
-                          loading={busy}
-                        />
-                      ) : (
-                        <Button
-                          label="Enable"
-                          onPress={() => void actions.enable(pluginId)}
-                          disabled={busy}
-                          loading={busy}
-                        />
-                      )}
-                      <Button
-                        label="Details"
-                        variant="ghost"
-                        onPress={() =>
-                          router.push(`/plugins/${encodeURIComponent(pluginId)}` as Href)
-                        }
-                      />
-                    </View>
-                  </GlassView>
-                );
-              })
-            )}
-          </View>
+                    );
+                  })}
+                </View>
+              )}
+            </SettingsSection>
+          </GlassView>
         )}
 
         {(filter === 'all' || filter === 'tools') && (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Available agent tools</Text>
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => router.push('/connections' as Href)}
-                style={styles.sectionAction}
-              >
-                <Text style={styles.sectionActionText}>Connections</Text>
-              </Pressable>
-            </View>
+          <GlassView style={styles.panel}>
+            <SettingsSection
+              title="Available agent tools"
+              description="Built-in, plugin, MCP and connected account actions."
+              action={
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => router.push('/connections' as Href)}
+                  style={styles.sectionAction}
+                >
+                  <Text style={styles.sectionActionText}>Connections</Text>
+                </Pressable>
+              }
+            >
+              {loading ? (
+                <View style={styles.loading}>
+                  <ActivityIndicator color={colors.accent} />
+                </View>
+              ) : tools.length === 0 ? (
+                <EmptyState
+                  icon="construct-outline"
+                  title="No tools found"
+                  message="Try a different search term or clear the filters."
+                  actionLabel="Clear filters"
+                  onAction={resetFilters}
+                />
+              ) : (
+                <View style={styles.list}>
+                  {tools.map(({ tool, connected }) => {
+                    const name = tool.definition.name;
 
-            {loading ? (
-              <View style={styles.loading}>
-                <ActivityIndicator color={colors.accent} />
-              </View>
-            ) : tools.length === 0 ? (
-              <Text style={styles.emptyText}>No tools match this search.</Text>
-            ) : (
-              tools.map(({ tool, connected }) => {
-                const name = tool.definition.name;
-
-                return (
-                  <GlassView key={name} style={styles.card}>
-                    <View style={styles.toolTop}>
-                      <Text style={styles.toolName}>{name}</Text>
-                      <Text style={styles.source}>{sourceLabel(tool.meta?.source)}</Text>
-                    </View>
-                    <Text style={styles.cardDescription} numberOfLines={3}>
-                      {tool.definition.description || 'No description provided.'}
-                    </Text>
-                    {connected === false ? (
-                      <Text style={styles.warning}>
-                        Connect the account in Connections before agents can use this tool.
-                      </Text>
-                    ) : null}
-                  </GlassView>
-                );
-              })
-            )}
-          </View>
+                    return (
+                      <View key={name} style={styles.toolCard}>
+                        <View style={styles.toolTop}>
+                          <Text style={styles.toolName}>{name}</Text>
+                          <StatusPill label={sourceLabel(tool.meta?.source)} tone="info" />
+                          {connected === false ? (
+                            <StatusPill label="Connect account" tone="warning" />
+                          ) : connected === true ? (
+                            <StatusPill label="Connected" tone="success" />
+                          ) : null}
+                        </View>
+                        <Text style={styles.cardDescription} numberOfLines={3}>
+                          {tool.definition.description || 'No description provided.'}
+                        </Text>
+                        {connected === false ? (
+                          <Text style={styles.warning}>
+                            Connect the account in Connections before agents can use this tool.
+                          </Text>
+                        ) : null}
+                      </View>
+                    );
+                  })}
+                </View>
+              )}
+            </SettingsSection>
+          </GlassView>
         )}
 
         {filter === 'all' ? (
-          <GlassView style={styles.card}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>MCP discovery</Text>
-              <Text style={styles.sectionBadge}>{toolCount} tools</Text>
-            </View>
-            <Text style={styles.cardDescription}>
-              Add servers in Connections. Each server is validated and its tools are registered
-              through the existing MCP client.
-            </Text>
-            {mcpStatuses.length === 0 ? (
-              <Text style={styles.emptyText}>No MCP servers configured yet.</Text>
-            ) : (
-              mcpStatuses.map((status) => (
-                <View key={status.serverId} style={styles.mcpRow}>
-                  <Ionicons
-                    name={status.ok ? 'checkmark-circle-outline' : 'alert-circle-outline'}
-                    size={16}
-                    color={status.ok ? colors.success : colors.danger}
-                  />
-                  <View style={styles.mcpCopy}>
-                    <Text style={styles.mcpName}>{status.serverName}</Text>
-                    <Text style={styles.cardMeta}>
-                      {status.toolCount} tools
-                      {status.error ? ` · ${status.error}` : ''}
-                    </Text>
-                  </View>
+          <GlassView style={styles.panel}>
+            <SettingsSection
+              title="MCP discovery"
+              description="Add servers in Connections. Each server is validated and its tools are registered through the existing MCP client."
+              action={
+                <StatusPill
+                  label={toolCount === 1 ? '1 tool' : `${toolCount} tools`}
+                  tone={toolCount > 0 ? 'success' : 'neutral'}
+                />
+              }
+            >
+              {mcpStatuses.length === 0 ? (
+                <EmptyState
+                  icon="server-outline"
+                  title="No MCP servers configured"
+                  message="Add a server in Connections to register its tools here."
+                  actionLabel="Open Connections"
+                  onAction={() => router.push('/connections' as Href)}
+                />
+              ) : (
+                <View style={styles.list}>
+                  {mcpStatuses.map((status) => (
+                    <View key={status.serverId} style={styles.mcpRow}>
+                      <StatusPill
+                        label={status.ok ? 'Connected' : 'Failed'}
+                        tone={status.ok ? 'success' : 'danger'}
+                        showDot
+                      />
+                      <View style={styles.mcpCopy}>
+                        <Text style={styles.mcpName}>{status.serverName}</Text>
+                        <Text style={styles.cardMeta}>
+                          {status.toolCount === 1 ? '1 tool' : `${status.toolCount} tools`}
+                          {status.error ? ` · ${status.error}` : ''}
+                        </Text>
+                      </View>
+                    </View>
+                  ))}
                 </View>
-              ))
-            )}
+              )}
+            </SettingsSection>
           </GlassView>
         ) : null}
       </ScrollView>
@@ -386,71 +493,68 @@ const makeStyles = ({ colors }: AppTheme) =>
       backgroundColor: colors.background,
     },
     content: {
-      paddingHorizontal: spacing.lg,
+      paddingHorizontal: spacing.md,
       gap: spacing.md,
     },
-    search: {
+    searchWrap: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
       minHeight: 50,
       borderRadius: radius.md,
       borderWidth: StyleSheet.hairlineWidth,
       borderColor: colors.border,
-      backgroundColor: colors.surface,
-      color: colors.text,
+      backgroundColor: colors.surfaceAlt,
       paddingHorizontal: spacing.md,
-      fontSize: 15,
+    },
+    search: {
+      flex: 1,
+      color: colors.text,
+      ...typography.body,
     },
     filters: {
       flexGrow: 0,
     },
     filter: {
       paddingHorizontal: spacing.md,
-      paddingVertical: spacing.sm,
+      paddingVertical: 9,
       borderRadius: radius.pill,
-      backgroundColor: colors.surface,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
+      backgroundColor: colors.surfaceAlt,
       marginRight: spacing.sm,
     },
     filterActive: {
+      borderColor: colors.accent,
       backgroundColor: colors.accentSoft,
     },
     filterText: {
       color: colors.textMuted,
-      fontSize: 13,
+      ...typography.bodySmall,
       fontWeight: '600',
     },
     filterTextActive: {
       color: colors.accent,
     },
-    section: {
-      gap: spacing.sm,
-    },
-    sectionHeader: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      gap: spacing.sm,
-    },
-    sectionTitle: {
-      color: colors.text,
-      fontSize: 19,
-      fontWeight: '700',
+    panel: {
+      borderRadius: radius.lg,
+      padding: spacing.md,
     },
     sectionAction: {
       paddingVertical: spacing.xs,
     },
     sectionActionText: {
       color: colors.accent,
-      fontSize: 13,
+      ...typography.bodySmall,
       fontWeight: '700',
-    },
-    sectionBadge: {
-      color: colors.textFaint,
-      fontSize: 12,
     },
     notice: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: spacing.sm,
       borderRadius: radius.md,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.success,
       backgroundColor: colors.successSoft,
       paddingVertical: spacing.sm,
       paddingHorizontal: spacing.md,
@@ -458,30 +562,32 @@ const makeStyles = ({ colors }: AppTheme) =>
     noticeText: {
       flex: 1,
       color: colors.success,
-      fontSize: 13,
+      ...typography.bodySmall,
     },
     loading: {
       paddingVertical: spacing.lg,
       alignItems: 'center',
     },
-    emptyText: {
-      color: colors.textFaint,
-      fontSize: 13,
-      lineHeight: 19,
+    list: {
+      gap: spacing.sm,
     },
     card: {
-      padding: spacing.md,
+      padding: spacing.sm + 2,
       gap: spacing.sm,
+      borderRadius: radius.md,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
+      backgroundColor: colors.surfaceAlt,
     },
     cardTop: {
       flexDirection: 'row',
       alignItems: 'flex-start',
-      gap: spacing.md,
+      gap: spacing.sm,
     },
     iconWrap: {
-      width: 42,
-      height: 42,
-      borderRadius: radius.md,
+      width: 38,
+      height: 38,
+      borderRadius: 11,
       backgroundColor: colors.accentSoft,
       alignItems: 'center',
       justifyContent: 'center',
@@ -492,16 +598,23 @@ const makeStyles = ({ colors }: AppTheme) =>
     },
     cardTitle: {
       color: colors.text,
-      fontSize: 15,
-      fontWeight: '700',
+      ...typography.body,
+      fontWeight: '600',
     },
     cardDescription: {
       color: colors.textMuted,
-      fontSize: 13,
-      lineHeight: 18,
+      ...typography.caption,
+    },
+    metaRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flexWrap: 'wrap',
+      gap: spacing.xs,
     },
     cardMeta: {
+      flexShrink: 1,
       color: colors.textFaint,
+      ...typography.caption,
       fontSize: 11,
     },
     cardActions: {
@@ -509,28 +622,27 @@ const makeStyles = ({ colors }: AppTheme) =>
       gap: spacing.sm,
       flexWrap: 'wrap',
     },
+    toolCard: {
+      gap: 4,
+      paddingVertical: spacing.sm,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.border,
+    },
     toolTop: {
       flexDirection: 'row',
       alignItems: 'center',
-      justifyContent: 'space-between',
-      gap: spacing.sm,
+      flexWrap: 'wrap',
+      gap: spacing.xs,
     },
     toolName: {
-      flex: 1,
+      flexShrink: 1,
       color: colors.text,
-      fontSize: 13,
+      ...typography.bodySmall,
       fontWeight: '700',
-    },
-    source: {
-      color: colors.accent,
-      fontSize: 11,
-      fontWeight: '700',
-      textTransform: 'uppercase',
     },
     warning: {
       color: colors.warning,
-      fontSize: 12,
-      lineHeight: 17,
+      ...typography.caption,
     },
     mcpRow: {
       flexDirection: 'row',
@@ -544,7 +656,7 @@ const makeStyles = ({ colors }: AppTheme) =>
     },
     mcpName: {
       color: colors.text,
-      fontSize: 13,
+      ...typography.bodySmall,
       fontWeight: '600',
     },
   });

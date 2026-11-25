@@ -157,7 +157,7 @@ export default function EventsScreen() {
                 `Fork of #${sourceId}`
               );
               setForkNotice(
-                `Fork ban gayi (conversation #${newId}) — Agent tab mein history se kholein.`
+                `Fork created (conversation #${newId}). Open it from the Agent tab history.`
               );
               await load();
             } catch (forkError) {

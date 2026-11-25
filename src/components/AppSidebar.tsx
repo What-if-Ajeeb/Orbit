@@ -21,7 +21,7 @@ import { usePluginSnapshot } from '@/context/plugins';
 import { useSidebar } from '@/context/sidebar';
 import { useAppTheme, useStyles, type AppTheme } from '@/context/theme';
 import { getChatStore, type Conversation } from '@/lib/chat';
-import { fonts, radius, spacing } from '@/theme';
+import { fonts, layout, motion, radius, spacing, typography } from '@/theme';
 
 type NavItem = {
   label: string;
@@ -122,7 +122,7 @@ export function AppSidebar() {
   useEffect(() => {
     Animated.timing(progress, {
       toValue: isOpen ? 1 : 0,
-      duration: isOpen ? 240 : 180,
+      duration: isOpen ? motion.normal + 40 : motion.fast + 60,
       easing: isOpen ? Easing.out(Easing.cubic) : Easing.in(Easing.cubic),
       useNativeDriver: true,
     }).start();
@@ -347,9 +347,19 @@ export function AppSidebar() {
             accessibilityRole="button"
             accessibilityLabel="Open settings"
             onPress={() => navigate('/settings')}
-            style={({ pressed }) => [styles.avatar, pressed && styles.pressed]}
+            style={({ pressed }) => [styles.bottomUser, pressed && styles.pressed]}
           >
-            <Text style={styles.avatarText}>{getInitials(user.name) || 'O'}</Text>
+            <View style={styles.avatar}>
+              <Text style={styles.avatarText}>{getInitials(user.name) || 'O'}</Text>
+            </View>
+            <View style={styles.bottomUserText}>
+              <Text numberOfLines={1} style={styles.bottomUserName}>
+                {user.name}
+              </Text>
+              <Text numberOfLines={1} style={styles.bottomUserHint}>
+                Account settings
+              </Text>
+            </View>
           </Pressable>
 
           <Pressable
@@ -410,9 +420,7 @@ const makeStyles = ({ colors }: AppTheme) =>
     wordmark: {
       color: colors.text,
       fontFamily: fonts.serif,
-      fontSize: 32,
-      fontWeight: '600',
-      letterSpacing: -0.4,
+      ...typography.title,
     },
     navScroll: {
       flex: 1,
@@ -424,24 +432,25 @@ const makeStyles = ({ colors }: AppTheme) =>
       flexDirection: 'row',
       alignItems: 'center',
       gap: spacing.md,
-      minHeight: 56,
+      minHeight: layout.touchTarget + 8,
       paddingHorizontal: spacing.sm + 2,
       borderRadius: radius.md,
     },
     navItemCompact: {
-      minHeight: 48,
+      minHeight: layout.touchTarget,
       paddingLeft: spacing.lg,
     },
     navItemActive: {
       backgroundColor: colors.surface,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
     },
     navLabel: {
       color: colors.textMuted,
-      fontSize: 18,
-      fontWeight: '500',
+      ...typography.body,
     },
     navLabelCompact: {
-      fontSize: 16,
+      ...typography.bodySmall,
     },
     navLabelActive: {
       color: colors.text,
@@ -453,33 +462,32 @@ const makeStyles = ({ colors }: AppTheme) =>
     },
     sectionLabel: {
       color: colors.textMuted,
-      fontSize: 15,
+      ...typography.bodySmall,
       fontWeight: '600',
       paddingHorizontal: spacing.sm + 2,
       marginBottom: spacing.xs,
     },
     sectionLabelInline: {
       color: colors.textMuted,
-      fontSize: 15,
+      ...typography.bodySmall,
       fontWeight: '600',
     },
     recentRow: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: spacing.md,
-      minHeight: 48,
+      minHeight: layout.touchTarget,
       paddingHorizontal: spacing.sm + 2,
       borderRadius: radius.md,
     },
     recentTitle: {
       flex: 1,
       color: colors.text,
-      fontSize: 16,
+      ...typography.bodySmall,
     },
     recentEmpty: {
       color: colors.textFaint,
-      fontSize: 14,
-      lineHeight: 20,
+      ...typography.bodySmall,
       paddingHorizontal: spacing.sm + 2,
       paddingVertical: spacing.xs,
     },
@@ -487,46 +495,66 @@ const makeStyles = ({ colors }: AppTheme) =>
       flexDirection: 'row',
       alignItems: 'center',
       gap: spacing.xs,
-      minHeight: 48,
+      minHeight: layout.touchTarget,
       paddingHorizontal: spacing.sm + 2,
     },
     allChatsText: {
       color: colors.textMuted,
-      fontSize: 15,
+      ...typography.bodySmall,
       fontWeight: '600',
     },
     bottomBar: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
+      gap: spacing.sm,
       paddingTop: spacing.md,
     },
+    bottomUser: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      flex: 1,
+      minHeight: layout.touchTarget + 8,
+    },
+    bottomUserText: {
+      flex: 1,
+      gap: 2,
+    },
+    bottomUserName: {
+      color: colors.text,
+      ...typography.bodySmall,
+      fontWeight: '600',
+    },
+    bottomUserHint: {
+      color: colors.textFaint,
+      ...typography.caption,
+    },
     avatar: {
-      width: 52,
-      height: 52,
-      borderRadius: 26,
+      width: 44,
+      height: 44,
+      borderRadius: 22,
       backgroundColor: colors.accent,
       alignItems: 'center',
       justifyContent: 'center',
     },
     avatarText: {
       color: colors.onInverse,
-      fontSize: 20,
+      fontSize: 18,
       fontWeight: '700',
     },
     newChat: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: spacing.xs,
-      height: 52,
-      paddingHorizontal: spacing.lg,
+      minHeight: layout.touchTarget + 4,
+      paddingHorizontal: spacing.md,
       borderRadius: radius.pill,
       backgroundColor: colors.inverse,
     },
     newChatText: {
       color: colors.onInverse,
-      fontSize: 16,
-      fontWeight: '700',
+      ...typography.button,
     },
     pressed: {
       opacity: 0.8,

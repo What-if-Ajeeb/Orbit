@@ -1,7 +1,7 @@
 import { ActivityIndicator, Pressable, StyleSheet, Text, type ViewStyle } from 'react-native';
 
 import { useAppTheme, useStyles, type AppTheme } from '@/context/theme';
-import { radius, spacing } from '@/theme';
+import { layout, radius, spacing, typography } from '@/theme';
 
 type ButtonVariant = 'primary' | 'secondary' | 'danger' | 'ghost';
 
@@ -76,7 +76,7 @@ export function Button({
 const makeStyles = (_theme: AppTheme) =>
   StyleSheet.create({
     base: {
-      minHeight: 52,
+      minHeight: layout.touchTarget + 4,
       borderRadius: radius.pill,
       borderWidth: StyleSheet.hairlineWidth,
       alignItems: 'center',
@@ -84,14 +84,12 @@ const makeStyles = (_theme: AppTheme) =>
       paddingHorizontal: spacing.lg,
     },
     pressed: {
-      opacity: 0.85,
-      transform: [{ scale: 0.995 }],
+      opacity: 0.82,
     },
     disabled: {
-      opacity: 0.55,
+      opacity: 0.5,
     },
     label: {
-      fontSize: 16,
-      fontWeight: '600',
+      ...typography.button,
     },
   });

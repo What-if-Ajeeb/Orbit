@@ -174,3 +174,55 @@ export const spacing = {
   lg: 24,
   xl: 32,
 } as const;
+
+/**
+ * Typography scale. Headings keep the ORBIT serif in the components that use
+ * them; everything else uses the system sans font so no font download is
+ * required.
+ */
+export const typography = {
+  display: { fontSize: 34, lineHeight: 40, fontWeight: '600', letterSpacing: -0.8 },
+  title: { fontSize: 27, lineHeight: 33, fontWeight: '600', letterSpacing: -0.4 },
+  section: { fontSize: 18, lineHeight: 24, fontWeight: '600', letterSpacing: -0.2 },
+  body: { fontSize: 15, lineHeight: 22, fontWeight: '400' },
+  bodySmall: { fontSize: 13, lineHeight: 19, fontWeight: '400' },
+  caption: { fontSize: 12, lineHeight: 17, fontWeight: '400' },
+  overline: { fontSize: 11, lineHeight: 14, fontWeight: '700', letterSpacing: 1.4 },
+  button: { fontSize: 15, lineHeight: 20, fontWeight: '600' },
+  code: { fontSize: 13, lineHeight: 19, fontWeight: '500' },
+} as const;
+
+/** Interaction timing. Values are deliberately short and non-decorative. */
+export const motion = {
+  fast: 120,
+  normal: 200,
+  slow: 320,
+} as const;
+
+/** Layout rules shared by screens, lists and touch targets. */
+export const layout = {
+  gutter: 20,
+  contentMaxWidth: 720,
+  touchTarget: 48,
+  iconButton: 44,
+  cardPadding: 16,
+} as const;
+
+/** Restrained elevation tokens. Borders remain the primary separation cue. */
+export const elevation = {
+  none: {} as ViewStyle,
+  card: {
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 2,
+  } as ViewStyle,
+  raised: {
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.14,
+    shadowRadius: 18,
+    elevation: 6,
+  } as ViewStyle,
+} as const;

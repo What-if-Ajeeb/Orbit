@@ -12,12 +12,15 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { EmptyState } from '@/components/EmptyState';
 import { GlassBackdrop } from '@/components/GlassBackdrop';
 import { GlassView } from '@/components/GlassView';
 import { PluginSettingsForm } from '@/components/plugins/PluginSettingsForm';
 import { usePluginActions } from '@/components/plugins/usePluginActions';
 import { ScreenHeader } from '@/components/ScreenHeader';
+import { SettingsSection } from '@/components/SettingsSection';
 import { SidebarButton } from '@/components/SidebarButton';
+import { StatusPill, type StatusTone } from '@/components/StatusPill';
 import { usePluginSnapshot } from '@/context/plugins';
 import { useSidebar } from '@/context/sidebar';
 import { useAppTheme, useStyles, type AppTheme } from '@/context/theme';
@@ -30,9 +33,10 @@ import type {
   InstallHistoryRecord,
   PermissionAuditRecord,
   PluginPermission,
+  PluginSummary,
   PluginTrustLevel,
 } from '@/lib/plugins/types';
-import { radius, spacing } from '@/theme';
+import { radius, spacing, typography } from '@/theme';
 
 const TRUST_COPY: Record<PluginTrustLevel, string> = {
   official: 'Reviewed and shipped with ORBIT.',
@@ -52,6 +56,96 @@ const AUDIT_LABEL: Record<PermissionAuditRecord['event'], string> = {
   permission_denied_at_runtime: 'Permission denied at runtime',
   mcp_consent_created: 'MCP consent created',
 };
+
+function statusTone(summary: PluginSummary): StatusTone {
+  if (summary.legacy || summary.status === 'error') {
+    return 'danger';
+  }
+
+  switch (summary.status) {
+    case 'running':
+      return 'success';
+    case 'available':
+      return 'accent';
+    case 'installed':
+    case 'enabled':
+      return 'info';
+    case 'enabling':
+    case 'starting':
+    case 'stopping':
+    case 'updating':
+    case 'installing':
+    case 'uninstalling':
+      return 'warning';
+    default:
+      return 'neutral';
+  }
+}
+
+function statusLabel(summary: PluginSummary): string {
+  if (summary.legacy) {
+    return 'Legacy';
+  }
+
+  switch (summary.status) {
+    case 'enabling':
+      return 'Enabling…';
+    case 'starting':
+      return 'Starting…';
+    case 'stopping':
+      return 'Stopping…';
+    case 'updating':
+      return 'Updating…';
+    case 'installing':
+      return 'Installing…';
+    case 'uninstalling':
+      return 'Uninstalling…';
+    case 'discovered':
+      return 'Discovered';
+    case 'running':
+      return 'Running';
+    case 'disabled':
+      return 'Disabled';
+    case 'error':
+      return 'Error';
+    case 'available':
+      return 'Available';
+    case 'installed':
+    case 'enabled':
+      return 'Installed';
+    default:
+      return summary.status;
+  }
+}
+
+function auditTone(event: PermissionAuditRecord['event']): StatusTone {
+  if (event === 'permissions_granted') {
+    return 'success';
+  }
+
+  if (
+    event === 'permissions_denied' ||
+    event === 'permission_revoked' ||
+    event === 'permissions_revoked_all' ||
+    event === 'permission_denied_at_runtime'
+  ) {
+    return 'danger';
+  }
+
+  if (event === 'permissions_changed_on_update') {
+    return 'warning';
+  }
+
+  return 'info';
+}
+
+function historyTone(status: InstallHistoryRecord['status']): StatusTone {
+  if (status === 'failed') {
+    return 'danger';
+  }
+
+  return status === 'started' ? 'warning' : 'success';
+}
 
 export default function PluginDetailScreen() {
   const params = useLocalSearchParams<{ pluginId?: string }>();
@@ -118,17 +212,32 @@ export default function PluginDetailScreen() {
     return (
       <View style={styles.root}>
         <GlassBackdrop />
-        <View style={[styles.content, { paddingTop: insets.top + spacing.md }]}>
-          <ScreenHeader title="Plugin not found" subtitle={pluginId || 'Missing plugin id'} />
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => router.replace('/plugins' as Href)}
-            style={styles.backLink}
-          >
-            <Ionicons name="chevron-back" size={16} color={colors.accent} />
-            <Text style={styles.backLinkText}>Back to plugins</Text>
-          </Pressable>
-        </View>
+        <ScrollView
+          contentContainerStyle={[
+            styles.content,
+            {
+              paddingTop: insets.top + spacing.md,
+              paddingBottom: insets.bottom + spacing.xl,
+            },
+          ]}
+        >
+          <View style={styles.headerRow}>
+            <SidebarButton onPress={openSidebar} />
+            <ScreenHeader
+              title="Plugin not found"
+              subtitle={pluginId || 'Missing plugin id'}
+            />
+          </View>
+          <GlassView style={styles.section}>
+            <EmptyState
+              icon="help-circle-outline"
+              title="Nothing to show here"
+              message="This plugin is not in the bundled catalog on this device."
+              actionLabel="Back to plugins"
+              onAction={() => router.replace('/plugins' as Href)}
+            />
+          </GlassView>
+        </ScrollView>
       </View>
     );
   }
@@ -136,6 +245,7 @@ export default function PluginDetailScreen() {
   const manifest = summary.manifest;
   const installed = !['available', 'discovered'].includes(summary.status);
   const running = summary.status === 'running';
+  const tone = statusTone(summary);
 
   function confirmUninstall() {
     Alert.alert(
@@ -210,7 +320,7 @@ export default function PluginDetailScreen() {
                     ? (manifest.icon as keyof typeof Ionicons.glyphMap)
                     : 'extension-puzzle-outline'
                 }
-                size={28}
+                size={26}
                 color={colors.accent}
               />
             </View>
@@ -220,48 +330,33 @@ export default function PluginDetailScreen() {
               </Text>
               <Text style={styles.heroTrust}>
                 {summary.trustLevel} · {summary.source}
-                {core ? ' · core service' : ''}
+                {core ? ' · Core service' : ''}
               </Text>
             </View>
-            <View
-              style={[
-                styles.statusPill,
-                {
-                  backgroundColor: running
-                    ? colors.successSoft
-                    : summary.status === 'error'
-                      ? colors.dangerSoft
-                      : colors.accentSoft,
-                },
-              ]}
-            >
-              <Text
-                style={[
-                  styles.statusPillText,
-                  {
-                    color: running
-                      ? colors.success
-                      : summary.status === 'error'
-                        ? colors.danger
-                        : colors.accent,
-                  },
-                ]}
-              >
-                {summary.legacy ? 'legacy' : summary.status}
-              </Text>
-            </View>
+            <StatusPill
+              label={statusLabel(summary)}
+              tone={tone}
+              showDot={tone === 'success' || tone === 'danger'}
+              style={styles.heroStatus}
+            />
           </View>
 
           <Text style={styles.trustCopy}>{TRUST_COPY[summary.trustLevel]}</Text>
 
           {summary.error ? (
-            <Text style={styles.errorText}>{summary.error}</Text>
+            <View style={styles.messageRow}>
+              <Ionicons name="alert-circle-outline" size={15} color={colors.danger} />
+              <Text style={styles.errorText}>{summary.error}</Text>
+            </View>
           ) : null}
 
           {summary.health.lastError ? (
-            <Text style={styles.healthText}>
-              Health: {summary.health.status} · {summary.health.lastError}
-            </Text>
+            <View style={styles.messageRow}>
+              <Ionicons name="medical-outline" size={15} color={colors.warning} />
+              <Text style={styles.healthText}>
+                Health: {summary.health.status} · {summary.health.lastError}
+              </Text>
+            </View>
           ) : null}
 
           <View style={styles.actionsRow}>
@@ -337,14 +432,14 @@ export default function PluginDetailScreen() {
           </View>
 
           {core ? (
-            <Text style={styles.coreNote}>
+            <Text style={styles.note}>
               This is a core ORBIT service. It is mounted by the Cordis harness and
               cannot be disabled or uninstalled from the Plugin Manager.
             </Text>
           ) : null}
 
           {summary.legacy ? (
-            <Text style={styles.coreNote}>
+            <Text style={styles.note}>
               This record was imported from the legacy plugin store as untrusted and
               disabled. Its executable source was not migrated and will never run.
             </Text>
@@ -352,184 +447,196 @@ export default function PluginDetailScreen() {
         </GlassView>
 
         <GlassView style={styles.section}>
-          <Text style={styles.sectionTitle}>Permissions</Text>
-          <Text style={styles.sectionHint}>
-            Default deny. A plugin receives nothing until you approve each permission.
-          </Text>
+          <SettingsSection
+            title="Permissions"
+            description="Default deny. A plugin receives nothing until you approve each permission."
+          >
+            {manifest.permissions.length === 0 ? (
+              <Text style={styles.muted}>This plugin requests no permissions.</Text>
+            ) : (
+              <View style={styles.rows}>
+                {manifest.permissions.map((permission: PluginPermission) => {
+                  const meta = PLUGIN_PERMISSION_META[permission];
+                  const granted =
+                    summary.grantedPermissions.includes(permission) &&
+                    actions.platform.permissions.has(pluginId, permission);
+                  const sensitive = isSensitivePermission(permission);
 
-          {manifest.permissions.length === 0 ? (
-            <Text style={styles.muted}>This plugin requests no permissions.</Text>
-          ) : (
-            manifest.permissions.map((permission: PluginPermission) => {
-              const meta = PLUGIN_PERMISSION_META[permission];
-              const granted =
-                summary.grantedPermissions.includes(permission) &&
-                actions.platform.permissions.has(pluginId, permission);
-              const sensitive = isSensitivePermission(permission);
+                  return (
+                    <View key={permission} style={styles.permissionRow}>
+                      <Ionicons
+                        name={sensitive ? 'warning-outline' : 'shield-checkmark-outline'}
+                        size={18}
+                        color={sensitive ? colors.warning : colors.accent}
+                      />
+                      <View style={styles.permissionText}>
+                        <View style={styles.permissionTitleRow}>
+                          <Text style={styles.permissionLabel}>{meta.label}</Text>
+                          <StatusPill
+                            label={granted ? 'Granted' : 'Not granted'}
+                            tone={granted ? 'success' : 'neutral'}
+                          />
+                        </View>
+                        <Text style={styles.permissionDetail}>{meta.description}</Text>
+                        <Text style={styles.permissionMeta}>
+                          {meta.risk} risk{sensitive ? ' · Sensitive' : ''}
+                        </Text>
+                      </View>
 
-              return (
-                <View key={permission} style={styles.permissionRow}>
-                  <Ionicons
-                    name={sensitive ? 'warning-outline' : 'shield-checkmark-outline'}
-                    size={17}
-                    color={sensitive ? colors.warning : colors.accent}
-                  />
-                  <View style={styles.permissionText}>
-                    <Text style={styles.permissionLabel}>{meta.label}</Text>
-                    <Text style={styles.permissionDetail}>{meta.description}</Text>
-                    <Text
-                      style={[
-                        styles.permissionState,
-                        { color: granted ? colors.success : colors.textFaint },
-                      ]}
-                    >
-                      {granted ? 'Granted' : 'Not granted'} · {meta.risk} risk
+                      {!core ? (
+                        <Pressable
+                          accessibilityRole="button"
+                          disabled={busy}
+                          onPress={() => {
+                            if (granted) {
+                              void actions.revokePermission(pluginId, permission);
+                            } else {
+                              void actions.grantPermission(pluginId, permission);
+                            }
+                          }}
+                          style={({ pressed }) => [
+                            styles.permissionAction,
+                            granted && styles.permissionActionDanger,
+                            pressed && styles.pressed,
+                            busy && styles.disabled,
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.permissionActionText,
+                              granted && styles.permissionActionTextDanger,
+                            ]}
+                          >
+                            {granted ? 'Revoke' : 'Grant'}
+                          </Text>
+                        </Pressable>
+                      ) : null}
+                    </View>
+                  );
+                })}
+              </View>
+            )}
+          </SettingsSection>
+        </GlassView>
+
+        <GlassView style={styles.section}>
+          <SettingsSection
+            title="Settings"
+            description="Values are saved on this device."
+          >
+            <PluginSettingsForm
+              platform={actions.platform}
+              pluginId={pluginId}
+              fields={manifest.settingsSchema}
+            />
+          </SettingsSection>
+        </GlassView>
+
+        <GlassView style={styles.section}>
+          <SettingsSection
+            title="Contributions"
+            description="What this plugin adds to ORBIT."
+          >
+            <View style={styles.chips}>
+              <StatusPill label={`${manifest.routes.length} routes`} />
+              <StatusPill label={`${manifest.navigationEntries.length} sidebar`} />
+              <StatusPill label={`${manifest.dashboardWidgets.length} widgets`} />
+              <StatusPill label={`${manifest.settingsSections.length} settings`} />
+              <StatusPill label={`${manifest.mcpTools.length} MCP tools`} />
+              <StatusPill label={`${manifest.dependencies.length} deps`} />
+            </View>
+
+            <View style={styles.detailGrid}>
+              <DetailRow label="Category" value={manifest.category} />
+              <DetailRow label="Entry point" value={manifest.entryPoint.kind} />
+              <DetailRow
+                label="Platforms"
+                value={manifest.platformSupport.join(', ')}
+              />
+              <DetailRow
+                label="Min Orbit"
+                value={manifest.minimumOrbitVersion}
+              />
+              <DetailRow label="Publisher" value={manifest.publisher.name} />
+              <DetailRow label="Update policy" value={manifest.updatePolicy} />
+              <DetailRow
+                label="Installed"
+                value={
+                  summary.installedAt
+                    ? formatRelative(summary.installedAt)
+                    : 'Not installed'
+                }
+              />
+              <DetailRow
+                label="Updated"
+                value={summary.updatedAt ? formatRelative(summary.updatedAt) : '—'}
+              />
+            </View>
+          </SettingsSection>
+        </GlassView>
+
+        <GlassView style={styles.section}>
+          <SettingsSection
+            title="Permission audit"
+            description="Approval decisions recorded for this plugin."
+          >
+            {loadingActivity && audit.length === 0 ? (
+              <ActivityIndicator size="small" color={colors.accent} />
+            ) : audit.length === 0 ? (
+              <Text style={styles.muted}>No permission decisions recorded yet.</Text>
+            ) : (
+              <View style={styles.rows}>
+                {audit.map((record) => (
+                  <View key={record.id} style={styles.activityRow}>
+                    <StatusPill
+                      label={AUDIT_LABEL[record.event]}
+                      tone={auditTone(record.event)}
+                      style={styles.auditPill}
+                    />
+                    <Text style={styles.activityDetail}>{record.detail}</Text>
+                    <Text style={styles.activityMeta}>
+                      {record.permissions
+                        .map(
+                          (permission) => PLUGIN_PERMISSION_META[permission].label
+                        )
+                        .join(', ') || 'No permissions'} · {record.source} ·{' '}
+                      {formatRelative(record.createdAt)}
                     </Text>
                   </View>
-
-                  {!core ? (
-                    <Pressable
-                      accessibilityRole="button"
-                      disabled={busy}
-                      onPress={() => {
-                        if (granted) {
-                          void actions.revokePermission(pluginId, permission);
-                        } else {
-                          void actions.grantPermission(pluginId, permission);
-                        }
-                      }}
-                      style={({ pressed }) => [
-                        styles.permissionAction,
-                        granted && styles.permissionActionDanger,
-                        pressed && styles.pressed,
-                        busy && styles.disabled,
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.permissionActionText,
-                          granted && styles.permissionActionTextDanger,
-                        ]}
-                      >
-                        {granted ? 'Revoke' : 'Grant'}
-                      </Text>
-                    </Pressable>
-                  ) : null}
-                </View>
-              );
-            })
-          )}
-        </GlassView>
-
-        <GlassView style={styles.section}>
-          <Text style={styles.sectionTitle}>Settings</Text>
-          <PluginSettingsForm
-            platform={actions.platform}
-            pluginId={pluginId}
-            fields={manifest.settingsSchema}
-          />
-        </GlassView>
-
-        <GlassView style={styles.section}>
-          <Text style={styles.sectionTitle}>Contributions</Text>
-          <View style={styles.chips}>
-            <Chip label={`${manifest.routes.length} routes`} />
-            <Chip label={`${manifest.navigationEntries.length} sidebar`} />
-            <Chip label={`${manifest.dashboardWidgets.length} widgets`} />
-            <Chip label={`${manifest.settingsSections.length} settings`} />
-            <Chip label={`${manifest.mcpTools.length} MCP tools`} />
-            <Chip label={`${manifest.dependencies.length} deps`} />
-          </View>
-
-          <View style={styles.detailGrid}>
-            <DetailRow label="Category" value={manifest.category} />
-            <DetailRow label="Entry point" value={manifest.entryPoint.kind} />
-            <DetailRow
-              label="Platforms"
-              value={manifest.platformSupport.join(', ')}
-            />
-            <DetailRow
-              label="Min Orbit"
-              value={manifest.minimumOrbitVersion}
-            />
-            <DetailRow label="Publisher" value={manifest.publisher.name} />
-            <DetailRow label="Update policy" value={manifest.updatePolicy} />
-            <DetailRow
-              label="Installed"
-              value={
-                summary.installedAt
-                  ? formatRelative(summary.installedAt)
-                  : 'Not installed'
-              }
-            />
-            <DetailRow
-              label="Updated"
-              value={summary.updatedAt ? formatRelative(summary.updatedAt) : '—'}
-            />
-          </View>
-        </GlassView>
-
-        <GlassView style={styles.section}>
-          <Text style={styles.sectionTitle}>Permission audit</Text>
-
-          {loadingActivity && audit.length === 0 ? (
-            <ActivityIndicator size="small" color={colors.accent} />
-          ) : audit.length === 0 ? (
-            <Text style={styles.muted}>No permission decisions recorded yet.</Text>
-          ) : (
-            audit.map((record) => (
-              <View key={record.id} style={styles.activityRow}>
-                <View style={styles.activityDot} />
-                <View style={styles.activityText}>
-                  <Text style={styles.activityTitle}>
-                    {AUDIT_LABEL[record.event]}
-                  </Text>
-                  <Text style={styles.activityDetail}>{record.detail}</Text>
-                  <Text style={styles.activityMeta}>
-                    {record.permissions
-                      .map((permission) => PLUGIN_PERMISSION_META[permission].label)
-                      .join(', ') || 'No permissions'} · {record.source} ·{' '}
-                    {formatRelative(record.createdAt)}
-                  </Text>
-                </View>
+                ))}
               </View>
-            ))
-          )}
+            )}
+          </SettingsSection>
         </GlassView>
 
         <GlassView style={styles.section}>
-          <Text style={styles.sectionTitle}>Install history</Text>
-
-          {loadingActivity && history.length === 0 ? (
-            <ActivityIndicator size="small" color={colors.accent} />
-          ) : history.length === 0 ? (
-            <Text style={styles.muted}>No install activity recorded yet.</Text>
-          ) : (
-            history.map((record) => (
-              <View key={record.id} style={styles.historyRow}>
-                <Text
-                  style={[
-                    styles.historyAction,
-                    {
-                      color:
-                        record.status === 'failed'
-                          ? colors.danger
-                          : record.status === 'started'
-                            ? colors.warning
-                            : colors.success,
-                    },
-                  ]}
-                >
-                  {record.action} · {record.status}
-                </Text>
-                <Text style={styles.historyDetail}>{record.detail}</Text>
-                <Text style={styles.activityMeta}>
-                  {record.fromVersion ? `${record.fromVersion} → ` : ''}
-                  {record.toVersion ?? '—'} · {formatRelative(record.createdAt)}
-                </Text>
+          <SettingsSection
+            title="Install history"
+            description="Lifecycle changes recorded for this plugin."
+          >
+            {loadingActivity && history.length === 0 ? (
+              <ActivityIndicator size="small" color={colors.accent} />
+            ) : history.length === 0 ? (
+              <Text style={styles.muted}>No install activity recorded yet.</Text>
+            ) : (
+              <View style={styles.rows}>
+                {history.map((record) => (
+                  <View key={record.id} style={styles.historyRow}>
+                    <StatusPill
+                      label={`${record.action} · ${record.status}`}
+                      tone={historyTone(record.status)}
+                      style={styles.historyPill}
+                    />
+                    <Text style={styles.historyDetail}>{record.detail}</Text>
+                    <Text style={styles.activityMeta}>
+                      {record.fromVersion ? `${record.fromVersion} → ` : ''}
+                      {record.toVersion ?? '—'} · {formatRelative(record.createdAt)}
+                    </Text>
+                  </View>
+                ))}
               </View>
-            ))
-          )}
+            )}
+          </SettingsSection>
         </GlassView>
       </ScrollView>
     </View>
@@ -555,10 +662,10 @@ function ActionButton({
   const styles = useStyles(makeStyles);
   const bg =
     variant === 'primary'
-      ? colors.accent
+      ? colors.inverse
       : variant === 'danger'
         ? colors.dangerSoft
-        : colors.surface;
+        : colors.surfaceAlt;
   const fg =
     variant === 'primary'
       ? colors.onInverse
@@ -589,15 +696,6 @@ function ActionButton({
   );
 }
 
-function Chip({ label }: { label: string }) {
-  const styles = useStyles(makeStyles);
-  return (
-    <View style={styles.chip}>
-      <Text style={styles.chipText}>{label}</Text>
-    </View>
-  );
-}
-
 function DetailRow({ label, value }: { label: string; value: string }) {
   const styles = useStyles(makeStyles);
   return (
@@ -608,7 +706,7 @@ function DetailRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-const makeStyles = ({ colors, glass }: AppTheme) =>
+const makeStyles = ({ colors }: AppTheme) =>
   StyleSheet.create({
     root: {
       flex: 1,
@@ -631,7 +729,7 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
     },
     backLinkText: {
       color: colors.accent,
-      fontSize: 12,
+      ...typography.bodySmall,
       fontWeight: '600',
     },
     banner: {
@@ -640,7 +738,9 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
       gap: spacing.sm,
       borderRadius: radius.md,
       padding: spacing.sm,
-      borderWidth: 1,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
+      backgroundColor: colors.surfaceAlt,
     },
     bannerError: {
       borderColor: colors.danger,
@@ -649,7 +749,7 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
     bannerErrorText: {
       flex: 1,
       color: colors.danger,
-      fontSize: 12,
+      ...typography.bodySmall,
     },
     bannerNotice: {
       borderColor: colors.success,
@@ -658,7 +758,7 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
     bannerNoticeText: {
       flex: 1,
       color: colors.success,
-      fontSize: 12,
+      ...typography.bodySmall,
     },
     hero: {
       borderRadius: radius.lg,
@@ -671,9 +771,9 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
       gap: spacing.sm,
     },
     heroIcon: {
-      width: 52,
-      height: 52,
-      borderRadius: 17,
+      width: 46,
+      height: 46,
+      borderRadius: 14,
       backgroundColor: colors.accentSoft,
       alignItems: 'center',
       justifyContent: 'center',
@@ -684,38 +784,34 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
     },
     heroVersion: {
       color: colors.text,
-      fontSize: 14,
+      ...typography.body,
       fontWeight: '600',
     },
     heroTrust: {
       color: colors.textMuted,
-      fontSize: 11,
+      ...typography.caption,
     },
-    statusPill: {
-      borderRadius: radius.pill,
-      paddingHorizontal: spacing.sm,
-      paddingVertical: 4,
-    },
-    statusPillText: {
-      fontSize: 9,
-      fontWeight: '800',
-      letterSpacing: 0.8,
-      textTransform: 'uppercase',
+    heroStatus: {
+      maxWidth: 120,
     },
     trustCopy: {
       color: colors.textMuted,
-      fontSize: 12,
-      lineHeight: 17,
+      ...typography.bodySmall,
+    },
+    messageRow: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: 6,
     },
     errorText: {
+      flex: 1,
       color: colors.danger,
-      fontSize: 12,
-      lineHeight: 17,
+      ...typography.bodySmall,
     },
     healthText: {
+      flex: 1,
       color: colors.warning,
-      fontSize: 11,
-      lineHeight: 16,
+      ...typography.caption,
     },
     actionsRow: {
       flexDirection: 'row',
@@ -726,82 +822,77 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
     actionButton: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 5,
+      gap: 6,
       borderRadius: radius.pill,
       paddingHorizontal: spacing.md,
-      paddingVertical: 8,
+      paddingVertical: 9,
     },
     actionButtonText: {
-      fontSize: 11,
-      fontWeight: '700',
+      ...typography.bodySmall,
+      fontWeight: '600',
     },
-    coreNote: {
+    note: {
       color: colors.textFaint,
-      fontSize: 10,
-      lineHeight: 15,
+      ...typography.caption,
     },
     section: {
       borderRadius: radius.lg,
       padding: spacing.md,
-      gap: spacing.sm,
-    },
-    sectionTitle: {
-      color: colors.text,
-      fontSize: 16,
-      fontWeight: '700',
-    },
-    sectionHint: {
-      color: colors.textMuted,
-      fontSize: 11,
-      lineHeight: 16,
     },
     muted: {
       color: colors.textMuted,
-      fontSize: 12,
-      lineHeight: 17,
+      ...typography.bodySmall,
+    },
+    rows: {
+      gap: spacing.sm,
     },
     permissionRow: {
       flexDirection: 'row',
       alignItems: 'flex-start',
       gap: spacing.sm,
       borderRadius: radius.md,
-      borderWidth: 1,
-      borderColor: glass.border,
-      backgroundColor: glass.fillSoft,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
+      backgroundColor: colors.surfaceAlt,
       padding: spacing.sm,
     },
     permissionText: {
       flex: 1,
-      gap: 2,
+      gap: 3,
+    },
+    permissionTitleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: spacing.xs,
     },
     permissionLabel: {
+      flexShrink: 1,
       color: colors.text,
-      fontSize: 13,
+      ...typography.bodySmall,
       fontWeight: '600',
     },
     permissionDetail: {
       color: colors.textMuted,
-      fontSize: 11,
-      lineHeight: 15,
+      ...typography.caption,
     },
-    permissionState: {
-      fontSize: 10,
-      fontWeight: '600',
-      marginTop: 2,
+    permissionMeta: {
+      color: colors.textFaint,
+      ...typography.caption,
     },
     permissionAction: {
       borderRadius: radius.pill,
-      borderWidth: 1,
+      borderWidth: StyleSheet.hairlineWidth,
       borderColor: colors.accent,
       paddingHorizontal: spacing.sm,
-      paddingVertical: 5,
+      paddingVertical: 6,
     },
     permissionActionDanger: {
       borderColor: colors.danger,
     },
     permissionActionText: {
       color: colors.accent,
-      fontSize: 10,
+      ...typography.caption,
       fontWeight: '700',
     },
     permissionActionTextDanger: {
@@ -812,22 +903,8 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
       flexWrap: 'wrap',
       gap: spacing.xs,
     },
-    chip: {
-      borderRadius: radius.pill,
-      borderWidth: 1,
-      borderColor: glass.border,
-      backgroundColor: glass.fillSoft,
-      paddingHorizontal: spacing.sm,
-      paddingVertical: 4,
-    },
-    chipText: {
-      color: colors.textMuted,
-      fontSize: 10,
-      fontWeight: '600',
-    },
     detailGrid: {
       gap: spacing.xs,
-      paddingTop: spacing.xs,
     },
     detailRow: {
       flexDirection: 'row',
@@ -836,61 +913,44 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
     detailLabel: {
       width: 90,
       color: colors.textFaint,
-      fontSize: 11,
+      ...typography.caption,
       fontWeight: '600',
     },
     detailValue: {
       flex: 1,
       color: colors.textMuted,
-      fontSize: 11,
+      ...typography.caption,
     },
     activityRow: {
-      flexDirection: 'row',
-      alignItems: 'flex-start',
-      gap: spacing.sm,
+      gap: 3,
+      paddingBottom: spacing.xs,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.border,
     },
-    activityDot: {
-      width: 6,
-      height: 6,
-      borderRadius: 3,
-      marginTop: 6,
-      backgroundColor: colors.accent,
-    },
-    activityText: {
-      flex: 1,
-      gap: 1,
-    },
-    activityTitle: {
-      color: colors.text,
-      fontSize: 12,
-      fontWeight: '600',
+    auditPill: {
+      maxWidth: '100%',
     },
     activityDetail: {
       color: colors.textMuted,
-      fontSize: 11,
-      lineHeight: 15,
+      ...typography.caption,
     },
     activityMeta: {
       color: colors.textFaint,
-      fontSize: 9,
-      lineHeight: 13,
+      ...typography.caption,
+      fontSize: 11,
     },
     historyRow: {
-      gap: 1,
+      gap: 3,
       paddingBottom: spacing.xs,
       borderBottomWidth: StyleSheet.hairlineWidth,
-      borderBottomColor: glass.border,
+      borderBottomColor: colors.border,
     },
-    historyAction: {
-      fontSize: 10,
-      fontWeight: '800',
-      letterSpacing: 0.5,
-      textTransform: 'uppercase',
+    historyPill: {
+      maxWidth: '100%',
     },
     historyDetail: {
       color: colors.textMuted,
-      fontSize: 11,
-      lineHeight: 15,
+      ...typography.caption,
     },
     pressed: {
       opacity: 0.78,
