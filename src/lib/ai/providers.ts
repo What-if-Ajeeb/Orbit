@@ -135,6 +135,230 @@ async function postJson(
   return data;
 }
 
+/** Splits a complete SSE body into the `data:` payload of each event. */
+export function parseSsePayloads(raw: string): string[] {
+  const payloads: string[] = [];
+  let current: string[] = [];
+
+  for (const line of raw.split(/\r?\n/)) {
+    if (line === '') {
+      if (current.length > 0) {
+        payloads.push(current.join('\n'));
+        current = [];
+      }
+      continue;
+    }
+
+    if (line.startsWith('data:')) {
+      current.push(line.slice(5).replace(/^ /, ''));
+    }
+  }
+
+  if (current.length > 0) {
+    payloads.push(current.join('\n'));
+  }
+
+  return payloads;
+}
+
+/** Incremental SSE parser used while reading a response stream chunk by chunk. */
+export function createSseParser(onPayload: (payload: string) => void) {
+  let buffer = '';
+  let dataLines: string[] = [];
+
+  function consumeLine(line: string) {
+    const value = line.endsWith('\r') ? line.slice(0, -1) : line;
+
+    if (value === '') {
+      if (dataLines.length > 0) {
+        onPayload(dataLines.join('\n'));
+        dataLines = [];
+      }
+      return;
+    }
+
+    if (value.startsWith('data:')) {
+      dataLines.push(value.slice(5).replace(/^ /, ''));
+    }
+  }
+
+  return {
+    push(chunk: string) {
+      buffer += chunk;
+      let index = buffer.indexOf('\n');
+
+      while (index !== -1) {
+        consumeLine(buffer.slice(0, index));
+        buffer = buffer.slice(index + 1);
+        index = buffer.indexOf('\n');
+      }
+    },
+    flush() {
+      if (buffer.length > 0) {
+        consumeLine(buffer);
+        buffer = '';
+      }
+
+      if (dataLines.length > 0) {
+        onPayload(dataLines.join('\n'));
+        dataLines = [];
+      }
+    },
+  };
+}
+
+type ByteReader = {
+  read: () => Promise<{ done: boolean; value?: Uint8Array }>;
+};
+
+/** POSTs a streaming request and forwards each SSE `data:` payload. */
+async function postSse(
+  url: string,
+  headers: Record<string, string>,
+  body: unknown,
+  options: CompletionOptions,
+  onPayload: (payload: string) => void
+): Promise<void> {
+  const controller = new AbortController();
+  let timedOut = false;
+  let cancelled = false;
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+
+  // A streamed reply can legitimately take longer than a buffered request, so
+  // the deadline measures inactivity rather than total response time.
+  const armTimeout = () => {
+    if (timeout) {
+      clearTimeout(timeout);
+    }
+    timeout = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, REQUEST_TIMEOUT_MS);
+  };
+
+  armTimeout();
+
+  const onAbort = () => {
+    cancelled = true;
+    controller.abort();
+  };
+
+  if (options.signal?.aborted) {
+    cancelled = true;
+    controller.abort();
+  } else {
+    options.signal?.addEventListener('abort', onAbort, { once: true });
+  }
+
+  try {
+    let response: Response;
+
+    try {
+      response = await fetch(url, {
+        method: 'POST',
+        headers: { ...headers, Accept: 'text/event-stream' },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+    } catch (error) {
+      if (cancelled || options.signal?.aborted) {
+        throw new AiError('AI request cancelled.');
+      }
+
+      if (timedOut || (error instanceof Error && error.name === 'AbortError')) {
+        throw new AiError('The request timed out. Check your connection and try again.');
+      }
+
+      throw new AiError('Could not reach the AI provider. Check your internet connection.');
+    }
+
+    if (!response.ok) {
+      const raw = await response.text().catch(() => '');
+      let data: JsonRecord | null = null;
+
+      try {
+        data = raw ? (JSON.parse(raw) as JsonRecord) : null;
+      } catch {
+        data = null;
+      }
+
+      const errorObject = asRecord(data?.error);
+      const message =
+        asString(errorObject?.message) || asString(data?.message) || raw || `HTTP ${response.status}`;
+      throw new AiError(friendlyError(response.status, message), response.status);
+    }
+
+    armTimeout();
+    let received = 0;
+    const emit = (payload: string) => {
+      received += 1;
+      armTimeout();
+      onPayload(payload);
+    };
+
+    const maybeBody = response.body as unknown as { getReader?: () => ByteReader } | null;
+    const reader = maybeBody?.getReader?.();
+
+    if (reader) {
+      const decoder = new TextDecoder();
+      const parser = createSseParser(emit);
+
+      try {
+        while (true) {
+          if (options.signal?.aborted) {
+            throw new AiError('AI request cancelled.');
+          }
+
+          const { done, value } = await reader.read();
+
+          if (done) {
+            break;
+          }
+
+          armTimeout();
+          parser.push(decoder.decode(value ?? new Uint8Array(), { stream: true }));
+        }
+
+        parser.push(decoder.decode());
+        parser.flush();
+      } catch (error) {
+        if (cancelled || options.signal?.aborted) {
+          throw new AiError('AI request cancelled.');
+        }
+
+        if (timedOut || (error instanceof Error && error.name === 'AbortError')) {
+          throw new AiError('The request timed out. Check your connection and try again.');
+        }
+
+        throw error;
+      }
+    } else {
+      const raw = await response.text();
+
+      for (const payload of parseSsePayloads(raw)) {
+        emit(payload);
+      }
+
+      // Some proxies ignore `stream: true` and return a plain JSON body.
+      if (received === 0 && raw.trim().startsWith('{')) {
+        emit(raw.trim());
+      }
+    }
+  } finally {
+    clearTimeout(timeout);
+    options.signal?.removeEventListener('abort', onAbort);
+  }
+}
+
+function parseStreamChunk(payload: string): JsonRecord {
+  try {
+    const value = JSON.parse(payload) as unknown;
+    return asRecord(value) ?? {};
+  } catch {
+    throw new AiError('The AI provider returned an unexpected streaming response.');
+  }
+}
+
 function toOpenAiMessages(messages: LlmMessage[]): JsonRecord[] {
   return messages.map((message) => {
     if (message.role === 'tool') {
@@ -220,12 +444,78 @@ async function openAiCompletion(
     headers.Authorization = `Bearer ${apiKey}`;
   }
 
-  const data = await postJson(
-    buildUrl(settings.baseUrl, '/chat/completions'),
-    headers,
-    body,
-    options.signal
-  );
+  const url = buildUrl(settings.baseUrl, '/chat/completions');
+
+  if (options.onTextDelta) {
+    body.stream = true;
+
+    const textParts: string[] = [];
+    const calls = new Map<number, { id: string; name: string; arguments: string }>();
+
+    await postSse(url, headers, body, options, (payload) => {
+      if (payload === '[DONE]') {
+        return;
+      }
+
+      const chunk = parseStreamChunk(payload);
+      const choices = Array.isArray(chunk.choices) ? chunk.choices : [];
+      const choice = asRecord(choices[0]);
+      const delta = asRecord(choice?.delta) ?? asRecord(choice?.message);
+      const content = asString(delta?.content);
+
+      if (content) {
+        textParts.push(content);
+        options.onTextDelta?.(content);
+      }
+
+      const rawToolCalls = Array.isArray(delta?.tool_calls) ? delta.tool_calls : [];
+
+      rawToolCalls.forEach((value, index) => {
+        const entry = asRecord(value);
+
+        if (!entry) {
+          return;
+        }
+
+        const position = typeof entry.index === 'number' ? entry.index : index;
+        const existing = calls.get(position) ?? { id: '', name: '', arguments: '' };
+        const id = asString(entry.id);
+        const fn = asRecord(entry.function);
+
+        if (id) {
+          existing.id = id;
+        }
+
+        if (fn) {
+          const name = asString(fn.name);
+
+          if (name) {
+            existing.name = name;
+          }
+
+          existing.arguments += asString(fn.arguments);
+        }
+
+        calls.set(position, existing);
+      });
+    });
+
+    const toolCalls: LlmToolCall[] = Array.from(calls.entries())
+      .sort(([left], [right]) => left - right)
+      .filter(([, call]) => call.name.length > 0)
+      .map(([position, call]) => ({
+        id: call.id || `call_${position}`,
+        name: call.name,
+        arguments: call.arguments || '{}',
+      }));
+
+    return {
+      text: textParts.join('').trim(),
+      toolCalls,
+    };
+  }
+
+  const data = await postJson(url, headers, body, options.signal);
 
   const choices = Array.isArray(data.choices) ? data.choices : [];
   const choice = asRecord(choices[0]);
@@ -431,19 +721,70 @@ async function geminiCompletion(
     body.toolConfig = { functionCallingConfig: { mode: 'AUTO' } };
   }
 
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'x-goog-api-key': settings.apiKey,
+  };
+  const streaming = Boolean(options.onTextDelta);
+  const method = streaming ? 'streamGenerateContent?alt=sse' : 'generateContent';
   const url = `${buildUrl(settings.baseUrl, '')}/models/${encodeURIComponent(
     settings.model
-  )}:generateContent`;
+  )}:${method}`;
 
-  const data = await postJson(
-    url,
-    {
-      'Content-Type': 'application/json',
-      'x-goog-api-key': settings.apiKey,
-    },
-    body,
-    options.signal
-  );
+  if (streaming) {
+    const textParts: string[] = [];
+    const toolCalls: LlmToolCall[] = [];
+    let blocked = false;
+
+    await postSse(url, headers, body, options, (payload) => {
+      const chunk = parseStreamChunk(payload);
+
+      if (asString(asRecord(chunk.promptFeedback)?.blockReason)) {
+        blocked = true;
+      }
+
+      const candidates = Array.isArray(chunk.candidates) ? chunk.candidates : [];
+      const content = asRecord(asRecord(candidates[0])?.content);
+      const parts = Array.isArray(content?.parts) ? content.parts : [];
+
+      parts.forEach((value, index) => {
+        const part = asRecord(value);
+
+        if (!part) {
+          return;
+        }
+
+        const text = asString(part.text);
+
+        if (text) {
+          textParts.push(text);
+          options.onTextDelta?.(text);
+        }
+
+        const functionCall = asRecord(part.functionCall);
+        const name = asString(functionCall?.name);
+
+        if (functionCall && name) {
+          toolCalls.push({
+            id: `gemini_${Date.now()}_${toolCalls.length}_${index}`,
+            name,
+            arguments: JSON.stringify(functionCall.args ?? {}),
+          });
+        }
+      });
+    });
+
+    if (blocked) {
+      throw new AiError('The AI provider blocked this request. Try rephrasing it.');
+    }
+
+    return {
+      text: textParts.join('').trim(),
+      toolCalls,
+    };
+  }
+
+  const data = await postJson(url, headers, body, options.signal);
 
   const promptFeedback = asRecord(data.promptFeedback);
 
