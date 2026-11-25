@@ -486,17 +486,6 @@ export function AppSidebar() {
                 {canSwitchAccount ? 'Switch account' : 'Account settings'}
               </Text>
             </View>
-            <Ionicons
-              name={
-                canSwitchAccount
-                  ? accountMenuOpen
-                    ? 'chevron-up'
-                    : 'chevron-down'
-                  : 'chevron-forward'
-              }
-              size={16}
-              color={colors.textMuted}
-            />
           </Pressable>
 
           <Pressable
