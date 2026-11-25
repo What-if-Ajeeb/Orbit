@@ -2,7 +2,7 @@
 import React from 'react';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 
-import NavigationSettingsScreen from './navigation';
+import NavigationSettingsScreen from '@/app/(app)/settings/navigation';
 
 jest.setTimeout(30000);
 
