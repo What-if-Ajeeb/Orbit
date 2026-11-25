@@ -1,6 +1,7 @@
 import { Tabs } from 'expo-router';
 
 import { useAppTheme } from '@/context/theme';
+import { layout, spacing } from '@/theme';
 
 export default function TabLayout() {
   const { colors } = useAppTheme();
@@ -10,10 +11,11 @@ export default function TabLayout() {
       backBehavior="history"
       screenOptions={{
         headerShown: false,
-        // Navigation lives in the drawer (hamburger, top-left), like a chat app.
+        // Navigation lives in the drawer and the customizable bottom bar.
         tabBarStyle: { display: 'none' },
         sceneStyle: {
           backgroundColor: colors.background,
+          paddingBottom: layout.touchTarget + spacing.md,
         },
       }}
     >

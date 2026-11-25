@@ -7,7 +7,7 @@ export const DATABASE_NAME = 'orbit.db';
  * tasks and the agent conversation) lives in SQLite on the device.
  */
 export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
-  const DATABASE_VERSION = 14;
+  const DATABASE_VERSION = 15;
 
   const result = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
   let currentDbVersion = result?.user_version ?? 0;
@@ -861,6 +861,48 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
     `);
 
     currentDbVersion = 14;
+  }
+
+  // Agent Action Cards v15: typed, idempotent action drafts with explicit
+  // approval state and real execution results. Sensitive execution still goes
+  // through the existing permission executor and activity journal.
+  if (currentDbVersion === 14) {
+    await db.execAsync(`
+      CREATE TABLE IF NOT EXISTS agent_actions (
+        id TEXT PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        conversation_id INTEGER,
+        agent_id TEXT NOT NULL,
+        agent_name TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        tool_name TEXT NOT NULL,
+        status TEXT NOT NULL,
+        title TEXT NOT NULL,
+        target TEXT NOT NULL DEFAULT '',
+        payload TEXT NOT NULL DEFAULT '{}',
+        tool_args TEXT NOT NULL DEFAULT '{}',
+        fingerprint TEXT NOT NULL,
+        permission_request_id TEXT,
+        risk TEXT NOT NULL DEFAULT 'medium',
+        category TEXT NOT NULL DEFAULT 'background_automation',
+        approval_fingerprint TEXT,
+        approved_at INTEGER,
+        result TEXT,
+        error TEXT,
+        trace TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_agent_actions_user_updated
+        ON agent_actions (user_id, updated_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_agent_actions_conversation
+        ON agent_actions (user_id, conversation_id, updated_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_agent_actions_status
+        ON agent_actions (user_id, status);
+    `);
+
+    currentDbVersion = 15;
   }
 
   if (currentDbVersion !== DATABASE_VERSION) {

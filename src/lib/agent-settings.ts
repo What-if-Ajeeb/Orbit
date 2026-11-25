@@ -49,6 +49,9 @@ const DEFAULT_ALLOWED_TOOLS = [
   'complete_task',
   'artifact_read',
   'artifact_list',
+  // Preparing an approval card has no external effect. The card cannot execute
+  // anything until the user explicitly confirms its exact payload.
+  'agent_action_propose',
   // Read-only discovery and an approval-gated request. Neither can install or
   // grant access without the native plugin approval dialog.
   'orbit_plugin_discover',
@@ -264,6 +267,12 @@ export function matchesToolPattern(pattern: string, toolName: string): boolean {
 
 export function isToolAllowedForAgent(config: AgentConfig, toolName: string): boolean {
   if (config.toolAccessMode === 'all') {
+    return true;
+  }
+
+  // Always available: it only creates a local draft and can never execute the
+  // proposed action without a separate explicit confirmation on the card.
+  if (toolName === 'agent_action_propose') {
     return true;
   }
 

@@ -19,9 +19,11 @@ and **expo-notifications**.
 - Tool-using agent: create, list, update, complete, and delete tasks
 - Local notifications for due dates and reminders, even when the app is closed
 - Task list with quick-add (`pay bill tomorrow 5pm`), filters, and long-press delete
-- App-wide navigation drawer with profile, AI status, and sign out
-- Glassmorphism UI: frosted panels, ambient glows, and translucent surfaces
-- Light / Dark / System color mode — flat warm-neutral design with a coral accent and serif headings; navigation lives in the left drawer (Recents, New chat)
+- Sidebar-first workspace with a collapsible drawer, six primary destinations, readable chat recents, local account switching, and a persistent New chat action
+- Exactly three customizable bottom-navigation slots with reordering, local persistence, restore defaults, and fallback for destinations whose plugin is unavailable
+- Typed Agent Action Cards for email, files, git and calendar: exact target/payload preview, explicit approval, real execution results, and activity logging
+- Projects overview built from real stored conversations, tasks, artifacts, files and workflow runs — no placeholder projects
+- Light / Dark / System color mode — flat warm-neutral design with a coral accent and serif headings; navigation lives in the left drawer
 - Multi-conversation chat history with per-chat delete and a slide-in history panel
 - Individual AI agents with dedicated chats, instructions/memory, and per-agent tool allowlists
 - Image and text-document attachments, streaming replies, cancellation, retry, and offline/local states
@@ -38,7 +40,7 @@ and **expo-notifications**.
 - MCP server connections (HTTP endpoints + optional bearer token) with per-server sync status
 - Runtime extension layer: skill registry, reviewed built-in lifecycle hooks, and delegated subagent tasks (legacy hook scripts are disabled)
 - **Plugin platform**: declarative manifests, default-deny permissions, namespaced tools/storage, and a Plugin Manager (`Plugins` in the drawer)
-- **Android mobile sandbox** (Android-only): Rust policy core in an isolated Android service, owned from RN through an Expo Module; manage it from **Sandbox** in the drawer. See [`docs/MOBILE_SANDBOX.md`](docs/MOBILE_SANDBOX.md).
+- **Android mobile sandbox** (Android-only): backend-only Rust policy core in an isolated Android service, owned from RN through an Expo Module. It has no screen, drawer item, setting, or branding. See [`docs/MOBILE_SANDBOX.md`](docs/MOBILE_SANDBOX.md).
 - Offline **local mode** for basic commands when no API key is configured
 
 ## Connect the AI brain
@@ -170,6 +172,28 @@ for a scoped authorization. Nothing protected executes before the decision.
 - **Audit trail.** Requests, decisions, grant use, revocations, blocked commands,
   Android permission failures, and paired devices are recorded in SQLite after
   redaction. Session tokens and secrets never enter chat or audit text.
+
+### Agent Action Cards
+
+When an agent proposes a sensitive action it creates a durable draft card; it never
+sends, writes, deletes, or executes anything by itself. The card shows the exact
+target and payload. The user must approve that exact payload, then explicitly
+execute it. Editing a draft or approved card changes its fingerprint, cancels any
+pending request, and invalidates the approval. Execution revalidates policy,
+permissions and stop state immediately before the single real tool call. Results,
+errors and outcomes are stored with the card and appended to the hash-linked
+activity journal.
+
+Built-in typed integrations cover Gmail send, file trash/restore, git status/diff/
+log/branch/fetch/commit/push through `computer_execute`, and calendar create/update.
+New typed integrations can register through `registerAgentActionIntegration()`;
+each declares its own validation, exact arguments and approval requirement, but
+none can bypass the shared permission executor.
+
+Use **Settings → Navigation** to customize the three bottom slots. Every
+destination — including the built-ins — can be picked, reordered, removed from a
+slot, and restored to defaults. Only stable IDs are persisted; unavailable plugin
+destinations fall back to built-ins without breaking deep links.
 
 Open **Settings → Agent Permissions** (also in the drawer) to see connected
 computers, every registered agent, active and past grants, denials, emergency-stop
@@ -406,20 +430,28 @@ src/
     sign-in.tsx
     sign-up.tsx
     (app)/
-      _layout.tsx         # bottom tabs + app sidebar + notification taps
+      _layout.tsx         # app sidebar + bottom navigation + notification taps
       index.tsx           # Today dashboard
       chat.tsx            # agent conversation + chat history panel
       tasks.tsx           # task list + quick add
       settings.tsx        # AI, MCP, reminders, permissions, account, data
+      settings/navigation.tsx # three-slot bottom navigation customization
+      agent-action.tsx    # durable action card detail + approval/execution
       harness.tsx         # plugin dashboard (drawer entry)
       policy.tsx          # tool approval policy rules
       permissions.tsx     # agent consent control room + companion pairing
   components/             # Brand, Button, TaskItem, ChatBubble, AppSidebar, ...
+    actions/              # reusable durable AgentActionCard
+    BottomNavigation.tsx  # three-slot bottom bar
     permissions/          # global approval dialog, host, pairing modal
   context/
     auth.tsx              # session state + sign in/up/out
     sidebar.tsx           # app-wide drawer state
+    bottom-navigation.tsx # saved/draft slot customization state
   lib/
+    agent-actions/        # typed integrations, durable store, approval/execution service
+    bottom-navigation.ts  # destination discovery + exactly-three resolution
+    bottom-navigation-storage.ts # versioned local slot persistence
     ai/
       agent.ts            # tool-calling loop (max 6 rounds)
       provider-registry.ts # provider plugin seam

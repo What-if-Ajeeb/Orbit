@@ -246,6 +246,49 @@ describe('secure executor safety', () => {
     );
   });
 
+  it('revalidates a pre-issued action-card authorization before execution', async () => {
+    const action = classify('google_gmail_send', {
+      to: 'someone@example.com',
+      body: 'Hello',
+    });
+    const spies = allow(action);
+    const request = requestFor(action);
+    const authorization = authorizationFor(action, request);
+    const requestPermission = vi.mocked(permissionManager.requestToolPermission);
+    requestPermission.mockClear();
+    spies.beginExecution.mockResolvedValue({
+      ok: false,
+      reason: 'fingerprint_mismatch',
+      message: 'The approval does not match this exact action.',
+    });
+    const execute = vi.fn(async () => ({ content: '{"ok":true}', trace: 'sent' }));
+
+    const result = await secureExecuteTool({
+      db: DB,
+      userId: 1,
+      agent: AGENT,
+      conversationId: 9,
+      projectId: 'project-1',
+      projectLabel: 'Orbit',
+      toolName: action.toolName,
+      rawArguments: JSON.stringify({ to: 'someone@example.com', body: 'Hello' }),
+      policy: { decision: 'ask', ruleId: null },
+      authorization,
+      authorizationRequest: request,
+      execute,
+    });
+
+    expect(requestPermission).not.toHaveBeenCalled();
+    expect(spies.beginExecution).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'auth-1' }),
+      expect.objectContaining({ fingerprint: action.fingerprint })
+    );
+    expect(execute).not.toHaveBeenCalled();
+    expect(result.success).toBe(false);
+    expect(result.permission.reason).toBe('fingerprint_mismatch');
+    expect(result.pipeline.executed).toBe(false);
+  });
+
   it('never executes a denied plugin tool', async () => {
     const action = classify('plugin__untrusted__run', { payload: 'anything' });
     const execute = vi.fn(async () => ({ content: '{"ok":true}', trace: 'ran' }));

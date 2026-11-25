@@ -8,6 +8,7 @@ import { FILE_SAFETY_TOOLS } from './file-safety-tools';
 import type { LlmToolDefinition } from './types';
 import type { AgentIdentity } from '../permissions/types';
 import { COMPUTER_EXECUTE_TOOL } from '../permissions/computer-tool';
+import { AGENT_ACTION_PROPOSE_TOOL } from './agent-action-tools';
 import '../connections/tools';
 import { buildDemandTools } from '../plugins/demand-tools';
 
@@ -18,6 +19,7 @@ for (const tool of [
   ...ARTIFACT_TOOLS,
   ...FILE_SAFETY_TOOLS,
   COMPUTER_EXECUTE_TOOL,
+  AGENT_ACTION_PROPOSE_TOOL,
   ...buildDemandTools(),
 ]) {
   if (!agentToolRegistry.get(tool.definition.name)) {
