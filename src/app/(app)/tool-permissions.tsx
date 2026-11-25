@@ -29,9 +29,27 @@ import { listAgentConfigs } from '@/lib/agent-settings';
 import { connectionLabel, connectionScopes, listGoogleConnectionStates } from '@/lib/connections/google';
 import { GOOGLE_CONNECTION_IDS, type GoogleConnectionId } from '@/lib/connections/types';
 import { permissionManager } from '@/lib/permissions';
-import type { PermissionGrantRecord } from '@/lib/permissions';
+import type {
+  PermissionDenialRecord,
+  PermissionGrantRecord,
+  PermissionPreferenceRecord,
+} from '@/lib/permissions';
 import { policyEngine, waitForPolicyHydration } from '@/lib/policy';
 import { radius, spacing } from '@/theme';
+
+function preferenceKey(
+  preference: Pick<
+    PermissionPreferenceRecord,
+    'agentId' | 'toolName' | 'scopeKey' | 'resourceKey'
+  >
+): string {
+  return [
+    preference.agentId,
+    preference.toolName,
+    preference.scopeKey,
+    preference.resourceKey,
+  ].join('|');
+}
 
 export default function ToolPermissionsScreen() {
   const { colors } = useAppTheme();
@@ -43,6 +61,8 @@ export default function ToolPermissionsScreen() {
   const snapshot = usePluginSnapshot();
   const pluginActions = usePluginActions();
   const [grants, setGrants] = useState<PermissionGrantRecord[]>([]);
+  const [denials, setDenials] = useState<PermissionDenialRecord[]>([]);
+  const [preferences, setPreferences] = useState<PermissionPreferenceRecord[]>([]);
   const [connections, setConnections] = useState<GoogleConnectionId[]>([]);
   const [agents, setAgents] = useState<{ id: string; name: string; tools: number }[]>([]);
   const [rules, setRules] = useState(policyEngine.listRules());
@@ -69,6 +89,8 @@ export default function ToolPermissionsScreen() {
           (a, b) => (b.lastUsedAt ?? 0) - (a.lastUsedAt ?? 0)
         )
       );
+      setDenials(dashboard.denials);
+      setPreferences(dashboard.preferences);
       setConnections(
         states.filter((state) => state.status === 'connected').map((state) => state.id)
       );
@@ -115,6 +137,39 @@ export default function ToolPermissionsScreen() {
     }
   }
 
+  async function revokeDenial(denial: PermissionDenialRecord) {
+    setBusyGrant(denial.id);
+    setError(null);
+
+    try {
+      const removed = await permissionManager.revokeDenial(activeUser.id, denial.id);
+      setNotice(removed ? 'Never Allow was revoked. The exact action can be requested again.' : 'This choice was already revoked.');
+      await load();
+    } catch (revokeError) {
+      setError(revokeError instanceof Error ? revokeError.message : 'Could not revoke that choice.');
+    } finally {
+      setBusyGrant(null);
+    }
+  }
+
+  async function revokePreference(preference: PermissionPreferenceRecord) {
+    const key = preferenceKey(preference);
+    setBusyGrant(key);
+    setError(null);
+
+    try {
+      const removed = await permissionManager.revokePreference(activeUser.id, preference);
+      setNotice(removed ? 'Ask Every Time was revoked.' : 'This choice was already revoked.');
+      await load();
+    } catch (revokeError) {
+      setError(revokeError instanceof Error ? revokeError.message : 'Could not revoke that choice.');
+    } finally {
+      setBusyGrant(null);
+    }
+  }
+
+  const activeDenials = denials.filter((entry) => entry.revokedAt === null);
+  const activePreferences = preferences.filter((entry) => entry.revokedAt === null);
   const installedPlugins = snapshot.summaries.filter(
     (summary) => summary.status !== 'discovered' && summary.status !== 'available'
   );
@@ -250,6 +305,56 @@ export default function ToolPermissionsScreen() {
                     />
                   </GlassView>
                 ))
+              )}
+            </View>
+
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Saved choices</Text>
+              <Text style={styles.hint}>
+                Never Allow and Ask Every Time apply to one exact agent, tool, action, and resource.
+                Revoking a choice does not execute anything.
+              </Text>
+              {activeDenials.length === 0 && activePreferences.length === 0 ? (
+                <Text style={styles.emptyText}>No saved choices.</Text>
+              ) : (
+                <>
+                  {activeDenials.map((denial) => (
+                    <GlassView key={denial.id} style={styles.row}>
+                      <View style={styles.rowCopy}>
+                        <Text style={styles.rowTitle}>Never allow</Text>
+                        <Text style={styles.rowText}>
+                          {denial.agentId} · {denial.toolName}
+                        </Text>
+                        <Text style={styles.cardMeta}>Resource: {denial.resourceKey}</Text>
+                      </View>
+                      <Button
+                        label="Revoke"
+                        variant="danger"
+                        onPress={() => void revokeDenial(denial)}
+                        disabled={busyGrant === denial.id}
+                        loading={busyGrant === denial.id}
+                      />
+                    </GlassView>
+                  ))}
+                  {activePreferences.map((preference) => (
+                    <GlassView key={preferenceKey(preference)} style={styles.row}>
+                      <View style={styles.rowCopy}>
+                        <Text style={styles.rowTitle}>Ask every time</Text>
+                        <Text style={styles.rowText}>
+                          {preference.agentId} · {preference.toolName}
+                        </Text>
+                        <Text style={styles.cardMeta}>Resource: {preference.resourceKey}</Text>
+                      </View>
+                      <Button
+                        label="Revoke"
+                        variant="danger"
+                        onPress={() => void revokePreference(preference)}
+                        disabled={busyGrant === preferenceKey(preference)}
+                        loading={busyGrant === preferenceKey(preference)}
+                      />
+                    </GlassView>
+                  ))}
+                </>
               )}
             </View>
 

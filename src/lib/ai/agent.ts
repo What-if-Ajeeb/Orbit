@@ -460,7 +460,15 @@ export async function runAgent(input: AgentInput): Promise<AgentResult> {
           timeoutMs: registeredTool?.timeoutMs,
           signal,
           execute: (toolSignal) =>
-            executeTool(db, userId, call.name, call.arguments, conversationId, toolSignal),
+            executeTool(
+              db,
+              userId,
+              call.name,
+              call.arguments,
+              conversationId,
+              toolSignal,
+              agent
+            ),
         });
         const content = secured.content;
         const trace = secured.trace;

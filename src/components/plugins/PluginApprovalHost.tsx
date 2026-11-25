@@ -200,8 +200,8 @@ function PluginApprovalDialog({
                 ) : null}
                 {install.requiresSandbox ? (
                   <Text style={styles.warningText}>
-                    This plugin declares sandbox execution. Every run still needs a separate
-                    sandbox approval.
+                    This plugin requests isolated execution. ORBIT runs it behind the scenes, and
+                    every run still needs its own approval.
                   </Text>
                 ) : null}
               </View>

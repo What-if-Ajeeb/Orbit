@@ -26,7 +26,7 @@ import {
   type ToolPipelineSnapshot,
 } from './execution-pipeline';
 import { permissionManager } from './manager';
-import { truncate } from './redact';
+import { redactSecrets, truncate } from './redact';
 
 type JsonObject = Record<string, unknown>;
 
@@ -94,6 +94,39 @@ function pathFrom(args: JsonObject): string {
   return typeof value === 'string' ? value.trim() : '';
 }
 
+/** Aborts one execution when either the chat stop or emergency stop fires. */
+function combineSignals(sources: (AbortSignal | undefined)[]): {
+  signal: AbortSignal;
+  dispose: () => void;
+} {
+  const controller = new AbortController();
+  const listeners: { source: AbortSignal; listener: () => void }[] = [];
+
+  for (const source of sources) {
+    if (!source) {
+      continue;
+    }
+
+    if (source.aborted) {
+      controller.abort();
+      break;
+    }
+
+    const listener = () => controller.abort();
+    source.addEventListener('abort', listener, { once: true });
+    listeners.push({ source, listener });
+  }
+
+  return {
+    signal: controller.signal,
+    dispose: () => {
+      for (const { source, listener } of listeners) {
+        source.removeEventListener('abort', listener);
+      }
+    },
+  };
+}
+
 function deniedResult(
   input: SecureToolInput,
   reason: PermissionDenialReason,
@@ -138,6 +171,16 @@ export async function secureExecuteTool(input: SecureToolInput): Promise<SecureT
   const args = parseArguments(input.rawArguments);
 
   if (!args) {
+    await permissionManager.recordActivity({
+      userId: input.userId,
+      conversationId: input.conversationId ?? null,
+      agentId: input.agent.id,
+      agentName: input.agent.name,
+      toolName: input.toolName,
+      action: `Validate ${input.toolName} arguments`,
+      status: 'denied',
+      error: 'Arguments must be a JSON object. Nothing was executed.',
+    });
     return deniedResult(
       input,
       'invalid_request',
@@ -167,6 +210,33 @@ export async function secureExecuteTool(input: SecureToolInput): Promise<SecureT
   });
   pipeline.enter('classify', `category=${action.category} risk=${action.risk}`);
 
+  const activityBase = {
+    userId: input.userId,
+    conversationId: input.conversationId ?? null,
+    agentId: input.agent.id,
+    agentName: input.agent.name,
+    toolName: input.toolName,
+    action: action.title,
+    resourceKey: action.resourceKey,
+    resourceLabel: action.target.label,
+    permissionUsed: action.category,
+    category: action.category,
+    risk: action.risk,
+    reversible: action.reversible,
+    external: action.external,
+    metadata: {
+      tool: action.toolName,
+      target: action.target.label,
+      targetDetail: action.target.detail ?? '',
+      scope: action.scopeKey,
+      resource: action.resourceKey,
+      fingerprint: action.fingerprint,
+      command: action.commandPreview ?? '',
+      consequences: action.consequences.join(' | '),
+      freshConfirmation: action.freshConfirmation,
+    },
+  };
+
   if (action.category === 'computer_access' && devices.length === 0) {
     const message =
       'No paired ORBIT Desktop Companion is available. Pair a computer in Settings → Agent Permissions first.';
@@ -179,6 +249,11 @@ export async function secureExecuteTool(input: SecureToolInput): Promise<SecureT
       toolName: input.toolName,
       projectId: input.projectId,
       detail: message,
+    });
+    await permissionManager.recordActivity({
+      ...activityBase,
+      status: 'blocked',
+      error: message,
     });
 
     return deniedResult(input, 'invalid_request', message, null, pipeline, action);
@@ -204,6 +279,38 @@ export async function secureExecuteTool(input: SecureToolInput): Promise<SecureT
 
   pipeline.enter('authorize', outcome.via);
   const authorization = outcome.authorization;
+  const operation = permissionManager.startOperation({
+    userId: input.userId,
+    conversationId: input.conversationId ?? null,
+    agentId: input.agent.id,
+    agentName: input.agent.name,
+    toolName: input.toolName,
+    detail: action.title,
+    cancellable: action.cancellable,
+    external: action.external,
+  });
+  const signals = combineSignals([input.signal, operation.signal]);
+  const finishOperation = async (
+    status: 'completed' | 'failed' | 'stopped' | 'unknown',
+    detail: string
+  ): Promise<void> => {
+    signals.dispose();
+    await permissionManager.finishOperation(input.userId, operation.id, status, detail);
+  };
+
+  await permissionManager.recordActivity({
+    ...activityBase,
+    status: 'running',
+    result: 'Authorized. The operation is starting.',
+    requestId: outcome.request.id,
+    grantId: authorization.grantId,
+    metadata: {
+      ...activityBase.metadata,
+      authorizationVia: outcome.via,
+      operationId: operation.id,
+    },
+  });
+
   pipeline.enter('pre_execute');
 
   if (
@@ -219,6 +326,14 @@ export async function secureExecuteTool(input: SecureToolInput): Promise<SecureT
         'android_permission_denied',
         android.message
       );
+      await finishOperation('failed', android.message);
+      await permissionManager.recordActivity({
+        ...activityBase,
+        status: 'blocked',
+        error: android.message,
+        requestId: outcome.request.id,
+        grantId: authorization.grantId,
+      });
       return deniedResult(
         input,
         'android_permission_denied',
@@ -238,6 +353,14 @@ export async function secureExecuteTool(input: SecureToolInput): Promise<SecureT
 
     if (blocked) {
       await permissionManager.blockExecution(authorization, 'command_blocked', blocked);
+      await finishOperation('failed', blocked);
+      await permissionManager.recordActivity({
+        ...activityBase,
+        status: 'blocked',
+        error: blocked,
+        requestId: outcome.request.id,
+        grantId: authorization.grantId,
+      });
       return deniedResult(input, 'command_blocked', blocked, outcome.request.id, pipeline, action);
     }
   }
@@ -247,6 +370,14 @@ export async function secureExecuteTool(input: SecureToolInput): Promise<SecureT
 
     if (pathError) {
       await permissionManager.blockExecution(authorization, 'command_blocked', pathError);
+      await finishOperation('failed', pathError);
+      await permissionManager.recordActivity({
+        ...activityBase,
+        status: 'blocked',
+        error: pathError,
+        requestId: outcome.request.id,
+        grantId: authorization.grantId,
+      });
       return deniedResult(
         input,
         'command_blocked',
@@ -265,9 +396,23 @@ export async function secureExecuteTool(input: SecureToolInput): Promise<SecureT
     agentId: input.agent.id,
     toolName: input.toolName,
     category: action.category,
+    scopeKey: action.scopeKey,
+    resourceKey: action.resourceKey,
+    fingerprint: action.fingerprint,
+    freshConfirmation: action.freshConfirmation,
+    external: action.external,
+    reversible: action.reversible,
   });
 
   if (!validation.ok) {
+    await finishOperation('failed', validation.message);
+    await permissionManager.recordActivity({
+      ...activityBase,
+      status: 'blocked',
+      error: validation.message,
+      requestId: outcome.request.id,
+      grantId: authorization.grantId,
+    });
     return deniedResult(
       input,
       validation.reason,
@@ -285,7 +430,7 @@ export async function secureExecuteTool(input: SecureToolInput): Promise<SecureT
   try {
     const execution = await withToolLimit(
       (toolSignal) => input.execute(toolSignal),
-      { timeoutMs, signal: input.signal }
+      { timeoutMs, signal: signals.signal }
     );
     const durationMs = Date.now() - start;
     pipeline.enter('post_execute');
@@ -296,6 +441,19 @@ export async function secureExecuteTool(input: SecureToolInput): Promise<SecureT
       formatPipeline(pipeline.snapshot())
     );
     pipeline.finish();
+    await finishOperation('completed', execution.trace || `Completed ${action.title}.`);
+    await permissionManager.recordActivity({
+      ...activityBase,
+      status: 'success',
+      result: truncate(redactSecrets(execution.content || execution.trace || 'Completed.'), 800),
+      requestId: outcome.request.id,
+      grantId: authorization.grantId,
+      metadata: {
+        ...activityBase.metadata,
+        trace: truncate(redactSecrets(execution.trace), 300),
+        durationMs,
+      },
+    });
 
     return {
       success: true,
@@ -319,30 +477,55 @@ export async function secureExecuteTool(input: SecureToolInput): Promise<SecureT
       : error instanceof Error && error.message
         ? error.message
         : 'Tool execution failed.';
+    const aborted = signals.signal.aborted;
+    const uncertain = action.external && (aborted || limited?.code === 'TOOL_TIMEOUT');
+    const visibleMessage = uncertain
+      ? 'Stop requested, but this external action may have completed. Check the external service before retrying.'
+      : message;
     const reason: PermissionDenialReason | undefined = limited
       ? limited.code === 'TOOL_TIMEOUT'
         ? 'execution_timeout'
         : 'user_cancelled'
-      : undefined;
-    const trace = limited
-      ? `${limited.code === 'TOOL_TIMEOUT' ? 'TIMEOUT' : 'CANCELLED'} ${input.toolName}`
-      : `FAILED ${input.toolName}`;
+      : aborted
+        ? 'user_cancelled'
+        : undefined;
+    const trace = uncertain
+      ? `UNCERTAIN ${input.toolName}`
+      : limited
+        ? `${limited.code === 'TOOL_TIMEOUT' ? 'TIMEOUT' : 'CANCELLED'} ${input.toolName}`
+        : `FAILED ${input.toolName}`;
 
     pipeline.enter('post_execute', limited?.code ?? 'error');
     pipeline.finish();
     await permissionManager.finishExecution(
       authorization,
       false,
-      truncate(message, 300),
+      truncate(visibleMessage, 300),
       formatPipeline(pipeline.snapshot())
     );
+    await finishOperation(
+      uncertain ? 'unknown' : aborted ? 'stopped' : 'failed',
+      visibleMessage
+    );
+    await permissionManager.recordActivity({
+      ...activityBase,
+      status: uncertain ? 'unknown' : aborted ? 'stopped' : 'failed',
+      error: truncate(redactSecrets(visibleMessage), 800),
+      requestId: outcome.request.id,
+      grantId: authorization.grantId,
+      metadata: {
+        ...activityBase.metadata,
+        durationMs,
+        limitCode: limited?.code ?? null,
+      },
+    });
 
     return {
       success: false,
-      content: toolFail(message),
+      content: toolFail(visibleMessage),
       trace,
       durationMs,
-      error: message,
+      error: visibleMessage,
       ...(limited ? { errorCode: limited.code } : {}),
       pipeline: pipeline.snapshot(),
       permission: {

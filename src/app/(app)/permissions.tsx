@@ -33,11 +33,15 @@ import {
   type PermissionAuditEvent,
   type PermissionAuditRecord,
   type PermissionDashboardData,
+  type PermissionDenialRecord,
   type PermissionGrantRecord,
+  type PermissionPreferenceRecord,
   type PermissionRequestRecord,
   type PermissionRequestStatus,
   type PairedDeviceRecord,
 } from '@/lib/permissions';
+import { SafetyTrash } from '@/lib/safety/trash';
+import type { ActivityRecord, ActiveOperation } from '@/lib/safety/types';
 import { radius, spacing } from '@/theme';
 
 type IconName = keyof typeof Ionicons.glyphMap;
@@ -50,6 +54,7 @@ const REQUEST_META: Record<
   pending: { label: 'Pending', icon: 'time-outline', tone: 'warning' },
   auto_approved: { label: 'Auto-approved', icon: 'flash-outline', tone: 'success' },
   approved_once: { label: 'Allowed once', icon: 'checkmark-outline', tone: 'success' },
+  approved_session: { label: 'Allowed for session', icon: 'hourglass-outline', tone: 'accent' },
   approved_always: { label: 'Always allowed', icon: 'shield-checkmark-outline', tone: 'accent' },
   denied: { label: 'Denied', icon: 'close-circle-outline', tone: 'danger' },
   cancelled: { label: 'Cancelled', icon: 'ban-outline', tone: 'muted' },
@@ -77,9 +82,18 @@ const AUDIT_META: Record<
   request_created: { label: 'Permission requested', icon: 'help-circle-outline', tone: 'warning' },
   request_auto_approved: { label: 'Auto-approved', icon: 'flash-outline', tone: 'success' },
   approved_once: { label: 'Allowed once', icon: 'checkmark-outline', tone: 'success' },
+  approved_session: {
+    label: 'Allowed for session',
+    icon: 'hourglass-outline',
+    tone: 'accent',
+  },
   approved_always: { label: 'Always allowed', icon: 'shield-checkmark-outline', tone: 'success' },
+  ask_every_time: { label: 'Ask every time', icon: 'help-circle-outline', tone: 'warning' },
+  never_allowed: { label: 'Never allowed', icon: 'ban-outline', tone: 'danger' },
   denied: { label: 'Denied', icon: 'close-circle-outline', tone: 'danger' },
   cancelled: { label: 'Cancelled', icon: 'ban-outline', tone: 'muted' },
+  agent_stopped: { label: 'Agent stopped', icon: 'stop-circle-outline', tone: 'danger' },
+  agent_resumed: { label: 'Agent resumed', icon: 'play-outline', tone: 'success' },
   expired: { label: 'Expired', icon: 'hourglass-outline', tone: 'muted' },
   grant_revoked: { label: 'Grant revoked', icon: 'trash-outline', tone: 'danger' },
   grant_consumed: { label: 'One-time grant used', icon: 'flash-outline', tone: 'accent' },
@@ -173,6 +187,11 @@ function shortFingerprint(value: string): string {
   }
 
   return `${value.slice(0, 18)}…${value.slice(-6)}`;
+}
+
+function trashIdFor(entry: ActivityRecord): string | null {
+  const trashId = entry.metadata.trashId;
+  return typeof trashId === 'string' ? trashId : null;
 }
 
 function StatTile({
@@ -445,7 +464,10 @@ function GrantRow({
           {grant.agentName} · {grant.projectLabel}
         </Text>
         <Text style={styles.itemMeta} numberOfLines={1}>
-          {grant.toolName} · {grant.scope === 'once' ? 'one-time' : 'persistent'}
+          {grant.toolName} · {grant.scope === 'once' ? 'one-time' : grant.scope === 'session' ? 'session-only' : 'persistent'}
+        </Text>
+        <Text style={styles.itemMeta} numberOfLines={1}>
+          Resource: {grant.resourceKey}
         </Text>
         <View style={styles.chipRow}>
           <View
@@ -558,6 +580,195 @@ function AuditRow({ entry }: { entry: PermissionAuditRecord }) {
   );
 }
 
+const ACTIVITY_META: Record<
+  ActivityRecord['status'],
+  { label: string; icon: IconName; tone: Tone }
+> = {
+  running: { label: 'Running', icon: 'sync-outline', tone: 'accent' },
+  pending: { label: 'Awaiting approval', icon: 'time-outline', tone: 'warning' },
+  approved: { label: 'Approved, awaiting execution', icon: 'checkmark-outline', tone: 'accent' },
+  success: { label: 'Completed', icon: 'checkmark-circle-outline', tone: 'success' },
+  denied: { label: 'Denied', icon: 'close-circle-outline', tone: 'danger' },
+  failed: { label: 'Failed', icon: 'alert-circle-outline', tone: 'danger' },
+  cancelled: { label: 'Cancelled', icon: 'ban-outline', tone: 'muted' },
+  stopped: { label: 'Stopped', icon: 'stop-circle-outline', tone: 'warning' },
+  blocked: { label: 'Blocked', icon: 'shield-outline', tone: 'danger' },
+  unknown: { label: 'Unconfirmed', icon: 'help-circle-outline', tone: 'warning' },
+  restored: { label: 'Restored', icon: 'refresh-outline', tone: 'success' },
+};
+
+function ActivityRow({
+  entry,
+  restoring,
+  onRestore,
+}: {
+  entry: ActivityRecord;
+  restoring: boolean;
+  onRestore: (trashId: string) => void;
+}) {
+  const { colors } = useAppTheme();
+  const styles = useStyles(makeStyles);
+  const meta = ACTIVITY_META[entry.status];
+  const outcome = entry.error || entry.result;
+  const trashId = trashIdFor(entry);
+
+  return (
+    <View style={styles.item}>
+      <View style={[styles.itemIcon, { backgroundColor: toneSoftColor(meta.tone, colors) }]}>
+        <Ionicons name={meta.icon} size={18} color={toneColor(meta.tone, colors)} />
+      </View>
+      <View style={styles.itemBody}>
+        <Text style={styles.itemTitle} numberOfLines={2}>
+          {entry.action}
+        </Text>
+        <Text style={styles.itemMeta} numberOfLines={1}>
+          {formatDateTime(entry.createdAt)} · {entry.agentName}
+        </Text>
+        {entry.resourceLabel ? (
+          <Text style={styles.itemMeta} numberOfLines={1}>
+            Resource: {entry.resourceLabel}
+          </Text>
+        ) : null}
+        <Text style={styles.itemMeta} numberOfLines={1}>
+          {entry.permissionUsed || 'No permission used'} · {meta.label}
+          {entry.external ? ' · external' : entry.reversible ? ' · reversible' : ''}
+        </Text>
+        {outcome ? (
+          <Text style={[styles.itemMeta, entry.error ? styles.dangerText : undefined]} numberOfLines={2}>
+            {outcome}
+          </Text>
+        ) : null}
+        {trashId && entry.status !== 'restored' ? (
+          <Pressable
+            onPress={() => onRestore(trashId)}
+            disabled={restoring}
+            style={styles.restoreButton}
+            accessibilityRole="button"
+          >
+            {restoring ? (
+              <ActivityIndicator size="small" color={colors.accent} />
+            ) : (
+              <Ionicons name="refresh-outline" size={14} color={colors.accent} />
+            )}
+            <Text style={styles.restoreText}>
+              {restoring ? 'Restoring…' : 'Restore original'}
+            </Text>
+          </Pressable>
+        ) : null}
+      </View>
+    </View>
+  );
+}
+
+function OperationRow({
+  operation,
+  busy,
+  onStop,
+}: {
+  operation: ActiveOperation;
+  busy: boolean;
+  onStop: () => void;
+}) {
+  const { colors } = useAppTheme();
+  const styles = useStyles(makeStyles);
+
+  return (
+    <View style={styles.item}>
+      <View style={[styles.itemIcon, { backgroundColor: colors.warningSoft }]}>
+        <Ionicons name="sync-outline" size={18} color={colors.warning} />
+      </View>
+      <View style={styles.itemBody}>
+        <Text style={styles.itemTitle} numberOfLines={2}>
+          {operation.detail}
+        </Text>
+        <Text style={styles.itemMeta} numberOfLines={1}>
+          {operation.agentName} · {operation.toolName}
+        </Text>
+        <Text style={styles.itemMeta}>
+          {operation.status}
+          {operation.cancellable ? ' · cancellable' : ' · cannot be cancelled'}
+          {operation.external ? ' · external result may persist' : ''}
+        </Text>
+      </View>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`Stop ${operation.toolName}`}
+        disabled={busy}
+        onPress={onStop}
+        style={({ pressed }) => [
+          styles.revokeButton,
+          pressed && styles.pressed,
+          busy && styles.disabled,
+        ]}
+      >
+        {busy ? (
+          <ActivityIndicator size="small" color={colors.danger} />
+        ) : (
+          <Ionicons name="stop-circle-outline" size={16} color={colors.danger} />
+        )}
+      </Pressable>
+    </View>
+  );
+}
+
+function SavedChoiceRow({
+  denial,
+  preference,
+  busy,
+  onRevoke,
+}: {
+  denial?: PermissionDenialRecord;
+  preference?: PermissionPreferenceRecord;
+  busy: boolean;
+  onRevoke: () => void;
+}) {
+  const { colors } = useAppTheme();
+  const styles = useStyles(makeStyles);
+  const entry = denial ?? preference;
+
+  if (!entry) {
+    return null;
+  }
+
+  const label = denial ? 'Never allow' : 'Ask every time';
+
+  return (
+    <View style={styles.item}>
+      <View style={[styles.itemIcon, { backgroundColor: colors.dangerSoft }]}>
+        <Ionicons
+          name={denial ? 'ban-outline' : 'help-circle-outline'}
+          size={18}
+          color={denial ? colors.danger : colors.warning}
+        />
+      </View>
+      <View style={styles.itemBody}>
+        <Text style={styles.itemTitle} numberOfLines={2}>
+          {label}
+        </Text>
+        <Text style={styles.itemMeta} numberOfLines={1}>
+          {entry.agentId} · {entry.toolName}
+        </Text>
+        <Text style={styles.itemMeta} numberOfLines={1}>
+          Resource: {entry.resourceKey}
+        </Text>
+      </View>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`Revoke ${label}`}
+        disabled={busy}
+        onPress={onRevoke}
+        style={({ pressed }) => [
+          styles.revokeButton,
+          pressed && styles.pressed,
+          busy && styles.disabled,
+        ]}
+      >
+        <Ionicons name="trash-outline" size={16} color={colors.danger} />
+      </Pressable>
+    </View>
+  );
+}
+
 export default function PermissionsScreen() {
   const { colors } = useAppTheme();
   const styles = useStyles(makeStyles);
@@ -634,10 +845,22 @@ export default function PermissionsScreen() {
     }
   }
 
+  function restoreTrash(trashId: string) {
+    void runAction(`restore-${trashId}`, async () => {
+      const item = await new SafetyTrash(db).restore({
+        userId: activeUser.id,
+        agentId: 'user',
+        agentName: 'You',
+        id: trashId,
+      });
+      setNotice(`Restored ${item.name} to ${item.originalPath}.`);
+    });
+  }
+
   function stopAgents() {
     Alert.alert(
       'Stop all agent actions?',
-      'Every pending approval is cancelled and no agent can execute another action until you resume permissions.',
+      'Every pending approval is cancelled and no agent can execute another action until you resume permissions. Running work receives a cancellation signal; external actions may already have completed.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -646,7 +869,14 @@ export default function PermissionsScreen() {
           onPress: () => {
             void runAction('emergency-stop', async () => {
               await permissionManager.emergencyStop(activeUser.id);
-              setNotice('Emergency stop is active. All pending requests were cancelled.');
+              const report = permissionManager.getStopReport();
+              const uncancellable = report?.uncancellable.length ?? 0;
+              setNotice(
+                `Emergency stop is active. Stop requested for ${report?.stopRequested.length ?? 0} operation(s); cancelled ${report?.cancelledRequests ?? 0} pending request(s); revoked ${report?.revokedGrants ?? 0} grant(s).` +
+                  (uncancellable > 0
+                    ? ` ${uncancellable} operation(s) could not be cancelled and may have completed outside ORBIT.`
+                    : '')
+              );
             });
           },
         },
@@ -738,6 +968,54 @@ export default function PermissionsScreen() {
     );
   }
 
+  function revokeSavedChoice(denial?: PermissionDenialRecord, preference?: PermissionPreferenceRecord) {
+    Alert.alert(
+      'Revoke this saved choice?',
+      'The exact action can be requested again. Nothing has been executed by revoking it.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Revoke',
+          style: 'destructive',
+          onPress: () => {
+            void runAction(`choice-${denial?.id ?? preference?.agentId ?? 'preference'}`, async () => {
+              const removed = denial
+                ? await permissionManager.revokeDenial(activeUser.id, denial.id)
+                : preference
+                  ? await permissionManager.revokePreference(activeUser.id, preference)
+                  : false;
+              setNotice(removed ? 'The saved choice was revoked.' : 'This choice is no longer active.');
+            });
+          },
+        },
+      ]
+    );
+  }
+
+  function stopOperation(operation: ActiveOperation) {
+    Alert.alert(
+      'Stop this operation?',
+      operation.external
+        ? 'ORBIT will stop waiting, but the external service may already have completed the action. Check the service before retrying.'
+        : operation.cancellable
+          ? 'The running tool will receive a cancellation signal immediately.'
+          : 'This operation is already uncancellable. ORBIT will mark its result as unconfirmed.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Stop',
+          style: 'destructive',
+          onPress: () => {
+            void runAction(`operation-${operation.id}`, async () => {
+              const result = await permissionManager.cancelOperation(activeUser.id, operation.id);
+              setNotice(result.message);
+            });
+          },
+        },
+      ]
+    );
+  }
+
   function revokeDevice(device: PairedDeviceRecord) {
     Alert.alert(
       `Revoke ${device.name}?`,
@@ -765,6 +1043,21 @@ export default function PermissionsScreen() {
   const pairedDevices = devices.filter((device) => device.status === 'paired');
   const requests = data?.requests.slice(0, 12) ?? [];
   const audit = data?.audit.slice(0, 20) ?? [];
+  const activity = data?.activity.slice(0, 12) ?? [];
+  const activeOperations = data?.activeOperations ?? [];
+  const denials = data?.denials ?? [];
+  const preferences = data?.preferences ?? [];
+  const savedChoices: {
+    key: string;
+    denial?: PermissionDenialRecord;
+    preference?: PermissionPreferenceRecord;
+  }[] = [
+    ...denials.map((denial) => ({ key: denial.id, denial })),
+    ...preferences.map((preference) => ({
+      key: `${preference.agentId}-${preference.toolName}`,
+      preference,
+    })),
+  ];
   const deniedCount =
     data?.requests.filter(
       (request) => request.status === 'denied' || request.status === 'blocked'
@@ -923,8 +1216,8 @@ export default function PermissionsScreen() {
         </View>
 
         <SectionHeading
-          title="Connected computers"
-          caption="Computer access only works through an explicitly paired ORBIT Desktop Companion."
+          title="Connected tools & computers"
+          caption="Computer access only works through an explicitly paired ORBIT Desktop Companion. Connected MCP and plugin tools stay permission-scoped."
           action={pairingOpen ? undefined : 'Pair'}
           onAction={() => setPairingOpen(true)}
         />
@@ -1037,6 +1330,79 @@ export default function PermissionsScreen() {
             requests.map((request, index) => (
               <View key={request.id} style={index > 0 ? styles.divider : undefined}>
                 <RequestRow request={request} />
+              </View>
+            ))
+          )}
+        </GlassView>
+
+        <SectionHeading
+          title="Active operations"
+          caption="Running tool calls with real cancellation states. External actions may complete even after a stop."
+        />
+
+        <GlassView style={styles.card}>
+          {activeOperations.length === 0 ? (
+            <EmptyState
+              icon="sync-outline"
+              text="No tool call is running right now."
+            />
+          ) : (
+            activeOperations.map((operation, index) => (
+              <View key={operation.id} style={index > 0 ? styles.divider : undefined}>
+                <OperationRow
+                  operation={operation}
+                  busy={busyKey === `operation-${operation.id}`}
+                  onStop={() => stopOperation(operation)}
+                />
+              </View>
+            ))
+          )}
+        </GlassView>
+
+        <SectionHeading
+          title="Agent activity"
+          caption="Timestamp, agent, action, resource, permission used, status, and the real result or error."
+        />
+
+        <GlassView style={styles.card}>
+          {activity.length === 0 ? (
+            <EmptyState
+              icon="receipt-outline"
+              text="No activity yet. Requests, approvals, denials, and execution results appear here."
+            />
+          ) : (
+            activity.map((entry, index) => (
+              <View key={entry.id} style={index > 0 ? styles.divider : undefined}>
+                <ActivityRow
+                  entry={entry}
+                  restoring={busyKey === `restore-${trashIdFor(entry) ?? ''}`}
+                  onRestore={restoreTrash}
+                />
+              </View>
+            ))
+          )}
+        </GlassView>
+
+        <SectionHeading
+          title="Saved choices"
+          caption="Never Allow and Ask Every Time are exact-scope decisions. Revoke them to allow a new request."
+        />
+
+        <GlassView style={styles.card}>
+          {savedChoices.length === 0 ? (
+            <EmptyState
+              icon="options-outline"
+              text="No saved choices. Every protected action will be asked about until you choose one."
+            />
+          ) : (
+            savedChoices.map(({ key, denial, preference }, index) => (
+              <View key={key} style={index > 0 ? styles.divider : undefined}>
+                <SavedChoiceRow
+                  denial={denial}
+                  preference={preference}
+                  busy={busyKey === `choice-${denial?.id ?? preference?.agentId ?? 'preference'}`}
+                  onRevoke={() => revokeSavedChoice(denial, preference)}
+                />
               </View>
             ))
           )}
@@ -1294,6 +1660,25 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
       color: colors.textFaint,
       fontSize: 11,
       lineHeight: 15,
+    },
+    dangerText: {
+      color: colors.danger,
+    },
+    restoreButton: {
+      alignSelf: 'flex-start',
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 5,
+      marginTop: spacing.xs,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: 4,
+      borderRadius: radius.pill,
+      backgroundColor: colors.accentSoft,
+    },
+    restoreText: {
+      color: colors.accent,
+      fontSize: 11,
+      fontWeight: '700',
     },
     statusPill: {
       alignSelf: 'flex-start',

@@ -11,6 +11,7 @@ import { PluginPlatformProvider } from '@/context/plugins';
 import { useAppTheme, useStyles, type AppTheme } from '@/context/theme';
 import { setOrbitDb } from '@/lib/harness/plugins/orbit-session';
 import { permissionManager } from '@/lib/permissions';
+import { SafetyTrash } from '@/lib/safety/trash';
 
 function NotificationRedirect() {
   useEffect(() => {
@@ -61,6 +62,18 @@ function NotificationRedirect() {
   return null;
 }
 
+function SafetyLifecycle() {
+  const db = useSQLiteContext();
+
+  useEffect(() => {
+    void new SafetyTrash(db).purgeExpired().catch(() => {
+      // Retention cleanup is best effort; a failure must not block the app.
+    });
+  }, [db]);
+
+  return null;
+}
+
 export default function AppLayout() {
   const { colors } = useAppTheme();
   const styles = useStyles(makeStyles);
@@ -76,6 +89,7 @@ export default function AppLayout() {
       <SidebarProvider>
         <View style={styles.root}>
           <NotificationRedirect />
+          <SafetyLifecycle />
           <Stack
             screenOptions={{
               headerShown: false,
@@ -99,7 +113,6 @@ export default function AppLayout() {
             <Stack.Screen name="telemetry" />
             <Stack.Screen name="policy" />
             <Stack.Screen name="plugins/index" />
-            <Stack.Screen name="sandbox/index" />
             <Stack.Screen name="plugins/[pluginId]" />
             <Stack.Screen name="plugin/[pluginId]" />
             <Stack.Screen name="buddy/tree" />

@@ -46,7 +46,6 @@ const MAIN_ITEMS: NavItem[] = [
 
 const ADVANCED_ITEMS: NavItem[] = [
   { label: 'Plugins', href: '/plugins' as Href, icon: 'extension-puzzle-outline', activeIcon: 'extension-puzzle' },
-  { label: 'Sandbox', href: '/sandbox' as Href, icon: 'shield-checkmark-outline', activeIcon: 'shield-checkmark' },
   { label: 'Harness', href: '/harness', icon: 'git-network-outline', activeIcon: 'git-network' },
   { label: 'Events', href: '/events', icon: 'receipt-outline', activeIcon: 'receipt' },
   { label: 'Telemetry', href: '/telemetry', icon: 'analytics-outline', activeIcon: 'analytics' },

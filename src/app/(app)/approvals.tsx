@@ -35,6 +35,21 @@ function timeLeft(expiresAt: number): string {
   return seconds > 0 ? `${seconds}s left` : 'Expired';
 }
 
+function canSaveChoice(request: PermissionRequestRecord): boolean {
+  return (
+    request.allowAlways &&
+    request.risk !== 'high' &&
+    request.risk !== 'critical' &&
+    !request.freshConfirmation &&
+    request.metadata.policyDecision !== 'ask'
+  );
+}
+
+function consequencesFor(request: PermissionRequestRecord): string[] {
+  const value = request.metadata.consequences;
+  return typeof value === 'string' ? value.split(' | ').filter(Boolean) : [];
+}
+
 export default function ApprovalsScreen() {
   const { colors } = useAppTheme();
   const styles = useStyles(makeStyles);
@@ -57,6 +72,7 @@ export default function ApprovalsScreen() {
     getPluginQueued
   );
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [busyOption, setBusyOption] = useState<PermissionDecisionOption | null>(null);
   const [error, setError] = useState<string | null>(null);
   const pluginInstall = pluginRequest?.kind === 'install' ? pluginRequest : null;
 
@@ -67,6 +83,7 @@ export default function ApprovalsScreen() {
   const resolve = useCallback(
     async (request: PermissionRequestRecord, option: PermissionDecisionOption) => {
       setBusyId(request.id);
+      setBusyOption(option);
       setError(null);
 
       try {
@@ -79,6 +96,7 @@ export default function ApprovalsScreen() {
         setError(resolveError instanceof Error ? resolveError.message : 'Could not resolve request.');
       } finally {
         setBusyId(null);
+        setBusyOption(null);
       }
     },
     []
@@ -86,6 +104,7 @@ export default function ApprovalsScreen() {
 
   const cancel = useCallback(async (request: PermissionRequestRecord) => {
     setBusyId(request.id);
+    setBusyOption(null);
     setError(null);
 
     try {
@@ -107,6 +126,7 @@ export default function ApprovalsScreen() {
 
   function pluginDecision(request: PluginApprovalRequest, approved: boolean) {
     setBusyId(String(request.id));
+    setBusyOption(null);
 
     try {
       if (approved) {
@@ -176,26 +196,76 @@ export default function ApprovalsScreen() {
                 {request.target.label ? (
                   <Text style={styles.meta}>Target: {request.target.label}</Text>
                 ) : null}
+                {request.target.detail ? (
+                  <Text style={styles.meta}>Where: {request.target.detail}</Text>
+                ) : null}
+                {request.commandPreview ? (
+                  <Text style={styles.meta}>Command: {request.commandPreview}</Text>
+                ) : null}
+                <Text style={styles.meta}>
+                  Scope: {request.scopeKey} · Resource: {request.resourceKey}
+                </Text>
+                {consequencesFor(request).map((consequence, index) => (
+                  <Text key={`${consequence}-${index}`} style={styles.warningText}>
+                    Consequences: {consequence}
+                  </Text>
+                ))}
+                <Text style={styles.meta}>
+                  {request.reversible
+                    ? 'Reversible from Agent activity.'
+                    : request.external
+                      ? 'External service: ORBIT cannot guarantee this can be undone.'
+                      : 'ORBIT cannot undo this action.'}
+                </Text>
+                {request.freshConfirmation || request.risk === 'high' || request.risk === 'critical' ? (
+                  <Text style={styles.dangerText}>
+                    {request.risk === 'critical'
+                      ? 'Critical action: payments, external sending, permanent deletion, and security changes always need fresh confirmation.'
+                      : 'High-risk actions ask every time. A saved grant can never skip this prompt.'}
+                  </Text>
+                ) : null}
 
                 <View style={styles.buttons}>
                   <Button
                     label="Allow once"
                     onPress={() => void resolve(request, 'allow_once')}
                     disabled={busyId === request.id}
+                    loading={busyId === request.id && busyOption === 'allow_once'}
                   />
-                  {request.allowAlways ? (
-                    <Button
-                      label="Always allow"
-                      variant="secondary"
-                      onPress={() => void resolve(request, 'always_allow')}
-                      disabled={busyId === request.id}
-                    />
-                  ) : null}
+                  <Button
+                    label="Allow for session"
+                    variant="secondary"
+                    onPress={() => void resolve(request, 'allow_session')}
+                    disabled={busyId === request.id || !canSaveChoice(request)}
+                    loading={busyId === request.id && busyOption === 'allow_session'}
+                  />
+                  <Button
+                    label="Always allow"
+                    variant="secondary"
+                    onPress={() => void resolve(request, 'always_allow')}
+                    disabled={busyId === request.id || !canSaveChoice(request)}
+                    loading={busyId === request.id && busyOption === 'always_allow'}
+                  />
+                  <Button
+                    label="Ask every time"
+                    variant="secondary"
+                    onPress={() => void resolve(request, 'ask_every_time')}
+                    disabled={busyId === request.id}
+                    loading={busyId === request.id && busyOption === 'ask_every_time'}
+                  />
+                  <Button
+                    label="Never allow"
+                    variant="danger"
+                    onPress={() => void resolve(request, 'never_allow')}
+                    disabled={busyId === request.id}
+                    loading={busyId === request.id && busyOption === 'never_allow'}
+                  />
                   <Button
                     label="Deny"
                     variant="danger"
                     onPress={() => void resolve(request, 'deny')}
                     disabled={busyId === request.id}
+                    loading={busyId === request.id && busyOption === 'deny'}
                   />
                 </View>
                 <Pressable
@@ -363,6 +433,11 @@ const makeStyles = ({ colors }: AppTheme) =>
     },
     warningText: {
       color: colors.warning,
+      fontSize: 11,
+      lineHeight: 16,
+    },
+    dangerText: {
+      color: colors.danger,
       fontSize: 11,
       lineHeight: 16,
     },

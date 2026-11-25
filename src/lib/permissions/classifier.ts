@@ -1,3 +1,6 @@
+import { sha256 } from '@noble/hashes/sha2.js';
+import { bytesToHex, utf8ToBytes } from '@noble/hashes/utils.js';
+
 import { CATEGORY_META } from './catalog';
 import { assessCommand } from './command-policy';
 import { redactSecrets, summarizeArguments, truncate } from './redact';
@@ -66,7 +69,58 @@ const DATABASE_PATTERN = /(?:database|sqlite|sql|query|record|table)/i;
 const NETWORK_PATTERN = /(?:network|socket|ping|dns|bandwidth)/i;
 const BACKGROUND_PATTERN = /(?:background|cron|schedule|automation|job|queue)/i;
 
-const RISK_ORDER: Record<RiskLevel, number> = { low: 0, medium: 1, high: 2 };
+const RISK_ORDER: Record<RiskLevel, number> = { low: 0, medium: 1, high: 2, critical: 3 };
+
+type CriticalKind = 'payment' | 'external_send' | 'permanent_delete' | 'security' | 'account';
+
+type CriticalMatch = {
+  kind: CriticalKind;
+  reason: string;
+};
+
+/**
+ * Critical means a user-confirmation gate that no saved grant can ever skip.
+ * Names are matched on whole underscore-separated segments so a Gmail *read*
+ * tool is never accidentally promoted to “send email”.
+ */
+const CRITICAL_NAME_RULES: [CriticalKind, RegExp][] = [
+  [
+    'payment',
+    /(?:^|_)(?:pay|payment|purchase|checkout|charge|billing|transfer|withdraw|refund|wallet|crypto|tip)(?:$|_)/i,
+  ],
+  [
+    'external_send',
+    /(?:^|_)(?:send|reply|share|post|publish|message|sms|notify)(?:$|_)|(?:send|reply)[_-](?:email|message)|(?:email|message)[_-](?:send|reply)/i,
+  ],
+  [
+    'permanent_delete',
+    /(?:permanent(?:ly)?[_-]?delete|delete[_-]?(?:forever|permanent|task|file|folder|account)|destroy|purge|wipe)(?:_|$)/i,
+  ],
+  [
+    'security',
+    /(?:^|_)(?:password|passphrase|2fa|mfa|credential|security[_-]?setting|account[_-]?security|api[_-]?key|secret[_-]?(?:rotate|reset)|permission[_-]?change)(?:$|_)/i,
+  ],
+  ['account', /(?:^|_)(?:create[_-]?(?:account|user)|sign[_-]?up|register[_-]?account)(?:$|_)/i],
+];
+
+const CRITICAL_ARG_KEYS = [
+  'amount',
+  'price',
+  'payment',
+  'purchase',
+  'checkout',
+  'transfer',
+  'withdraw',
+  'refund',
+  'recipient',
+  'card',
+  'cvv',
+  'wallet',
+  'password',
+  'api_key',
+];
+
+const CRITICAL_TARGET_KEYS = ['recipient', 'to', 'email', 'phone', 'address', 'path', 'file_path', 'file', 'url', 'id'];
 
 /**
  * Default cooperative execution limit for a classified action. A tool may
@@ -130,6 +184,142 @@ function maxRisk(left: RiskLevel, right: RiskLevel): RiskLevel {
   return RISK_ORDER[left] >= RISK_ORDER[right] ? left : right;
 }
 
+function stableStringify(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map(stableStringify).join(',')}]`;
+  }
+
+  if (value && typeof value === 'object') {
+    return `{${Object.entries(value as Record<string, unknown>)
+      .filter(([, entry]) => entry !== undefined)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, entry]) => `${JSON.stringify(key)}:${stableStringify(entry)}`)
+      .join(',')}}`;
+  }
+
+  return JSON.stringify(value ?? null);
+}
+
+function fingerprintFor(input: ClassifyInput, scopeKey: string): string {
+  const source = stableStringify({
+    tool: input.toolName,
+    project: input.projectId,
+    scope: scopeKey,
+    args: input.args,
+  });
+  return bytesToHex(sha256(utf8ToBytes(truncate(source, 8000))));
+}
+
+/** Returns the exact reason when an action needs a fresh critical confirmation. */
+function criticalMatch(args: Record<string, unknown>, toolName: string): CriticalMatch | null {
+  for (const [kind, pattern] of CRITICAL_NAME_RULES) {
+    if (pattern.test(toolName)) {
+      const reasons: Record<CriticalKind, string> = {
+        payment: 'This action moves money or completes a purchase.',
+        external_send: 'This action sends something to a person or service outside ORBIT.',
+        permanent_delete: 'This action permanently deletes data and cannot be undone by ORBIT.',
+        security: 'This action changes a password, credential, or security setting.',
+        account: 'This action creates a new account or identity.',
+      };
+      return { kind, reason: reasons[kind] };
+    }
+  }
+
+  if (args.permanent === true || args.force === true || args.irreversible === true) {
+    return {
+      kind: 'permanent_delete',
+      reason: 'The caller explicitly requested a permanent or irreversible operation.',
+    };
+  }
+
+  if (CRITICAL_ARG_KEYS.some((key) => key in args)) {
+    return {
+      kind: 'payment',
+      reason: 'The arguments include a payment, recipient, credential, or security-sensitive value.',
+    };
+  }
+
+  return null;
+}
+
+function criticalTarget(
+  match: CriticalMatch,
+  args: Record<string, unknown>,
+  projectLabel: string
+): PermissionTarget {
+  const explicit = CRITICAL_TARGET_KEYS.map((key) => firstString(args, [key])).find(Boolean);
+
+  switch (match.kind) {
+    case 'payment': {
+      const rawAmount = args.amount ?? args.price ?? args.total;
+      const amount =
+        typeof rawAmount === 'number' || typeof rawAmount === 'string' ? String(rawAmount).trim() : '';
+      const currency = firstString(args, ['currency']);
+      const recipient = firstString(args, ['recipient', 'to', 'payee', 'email', 'phone']);
+      return {
+        kind: 'service',
+        label: recipient || explicit || 'Payment recipient',
+        detail: amount ? `${amount}${currency ? ` ${currency}` : ''} · external payment` : 'External payment',
+      };
+    }
+    case 'external_send':
+      return {
+        kind: 'service',
+        label: explicit || 'External recipient',
+        detail: `${projectLabel} · recipient and content shown above`,
+      };
+    case 'permanent_delete':
+      return {
+        kind: 'resource',
+        label: explicit || 'Protected data',
+        detail: `${projectLabel} · permanent deletion`,
+      };
+    case 'security':
+      return {
+        kind: 'resource',
+        label: explicit || 'Account security setting',
+        detail: `${projectLabel} · security change`,
+      };
+    case 'account':
+      return {
+        kind: 'service',
+        label: explicit || 'New account',
+        detail: `${projectLabel} · account creation`,
+      };
+  }
+}
+
+function criticalConsequences(match: CriticalMatch): string[] {
+  switch (match.kind) {
+    case 'payment':
+      return [
+        'Money or purchasing authority will be used outside ORBIT.',
+        'A payment usually cannot be reversed from here.',
+      ];
+    case 'external_send':
+      return [
+        'The message or content will leave this device.',
+        'The recipient may receive it even if ORBIT loses the connection.',
+        'No saved permission will be reused for this action.',
+      ];
+    case 'permanent_delete':
+      return [
+        'The data will be permanently removed.',
+        'ORBIT cannot restore this action; trash and undo will not be offered.',
+      ];
+    case 'security':
+      return [
+        'The security change takes effect on the real account or device.',
+        'Existing sessions or credentials may stop working.',
+      ];
+    case 'account':
+      return [
+        'A new account or identity will be created outside ORBIT.',
+        'The result may not be removable from inside ORBIT.',
+      ];
+  }
+}
+
 function hasSensitiveExternalAction(args: Record<string, unknown>, toolName: string): boolean {
   const riskyKeys = [
     'amount',
@@ -170,12 +360,28 @@ function makeAction(
     target: PermissionTarget;
     reason: string;
     scopeKey: string;
+    resourceKey?: string;
+    narrowable?: boolean;
+    reversible?: boolean;
+    external?: boolean;
+    cancellable?: boolean;
+    freshConfirmation?: boolean;
+    consequences?: string[];
     autoApprove?: boolean;
     command?: string;
     metadata?: Record<string, string | number | boolean | null>;
   }
 ): ClassifiedPermissionAction {
   const risk = fields.risk;
+  const freshConfirmation =
+    risk === 'high' || risk === 'critical' || fields.freshConfirmation === true;
+  const resourceKey = fields.resourceKey ?? fields.scopeKey;
+  const narrowable =
+    fields.narrowable ?? (Boolean(fields.resourceKey) && !freshConfirmation);
+  const external = fields.external ?? false;
+  const consequences = (fields.consequences ?? []).map((entry) =>
+    truncate(redactSecrets(entry), 220)
+  );
 
   return {
     agent: input.agent,
@@ -195,11 +401,23 @@ function makeAction(
     projectId: input.projectId,
     projectLabel: input.projectLabel,
     scopeKey: fields.scopeKey,
-    // High-risk actions can never be "always allowed".
-    allowAlways: risk !== 'high',
-    autoApprove: fields.autoApprove === true,
+    resourceKey,
+    fingerprint: fingerprintFor(input, fields.scopeKey),
+    narrowable,
+    freshConfirmation,
+    reversible: fields.reversible ?? !freshConfirmation,
+    external,
+    cancellable: fields.cancellable ?? !external,
+    consequences,
+    // High and critical risk actions can never be "always allowed".
+    allowAlways: !freshConfirmation && narrowable,
+    autoApprove: fields.autoApprove === true && !freshConfirmation,
     metadata: {
       categoryLabel: CATEGORY_META[fields.category].label,
+      narrowScope: narrowable,
+      freshConfirmation,
+      reversible: fields.reversible ?? !freshConfirmation,
+      external,
       ...fields.metadata,
     },
   };
@@ -275,6 +493,49 @@ export function classifyToolAction(input: ClassifyInput): ClassifiedPermissionAc
   const path = firstString(args, ['path', 'file', 'file_path', 'directory', 'dir', 'cwd']);
   const url = firstString(args, ['url', 'href', 'link', 'website']);
   const display = prettyToolName(rawName);
+  const critical = criticalMatch(args, rawName);
+
+  if (critical) {
+    const external =
+      critical.kind === 'payment' ||
+      critical.kind === 'external_send' ||
+      critical.kind === 'account' ||
+      GOOGLE_WRITE_TOOLS.has(name) ||
+      name.startsWith('mcp__');
+    const fingerprint = fingerprintFor(
+      input,
+      `critical:${rawName}:${input.projectId}`
+    );
+
+    return makeAction(input, {
+      category: external ? 'external_api' : 'database_operations',
+      risk: 'critical',
+      title: `Confirm ${display} before it runs?`,
+      summary:
+        'ORBIT never saves approval for this kind of action. You will be asked again, every time, with the exact target and consequences.',
+      actions: [
+        `Run ${display}`,
+        ...summarizeArguments(args, 5),
+        ...(command ? [`Command: ${truncate(command, 160)}`] : []),
+      ],
+      target: criticalTarget(critical, args, input.projectLabel),
+      reason: critical.reason,
+      scopeKey: `critical:${rawName}:${input.projectId}`,
+      resourceKey: `critical:${rawName}:${input.projectId}:${fingerprint.slice(0, 12)}`,
+      narrowable: false,
+      freshConfirmation: true,
+      reversible: false,
+      external,
+      cancellable: false,
+      consequences: criticalConsequences(critical),
+      metadata: {
+        critical: true,
+        criticalKind: critical.kind,
+        reason: critical.reason,
+        fingerprint,
+      },
+    });
+  }
 
   if (GOOGLE_READ_TOOLS.has(name) || GOOGLE_WRITE_TOOLS.has(name)) {
     const writing = GOOGLE_WRITE_TOOLS.has(name);
@@ -301,6 +562,12 @@ export function classifyToolAction(input: ClassifyInput): ClassifiedPermissionAc
       },
       reason: 'The agent needs the connected account to complete your request.',
       scopeKey: `google:${rawName}:${input.projectId}`,
+      external: true,
+      cancellable: false,
+      reversible: !writing,
+      consequences: writing
+        ? ['The connected Google account will be changed outside ORBIT.', 'External changes are not guaranteed to be undoable.']
+        : ['ORBIT will read data from your connected Google account.'],
       autoApprove: false,
       metadata: { connection: 'google', tool: rawName, sensitive: true },
     });
@@ -354,6 +621,10 @@ export function classifyToolAction(input: ClassifyInput): ClassifiedPermissionAc
       target: { kind: 'resource', label: 'Orbit artifacts', detail: 'On this device' },
       reason: 'The agent needs to save or read artifact content to complete your request.',
       scopeKey: `artifact:${name}:${input.projectId}`,
+      resourceKey: `artifact:${name}:${input.projectId}`,
+      narrowable: true,
+      reversible: true,
+      cancellable: true,
       autoApprove: true,
       metadata: { localOnly: true, noNetwork: true },
     });
@@ -417,6 +688,14 @@ export function classifyToolAction(input: ClassifyInput): ClassifiedPermissionAc
       reason:
         'The connected MCP server exposes this tool. The agent needs it to answer your request.',
       scopeKey: `mcp:${rawName}:${input.projectId}`,
+      external: true,
+      cancellable: false,
+      reversible: false,
+      narrowable: false,
+      consequences: [
+        'The configured MCP server can read or change data outside this phone.',
+        'The result depends on a remote service and may not be undoable.',
+      ],
       metadata: { server, tool: rawName },
     });
   }
@@ -442,6 +721,37 @@ export function classifyToolAction(input: ClassifyInput): ClassifiedPermissionAc
       scopeKey: `cordis:${name}:${input.projectId}`,
       autoApprove: !mutates,
       metadata: { creatorMode: true },
+    });
+  }
+
+  if (name.replace(/[._]/g, '_') === 'sandbox_execute') {
+    return makeAction(input, {
+      category: 'terminal_commands',
+      risk: 'high',
+      title: `Run ${display} in the isolated sandbox?`,
+      summary:
+        'Every sandbox run needs a fresh decision. Saved permissions can never reuse this approval.',
+      actions: [
+        `Run ${display}`,
+        ...summarizeArguments(args, 5),
+        ...(command ? [`Command: ${truncate(command, 160)}`] : []),
+      ],
+      target: {
+        kind: 'resource',
+        label: 'Mobile Sandbox isolated process',
+        detail: 'On this device',
+      },
+      reason: 'The isolated runner executes declared operations under a fresh, bounded policy.',
+      scopeKey: `sandbox_execute:${input.projectId}`,
+      narrowable: false,
+      freshConfirmation: true,
+      cancellable: true,
+      reversible: false,
+      consequences: [
+        'The declared program will run in a separate Android process.',
+        'The sandbox limits are enforced by the native runner, not only by this dialog.',
+      ],
+      metadata: { sandbox: true, freshConfirmation: true },
     });
   }
 
@@ -485,6 +795,50 @@ export function classifyToolAction(input: ClassifyInput): ClassifiedPermissionAc
         remote,
         blocked: assessment.blocked,
       },
+    });
+  }
+
+  if (name === 'file_trash') {
+    const targetPath = firstString(args, ['path', 'file_path', 'file', 'directory']);
+    return makeAction(input, {
+      category: 'file_delete',
+      risk: 'high',
+      title: `Move ${targetPath || 'a file'} to ORBIT trash?`,
+      summary:
+        'The file is copied into ORBIT’s private trash first. Restore returns the original bytes, path and metadata.',
+      actions: [targetPath ? `Trash: ${targetPath}` : 'Move the selected file to trash'],
+      target: { kind: 'file', label: targetPath || 'ORBIT document', detail: input.projectLabel },
+      reason: 'The agent needs to remove a file you requested, with a real undo path.',
+      scopeKey: `file_trash:${input.projectId}:${targetPath || 'file'}`,
+      resourceKey: `file_trash:${input.projectId}:${targetPath || 'file'}`,
+      narrowable: Boolean(targetPath),
+      reversible: true,
+      cancellable: true,
+      consequences: [
+        'The file disappears from its current path now.',
+        'It can be restored from Agent activity until the retention period ends.',
+      ],
+      metadata: { destructive: false, reversible: true, trash: true },
+    });
+  }
+
+  if (name === 'file_restore' || name === 'file_undo_last') {
+    const trashId = firstString(args, ['trash_id', 'id']);
+    return makeAction(input, {
+      category: 'file_write',
+      risk: 'medium',
+      title: 'Restore a trashed ORBIT file?',
+      summary:
+        'ORBIT copies the stored file back to its original path and keeps the original metadata.',
+      actions: [trashId ? `Restore trash item ${trashId}` : 'Restore the most recent trashed item'],
+      target: { kind: 'file', label: trashId || 'Most recent trash item', detail: input.projectLabel },
+      reason: 'The user asked to undo a reversible file deletion.',
+      scopeKey: `file_restore:${input.projectId}:${trashId || 'last'}`,
+      resourceKey: `file_restore:${input.projectId}:${trashId || 'last'}`,
+      narrowable: true,
+      reversible: true,
+      cancellable: true,
+      metadata: { restore: true, reversible: true },
     });
   }
 
