@@ -5,7 +5,7 @@
     "version": "1.10.6",
     "orientation": "portrait",
     "scheme": "orbit",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/app_icon_1024.png",
     "userInterfaceStyle": "automatic",
     "backgroundColor": "#121212",
     "ios": {
@@ -25,7 +25,7 @@
         "android.permission.READ_CONTACTS"
       ],
       "adaptiveIcon": {
-        "backgroundColor": "#121212",
+        "backgroundColor": "#FBF9FA",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
@@ -33,7 +33,7 @@
       "predictiveBackGestureEnabled": false
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/app_icon_1024.png"
     },
     "plugins": [
       "expo-router",
@@ -50,8 +50,8 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#121212",
-          "image": "./assets/splash-icon.png",
+          "backgroundColor": "#FBF9FA",
+          "image": "./assets/app_icon_1024.png",
           "imageWidth": 180
         }
       ],
