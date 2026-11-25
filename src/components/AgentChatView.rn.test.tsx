@@ -49,6 +49,17 @@ const mockAttachments = {
   pickDocuments: jest.fn(async () => []),
 };
 
+jest.mock('@/lib/voice-input', () => ({
+  useVoiceInput: () => ({
+    available: true,
+    listening: false,
+    error: null,
+    start: jest.fn(async () => undefined),
+    stop: jest.fn(),
+    cancel: jest.fn(),
+  }),
+}));
+
 jest.mock('@expo/vector-icons/Ionicons', () => {
   const ReactModule = require('react');
 

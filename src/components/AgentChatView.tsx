@@ -39,6 +39,7 @@ import {
 import { getChatStore, type ChatMessage, type Conversation, type ToolExecutionEvent } from '@/lib/chat';
 import { permissionManager, type AgentIdentity } from '@/lib/permissions';
 import type { ActivityRecord } from '@/lib/safety/types';
+import { useVoiceInput } from '@/lib/voice-input';
 import { fonts, radius, spacing } from '@/theme';
 
 const ATTACHMENT_LIMIT = 4;
@@ -136,6 +137,7 @@ export function AgentChatView({ agent, agentId, allowCreatorMode = false }: Agen
   const [creatorMode, setCreatorMode] = useState(false);
   const [historyManualOpen, setHistoryManualOpen] = useState(false);
   const [historyDismissedKey, setHistoryDismissedKey] = useState<string | null>(null);
+  const voice = useVoiceInput(setInput);
 
   const historyNavKey = historyParam ? `${promptStamp ?? ''}|${historyParam}` : null;
   const historyOpen =
@@ -523,6 +525,7 @@ export function AgentChatView({ agent, agentId, allowCreatorMode = false }: Agen
       return;
     }
 
+    voice.cancel();
     const text = (rawText ?? input).trim();
 
     if (!text && attachments.length === 0) {
@@ -866,6 +869,8 @@ export function AgentChatView({ agent, agentId, allowCreatorMode = false }: Agen
           </ScrollView>
         ) : null}
 
+        {voice.error ? <Text style={styles.voiceError}>{voice.error}</Text> : null}
+
         <View style={styles.composer}>
           <TextInput
             value={input}
@@ -882,6 +887,31 @@ export function AgentChatView({ agent, agentId, allowCreatorMode = false }: Agen
 
           <View style={styles.composerRow}>
             <View style={styles.composerTools}>
+              {voice.available !== false ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={voice.listening ? 'Stop voice input' : 'Voice input'}
+                  disabled={isSending}
+                  onPress={() => {
+                    if (voice.listening) {
+                      voice.stop();
+                    } else {
+                      void voice.start(input);
+                    }
+                  }}
+                  style={({ pressed }) => [
+                    styles.attachButton,
+                    voice.listening && styles.listeningButton,
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <Ionicons
+                    name={voice.listening ? 'mic' : 'mic-outline'}
+                    size={20}
+                    color={voice.listening ? colors.accent : colors.textMuted}
+                  />
+                </Pressable>
+              ) : null}
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Attach an image"
@@ -1215,6 +1245,15 @@ const makeStyles = ({ colors }: AppTheme) =>
       borderRadius: 20,
       alignItems: 'center',
       justifyContent: 'center',
+    },
+    listeningButton: {
+      backgroundColor: colors.accentSoft,
+    },
+    voiceError: {
+      color: colors.danger,
+      fontSize: 12,
+      paddingHorizontal: spacing.sm,
+      paddingBottom: spacing.xs,
     },
     modePill: {
       paddingHorizontal: spacing.md,
