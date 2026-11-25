@@ -4,7 +4,9 @@ import { agentToolRegistry } from './tool-registry';
 import type { AgentToolDescriptor, ToolExecution } from './tool-registry';
 import { TASK_TOOLS } from './task-tools';
 import { ARTIFACT_TOOLS } from './artifact-tools';
+import { FILE_SAFETY_TOOLS } from './file-safety-tools';
 import type { LlmToolDefinition } from './types';
+import type { AgentIdentity } from '../permissions/types';
 import { COMPUTER_EXECUTE_TOOL } from '../permissions/computer-tool';
 import '../connections/tools';
 import { buildDemandTools } from '../plugins/demand-tools';
@@ -14,6 +16,7 @@ import { buildDemandTools } from '../plugins/demand-tools';
 for (const tool of [
   ...TASK_TOOLS,
   ...ARTIFACT_TOOLS,
+  ...FILE_SAFETY_TOOLS,
   COMPUTER_EXECUTE_TOOL,
   ...buildDemandTools(),
 ]) {
@@ -36,9 +39,14 @@ export async function executeTool(
   name: string,
   rawArguments: string,
   conversationId?: number,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  agent?: AgentIdentity
 ): Promise<ToolExecution> {
-  return agentToolRegistry.execute({ db, userId, conversationId, signal }, name, rawArguments);
+  return agentToolRegistry.execute(
+    { db, userId, conversationId, signal, agent },
+    name,
+    rawArguments
+  );
 }
 
 export { agentToolRegistry };

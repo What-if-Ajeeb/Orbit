@@ -1,6 +1,7 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 import type { LlmToolDefinition } from './types';
+import type { AgentIdentity } from '../permissions/types';
 
 export type ToolExecution = {
   content: string;
@@ -15,6 +16,8 @@ export type AgentToolContext = {
   conversationId?: number;
   /** Cancels long-running tool work when the user stops the turn. */
   signal?: AbortSignal;
+  /** Identity of the agent whose turn is running. Never passed to plugin code. */
+  agent?: AgentIdentity;
 };
 
 export type AgentToolProvenance = {

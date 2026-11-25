@@ -7,7 +7,7 @@ export const DATABASE_NAME = 'orbit.db';
  * tasks and the agent conversation) lives in SQLite on the device.
  */
 export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
-  const DATABASE_VERSION = 13;
+  const DATABASE_VERSION = 14;
 
   const result = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
   let currentDbVersion = result?.user_version ?? 0;
@@ -726,6 +726,141 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
     });
 
     currentDbVersion = 13;
+  }
+
+  // Agent Safety v14: scoped/expiring grants, persistent denials, a hash-linked
+  // activity journal, real trash entries and cancellable operation tracking.
+  if (currentDbVersion === 13) {
+    await db.execAsync(`
+      ALTER TABLE permission_requests ADD COLUMN resource_key TEXT NOT NULL DEFAULT '';
+      ALTER TABLE permission_requests ADD COLUMN fingerprint TEXT NOT NULL DEFAULT '';
+      ALTER TABLE permission_requests ADD COLUMN fresh_confirmation INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE permission_requests ADD COLUMN reversible INTEGER NOT NULL DEFAULT 1;
+      ALTER TABLE permission_requests ADD COLUMN external INTEGER NOT NULL DEFAULT 0;
+
+      ALTER TABLE permission_grants ADD COLUMN resource_key TEXT NOT NULL DEFAULT '';
+      ALTER TABLE permission_grants ADD COLUMN fingerprint TEXT NOT NULL DEFAULT '';
+      ALTER TABLE permission_grants ADD COLUMN session_id TEXT NOT NULL DEFAULT '';
+      ALTER TABLE permission_grants ADD COLUMN choice TEXT NOT NULL DEFAULT 'always_allow';
+      ALTER TABLE permission_grants ADD COLUMN narrow INTEGER NOT NULL DEFAULT 1;
+
+      CREATE TABLE IF NOT EXISTS permission_denials (
+        id TEXT PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        agent_id TEXT NOT NULL,
+        tool_name TEXT NOT NULL,
+        category TEXT NOT NULL,
+        project_id TEXT NOT NULL,
+        scope_key TEXT NOT NULL,
+        resource_key TEXT NOT NULL DEFAULT '',
+        reason TEXT NOT NULL DEFAULT 'never_allow',
+        created_at INTEGER NOT NULL,
+        revoked_at INTEGER,
+        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_permission_denials_scope
+        ON permission_denials (user_id, agent_id, tool_name, category, project_id, scope_key);
+      CREATE INDEX IF NOT EXISTS idx_permission_denials_user
+        ON permission_denials (user_id, revoked_at);
+
+      CREATE TABLE IF NOT EXISTS permission_preferences (
+        user_id INTEGER NOT NULL,
+        agent_id TEXT NOT NULL,
+        tool_name TEXT NOT NULL,
+        category TEXT NOT NULL,
+        project_id TEXT NOT NULL,
+        scope_key TEXT NOT NULL,
+        resource_key TEXT NOT NULL DEFAULT '',
+        choice TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        revoked_at INTEGER,
+        PRIMARY KEY (user_id, agent_id, tool_name, category, project_id, scope_key, resource_key),
+        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_permission_preferences_user
+        ON permission_preferences (user_id, revoked_at);
+
+      CREATE TABLE IF NOT EXISTS agent_activity (
+        id TEXT PRIMARY KEY,
+        sequence INTEGER NOT NULL UNIQUE,
+        user_id INTEGER NOT NULL,
+        conversation_id INTEGER,
+        agent_id TEXT NOT NULL,
+        agent_name TEXT NOT NULL,
+        tool_name TEXT NOT NULL,
+        action TEXT NOT NULL,
+        resource_key TEXT NOT NULL DEFAULT '',
+        resource_label TEXT NOT NULL DEFAULT '',
+        permission_used TEXT NOT NULL DEFAULT '',
+        status TEXT NOT NULL,
+        result TEXT NOT NULL DEFAULT '',
+        error TEXT NOT NULL DEFAULT '',
+        category TEXT,
+        risk TEXT,
+        request_id TEXT,
+        grant_id TEXT,
+        reversible INTEGER NOT NULL DEFAULT 0,
+        external INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL,
+        metadata TEXT NOT NULL DEFAULT '{}',
+        previous_hash TEXT NOT NULL DEFAULT '',
+        hash TEXT NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_agent_activity_user_created
+        ON agent_activity (user_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_agent_activity_conversation
+        ON agent_activity (user_id, conversation_id, sequence DESC);
+      CREATE INDEX IF NOT EXISTS idx_agent_activity_request
+        ON agent_activity (request_id);
+
+      CREATE TABLE IF NOT EXISTS trash_items (
+        id TEXT PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        conversation_id INTEGER,
+        agent_id TEXT NOT NULL,
+        tool_name TEXT NOT NULL,
+        original_path TEXT NOT NULL,
+        stored_path TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        name TEXT NOT NULL,
+        size INTEGER NOT NULL DEFAULT 0,
+        mime_type TEXT NOT NULL DEFAULT '',
+        metadata TEXT NOT NULL DEFAULT '{}',
+        deleted_at INTEGER NOT NULL,
+        expires_at INTEGER NOT NULL,
+        restored_at INTEGER,
+        purged_at INTEGER,
+        status TEXT NOT NULL DEFAULT 'trashed',
+        failure_reason TEXT,
+        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_trash_items_user_status
+        ON trash_items (user_id, status, deleted_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_trash_items_expiry
+        ON trash_items (status, expires_at);
+
+      CREATE TABLE IF NOT EXISTS active_operations (
+        id TEXT PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        conversation_id INTEGER,
+        agent_id TEXT NOT NULL,
+        agent_name TEXT NOT NULL,
+        tool_name TEXT NOT NULL,
+        status TEXT NOT NULL,
+        cancellable INTEGER NOT NULL DEFAULT 0,
+        external INTEGER NOT NULL DEFAULT 0,
+        started_at INTEGER NOT NULL,
+        finished_at INTEGER,
+        detail TEXT NOT NULL DEFAULT '',
+        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_active_operations_user
+        ON active_operations (user_id, status, started_at DESC);
+    `);
+
+    currentDbVersion = 14;
   }
 
   if (currentDbVersion !== DATABASE_VERSION) {

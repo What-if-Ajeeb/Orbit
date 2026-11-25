@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { AgentActivityTimeline } from '@/components/AgentActivityTimeline';
 import { ChatBubble } from '@/components/ChatBubble';
 import { ChatHistoryPanel } from '@/components/ChatHistoryPanel';
 import { FormError } from '@/components/FormError';
@@ -36,7 +37,8 @@ import {
   type PickedAttachment,
 } from '@/lib/chat-attachments';
 import { getChatStore, type ChatMessage, type Conversation, type ToolExecutionEvent } from '@/lib/chat';
-import type { AgentIdentity } from '@/lib/permissions';
+import { permissionManager, type AgentIdentity } from '@/lib/permissions';
+import type { ActivityRecord } from '@/lib/safety/types';
 import { fonts, radius, spacing } from '@/theme';
 
 const ATTACHMENT_LIMIT = 4;
@@ -127,6 +129,8 @@ export function AgentChatView({ agent, agentId, allowCreatorMode = false }: Agen
   const [aiLabel, setAiLabel] = useState('Local mode');
   const [streamedText, setStreamedText] = useState('');
   const [liveToolEvents, setLiveToolEvents] = useState<ToolExecutionEvent[]>([]);
+  const [activity, setActivity] = useState<ActivityRecord[]>([]);
+  const [agentStopped, setAgentStopped] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [retryPayload, setRetryPayload] = useState<RetryPayload | null>(null);
   const [creatorMode, setCreatorMode] = useState(false);
@@ -268,13 +272,88 @@ export function AgentChatView({ agent, agentId, allowCreatorMode = false }: Agen
     []
   );
 
+  const activityUserId = user?.id ?? null;
+
+  useEffect(() => {
+    if (activityUserId === null) {
+      return;
+    }
+
+    let mounted = true;
+
+    const refresh = async () => {
+      try {
+        const [records, state] = await Promise.all([
+          permissionManager.getActivity(activityUserId, undefined, 120),
+          Promise.resolve(permissionManager.getState()),
+        ]);
+
+        if (!mounted) {
+          return;
+        }
+
+        setAgentStopped(state.stoppedAgents.includes(agent.id));
+        setActivity(
+          records.filter(
+            (record) =>
+              record.agentId === agent.id &&
+              (activeId === null ||
+                record.conversationId === null ||
+                record.conversationId === activeId)
+          )
+        );
+      } catch {
+        // Activity is supplementary; a failed read must not break the chat.
+      }
+    };
+
+    void refresh();
+    const unsubscribe = permissionManager.subscribe(() => {
+      void refresh();
+    });
+
+    return () => {
+      mounted = false;
+      unsubscribe();
+    };
+  }, [activeId, agent.id, activityUserId]);
+
   if (!user) {
     return null;
   }
 
   const activeUser = user;
-  const canSend = !isSending && (input.trim().length > 0 || attachments.length > 0);
+  const canSend =
+    !isSending && !agentStopped && (input.trim().length > 0 || attachments.length > 0);
   const activeTitle = conversations.find((item) => item.id === activeId)?.title ?? 'New chat';
+
+  async function stopCurrentAgent() {
+    abortRef.current?.abort();
+
+    try {
+      const report = await permissionManager.stopAgent(activeUser.id, agent.id);
+      const lines = [
+        `${agent.name} is stopped. No new action can start until you resume it.`,
+        `Stop requested for ${report.stopRequested.length} cancellable operation(s); completion is not confirmed.`,
+        `Cancelled ${report.cancelledRequests} pending approval(s).`,
+        `Revoked ${report.revokedGrants} saved grant(s).`,
+      ];
+
+      if (report.uncancellable.length > 0) {
+        lines.push(
+          `Could not cancel: ${report.uncancellable.join('; ')}. Check the external service before retrying.`
+        );
+      }
+
+      lines.push('Actions that already finished were not undone.');
+      Alert.alert('Agent stopped', lines.join('\n'));
+    } catch {
+      Alert.alert(
+        'Agent stopped',
+        `${agent.name} will not start new actions. Some stop details could not be loaded.`
+      );
+    }
+  }
 
   function closeHistoryPanel() {
     setHistoryManualOpen(false);
@@ -708,6 +787,10 @@ export function AgentChatView({ agent, agentId, allowCreatorMode = false }: Agen
             />
           ) : null}
           {liveToolEvents.length > 0 ? <ToolStatusList events={liveToolEvents} /> : null}
+          <AgentActivityTimeline
+            records={activity}
+            onOpenPermissions={() => router.navigate('/permissions')}
+          />
           {isSending && !streamedText && liveToolEvents.length === 0 ? (
             <View style={styles.typing} accessibilityLiveRegion="polite">
               <ActivityIndicator size="small" color={colors.accent} />
@@ -734,6 +817,25 @@ export function AgentChatView({ agent, agentId, allowCreatorMode = false }: Agen
                 </Text>
               </Pressable>
             ) : null}
+          </View>
+        ) : null}
+
+        {agentStopped ? (
+          <View style={styles.stoppedBanner}>
+            <Ionicons name="stop-circle-outline" size={16} color={colors.danger} />
+            <Text style={styles.stoppedText}>
+              {agent.name} is stopped. New actions are blocked until you resume this agent.
+            </Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Resume ${agent.name}`}
+              onPress={() => {
+                void permissionManager.resumeAgent(activeUser.id, agent.id);
+              }}
+              style={styles.resumeButton}
+            >
+              <Text style={styles.resumeText}>Resume</Text>
+            </Pressable>
           </View>
         ) : null}
 
@@ -817,8 +919,10 @@ export function AgentChatView({ agent, agentId, allowCreatorMode = false }: Agen
             {isSending ? (
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel="Stop generating"
-                onPress={() => abortRef.current?.abort()}
+                accessibilityLabel={`Stop ${agent.name}`}
+                onPress={() => {
+                  void stopCurrentAgent();
+                }}
                 style={({ pressed }) => [styles.stopButton, pressed && styles.pressed]}
               >
                 <Text style={styles.stopText}>Stop</Text>
@@ -1023,6 +1127,34 @@ const makeStyles = ({ colors }: AppTheme) =>
     retryText: {
       color: colors.accent,
       fontSize: 13,
+      fontWeight: '700',
+    },
+    stoppedBanner: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      borderRadius: radius.md,
+      borderWidth: 1,
+      borderColor: colors.danger,
+      backgroundColor: colors.dangerSoft,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: spacing.xs,
+    },
+    stoppedText: {
+      flex: 1,
+      color: colors.danger,
+      fontSize: 11,
+      lineHeight: 15,
+    },
+    resumeButton: {
+      paddingHorizontal: spacing.sm,
+      paddingVertical: 4,
+      borderRadius: radius.sm,
+      backgroundColor: colors.surfaceAlt,
+    },
+    resumeText: {
+      color: colors.accent,
+      fontSize: 11,
       fontWeight: '700',
     },
     attachmentStrip: {

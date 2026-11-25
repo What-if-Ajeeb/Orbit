@@ -55,6 +55,7 @@ jest.mock('@expo/vector-icons/Ionicons', () => {
   return {
     __esModule: true,
     default: () => ReactModule.createElement(require('react-native').View, null, null),
+    glyphMap: {},
   };
 });
 
@@ -79,10 +80,12 @@ jest.mock('@/context/theme', () => {
     onInverse: '#000',
   };
 
+  const glass = { border: '#333', fill: '#111' };
+
   return {
-    useAppTheme: () => ({ colors, isLight: false }),
-    useStyles: (factory: (theme: { colors: typeof colors }) => unknown) =>
-      factory({ colors }),
+    useAppTheme: () => ({ colors, glass, isLight: false }),
+    useStyles: (factory: (theme: { colors: typeof colors; glass: typeof glass }) => unknown) =>
+      factory({ colors, glass }),
   };
 });
 
@@ -121,6 +124,21 @@ jest.mock('@/lib/ai/settings', () => ({
 
 jest.mock('@/lib/ai/agent', () => ({
   runAgent: (...args: unknown[]) => mockAgent.runAgent(...args),
+}));
+
+jest.mock('@/lib/permissions', () => ({
+  permissionManager: {
+    getActivity: jest.fn(async () => []),
+    getState: jest.fn(() => ({ stoppedAgents: [] })),
+    subscribe: jest.fn(() => jest.fn()),
+    stopAgent: jest.fn(async () => ({
+      stopRequested: [],
+      uncancellable: [],
+      revokedGrants: 0,
+      cancelledRequests: 0,
+    })),
+    resumeAgent: jest.fn(async () => ({ ok: true })),
+  },
 }));
 
 jest.mock('@/lib/chat-attachments', () => ({

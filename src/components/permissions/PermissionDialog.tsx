@@ -86,7 +86,18 @@ export function PermissionDialog({
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const progress = useState(() => new Animated.Value(0))[0];
-  const canAlways = request.allowAlways && request.risk !== 'high';
+  const canSave =
+    request.allowAlways &&
+    request.risk !== 'high' &&
+    request.risk !== 'critical' &&
+    !request.freshConfirmation &&
+    request.metadata.policyDecision !== 'ask';
+  const requiresFresh =
+    request.freshConfirmation || request.risk === 'high' || request.risk === 'critical';
+  const consequences =
+    typeof request.metadata.consequences === 'string'
+      ? request.metadata.consequences.split(' | ').filter(Boolean)
+      : [];
   const disabled = busy !== null;
 
   useEffect(() => {
@@ -254,6 +265,18 @@ export function PermissionDialog({
               ) : null}
             </View>
 
+            {consequences.length ? (
+              <View style={styles.previewCard}>
+                <Text style={styles.sectionLabel}>CONSEQUENCES</Text>
+                {consequences.map((consequence, index) => (
+                  <View key={`${request.id}-consequence-${index}`} style={styles.actionRow}>
+                    <View style={styles.bullet} />
+                    <Text style={styles.actionText}>{consequence}</Text>
+                  </View>
+                ))}
+              </View>
+            ) : null}
+
             <View style={styles.detailGrid}>
               <View style={styles.detailRow}>
                 <Text style={styles.detailLabel}>Target</Text>
@@ -270,6 +293,17 @@ export function PermissionDialog({
                 <Text style={styles.detailLabel}>Scope</Text>
                 <Text style={styles.detailValue}>
                   This agent only · {request.toolName} · {categoryLabel(request.category)}
+                  {`\nExact resource: ${request.resourceKey}`}
+                </Text>
+              </View>
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>Undo</Text>
+                <Text style={styles.detailValue}>
+                  {request.reversible
+                    ? 'ORBIT keeps a recoverable copy in Agent activity. Use Restore there or ask the agent.'
+                    : request.external
+                      ? 'External service: ORBIT cannot guarantee this can be undone.'
+                      : 'ORBIT cannot undo this action.'}
                 </Text>
               </View>
               <View style={styles.detailRow}>
@@ -278,12 +312,13 @@ export function PermissionDialog({
               </View>
             </View>
 
-            {request.risk === 'high' ? (
+            {requiresFresh ? (
               <View style={styles.warningRow}>
                 <Ionicons name="shield-half-outline" size={15} color={colors.danger} />
                 <Text style={styles.warningText}>
-                  High-risk actions ask every time. “Always allow” can never be saved for this
-                  request.
+                  {request.risk === 'critical'
+                    ? 'Critical action: payments, external sending, permanent deletion, and security changes always need fresh confirmation.'
+                    : 'High-risk actions ask every time. “Always allow” can never be saved for this request.'}
                 </Text>
               </View>
             ) : null}
@@ -297,30 +332,63 @@ export function PermissionDialog({
           </ScrollView>
 
           <View style={styles.actions}>
-            <Button
-              label="Allow once"
-              onPress={() => onResolve('allow_once')}
-              loading={busy === 'allow_once'}
-              disabled={disabled}
-            />
-            <Button
-              label={canAlways ? 'Always allow' : 'Always allow · locked'}
-              variant="secondary"
-              onPress={() => onResolve('always_allow')}
-              loading={busy === 'always_allow'}
-              disabled={disabled || !canAlways}
-            />
-            <Button
-              label="Deny"
-              variant="danger"
-              onPress={() => onResolve('deny')}
-              loading={busy === 'deny'}
-              disabled={disabled}
-            />
+            <View style={styles.buttonRow}>
+              <Button
+                label="Allow once"
+                style={styles.actionButton}
+                onPress={() => onResolve('allow_once')}
+                loading={busy === 'allow_once'}
+                disabled={disabled}
+              />
+              <Button
+                label={canSave ? 'Allow for session' : 'Session · locked'}
+                style={styles.actionButton}
+                variant="secondary"
+                onPress={() => onResolve('allow_session')}
+                loading={busy === 'allow_session'}
+                disabled={disabled || !canSave}
+              />
+            </View>
+            <View style={styles.buttonRow}>
+              <Button
+                label={canSave ? 'Always allow' : 'Always · locked'}
+                style={styles.actionButton}
+                variant="secondary"
+                onPress={() => onResolve('always_allow')}
+                loading={busy === 'always_allow'}
+                disabled={disabled || !canSave}
+              />
+              <Button
+                label="Ask every time"
+                style={styles.actionButton}
+                variant="secondary"
+                onPress={() => onResolve('ask_every_time')}
+                loading={busy === 'ask_every_time'}
+                disabled={disabled}
+              />
+            </View>
+            <View style={styles.buttonRow}>
+              <Button
+                label="Never allow"
+                style={styles.actionButton}
+                variant="danger"
+                onPress={() => onResolve('never_allow')}
+                loading={busy === 'never_allow'}
+                disabled={disabled}
+              />
+              <Button
+                label="Deny"
+                style={styles.actionButton}
+                variant="danger"
+                onPress={() => onResolve('deny')}
+                loading={busy === 'deny'}
+                disabled={disabled}
+              />
+            </View>
             <Text style={styles.footnote}>
-              {canAlways
-                ? '“Always allow” saves a 30-day grant for this exact agent, tool, project, and category. You can revoke it in Agent Permissions.'
-                : 'Only this one run will be authorized. Orbit never executes before your decision.'}
+              {canSave
+                ? 'Saved choices are limited to this exact agent, tool, action, resource, and project. Revoke them any time in Tool Permissions.'
+                : 'Only this one run is authorized. ORBIT never executes before your decision.'}
             </Text>
           </View>
         </Animated.View>
@@ -624,6 +692,16 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
       paddingTop: spacing.sm,
       borderTopWidth: 1,
       borderTopColor: glass.border,
+    },
+    buttonRow: {
+      flexDirection: 'row',
+      alignItems: 'stretch',
+      gap: spacing.xs + 2,
+    },
+    actionButton: {
+      flex: 1,
+      minHeight: 46,
+      paddingHorizontal: spacing.sm,
     },
     footnote: {
       color: colors.textFaint,

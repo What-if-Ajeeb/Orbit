@@ -163,6 +163,14 @@ export const RISK_META: Record<RiskLevel, RiskMeta> = {
     colorToken: 'danger',
     softToken: 'dangerSoft',
   },
+  critical: {
+    label: 'Critical risk',
+    shortLabel: 'CRITICAL',
+    description:
+      'Payment, purchase, external sending, permanent deletion, or security change. Confirmation is always fresh and cannot be saved.',
+    colorToken: 'danger',
+    softToken: 'dangerSoft',
+  },
 };
 
 export function categoryLabel(category: PermissionCategory): string {

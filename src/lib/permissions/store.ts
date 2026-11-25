@@ -5,7 +5,9 @@ import type {
   PermissionAuditEvent,
   PermissionAuditRecord,
   PermissionCategory,
+  PermissionDenialRecord,
   PermissionGrantRecord,
+  PermissionPreferenceRecord,
   PermissionRequestRecord,
   PermissionRequestStatus,
   PermissionResolution,
@@ -32,6 +34,11 @@ type RequestRow = {
   reason: string;
   command_preview: string | null;
   scope_key: string;
+  resource_key: string;
+  fingerprint: string;
+  fresh_confirmation: number;
+  reversible: number;
+  external: number;
   allow_always: number;
   status: PermissionRequestStatus;
   resolution: PermissionResolution | null;
@@ -50,9 +57,14 @@ type GrantRow = {
   tool_name: string;
   category: PermissionCategory;
   scope_key: string;
+  resource_key: string;
+  fingerprint: string;
   project_id: string;
   project_label: string;
   scope: PermissionGrantRecord['scope'];
+  session_id: string;
+  choice: PermissionGrantRecord['choice'];
+  narrow: number;
   risk: RiskLevel;
   title: string;
   created_at: number;
@@ -79,6 +91,34 @@ type AuditRow = {
   created_at: number;
 };
 
+type DenialRow = {
+  id: string;
+  user_id: number;
+  agent_id: string;
+  tool_name: string;
+  category: PermissionCategory;
+  project_id: string;
+  scope_key: string;
+  resource_key: string;
+  reason: PermissionDenialRecord['reason'];
+  created_at: number;
+  revoked_at: number | null;
+};
+
+type PreferenceRow = {
+  user_id: number;
+  agent_id: string;
+  tool_name: string;
+  category: PermissionCategory;
+  project_id: string;
+  scope_key: string;
+  resource_key: string;
+  choice: PermissionPreferenceRecord['choice'];
+  created_at: number;
+  updated_at: number;
+  revoked_at: number | null;
+};
+
 type DeviceRow = {
   id: string;
   user_id: number;
@@ -94,12 +134,20 @@ type DeviceRow = {
 
 const REQUEST_COLUMNS = `id, user_id, agent_id, agent_name, agent_role, category, risk,
   tool_name, project_id, project_label, conversation_id, title, summary, actions,
-  target, reason, command_preview, scope_key, allow_always, status, resolution,
+  target, reason, command_preview, scope_key, resource_key, fingerprint,
+  fresh_confirmation, reversible, external, allow_always, status, resolution,
   created_at, expires_at, resolved_at, metadata`;
 
 const GRANT_COLUMNS = `id, user_id, request_id, agent_id, agent_name, tool_name,
-  category, scope_key, project_id, project_label, scope, risk, title, created_at,
-  expires_at, last_used_at, use_count, max_uses, revoked_at, status`;
+  category, scope_key, resource_key, fingerprint, project_id, project_label,
+  scope, session_id, choice, narrow, risk, title, created_at, expires_at,
+  last_used_at, use_count, max_uses, revoked_at, status`;
+
+const DENIAL_COLUMNS = `id, user_id, agent_id, tool_name, category, project_id,
+  scope_key, resource_key, reason, created_at, revoked_at`;
+
+const PREFERENCE_COLUMNS = `user_id, agent_id, tool_name, category, project_id,
+  scope_key, resource_key, choice, created_at, updated_at, revoked_at`;
 
 const DEVICE_COLUMNS = `id, user_id, name, platform, endpoint, fingerprint, status,
   capabilities, paired_at, last_seen_at`;
@@ -139,6 +187,11 @@ function requestFromRow(row: RequestRow): PermissionRequestRecord {
     reason: row.reason,
     commandPreview: row.command_preview,
     scopeKey: row.scope_key,
+    resourceKey: row.resource_key || row.scope_key,
+    fingerprint: row.fingerprint,
+    freshConfirmation: row.fresh_confirmation === 1,
+    reversible: row.reversible !== 0,
+    external: row.external === 1,
     allowAlways: row.allow_always === 1,
     status: row.status,
     resolution: row.resolution,
@@ -159,9 +212,17 @@ function grantFromRow(row: GrantRow): PermissionGrantRecord {
     toolName: row.tool_name,
     category: row.category,
     scopeKey: row.scope_key,
+    resourceKey: row.resource_key || row.scope_key,
+    fingerprint: row.fingerprint,
     projectId: row.project_id,
     projectLabel: row.project_label,
     scope: row.scope,
+    sessionId: row.session_id,
+    choice:
+      row.choice === 'allow_session' || row.choice === 'one_time'
+        ? row.choice
+        : 'always_allow',
+    narrow: row.narrow !== 0,
     risk: row.risk,
     title: row.title,
     createdAt: row.created_at,
@@ -171,6 +232,38 @@ function grantFromRow(row: GrantRow): PermissionGrantRecord {
     maxUses: row.max_uses,
     revokedAt: row.revoked_at,
     status: row.status,
+  };
+}
+
+function denialFromRow(row: DenialRow): PermissionDenialRecord {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    agentId: row.agent_id,
+    toolName: row.tool_name,
+    category: row.category,
+    projectId: row.project_id,
+    scopeKey: row.scope_key,
+    resourceKey: row.resource_key || row.scope_key,
+    reason: row.reason,
+    createdAt: row.created_at,
+    revokedAt: row.revoked_at,
+  };
+}
+
+function preferenceFromRow(row: PreferenceRow): PermissionPreferenceRecord {
+  return {
+    userId: row.user_id,
+    agentId: row.agent_id,
+    toolName: row.tool_name,
+    category: row.category,
+    projectId: row.project_id,
+    scopeKey: row.scope_key,
+    resourceKey: row.resource_key || row.scope_key,
+    choice: 'ask_every_time',
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    revokedAt: row.revoked_at,
   };
 }
 
@@ -214,9 +307,10 @@ export class PermissionStore {
       `INSERT INTO permission_requests (
         id, user_id, agent_id, agent_name, agent_role, category, risk, tool_name,
         project_id, project_label, conversation_id, title, summary, actions, target,
-        reason, command_preview, scope_key, allow_always, status, resolution,
+        reason, command_preview, scope_key, resource_key, fingerprint,
+        fresh_confirmation, reversible, external, allow_always, status, resolution,
         created_at, expires_at, resolved_at, metadata
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       request.id,
       request.userId,
       request.agentId,
@@ -235,6 +329,11 @@ export class PermissionStore {
       request.reason,
       request.commandPreview ?? null,
       request.scopeKey,
+      request.resourceKey,
+      request.fingerprint,
+      request.freshConfirmation ? 1 : 0,
+      request.reversible ? 1 : 0,
+      request.external ? 1 : 0,
       request.allowAlways ? 1 : 0,
       request.status,
       request.resolution ?? null,
@@ -286,7 +385,7 @@ export class PermissionStore {
     await this.db.runAsync(
       `UPDATE permission_requests
        SET status = 'expired', resolution = 'cancel', resolved_at = ?
-       WHERE status IN ('pending', 'auto_approved', 'approved_once', 'approved_always', 'executing')
+       WHERE status IN ('pending', 'auto_approved', 'approved_once', 'approved_session', 'approved_always')
          AND expires_at < ?`,
       now,
       now
@@ -306,9 +405,10 @@ export class PermissionStore {
     await this.db.runAsync(
       `INSERT INTO permission_grants (
         id, user_id, request_id, agent_id, agent_name, tool_name, category,
-        scope_key, project_id, project_label, scope, risk, title, created_at,
-        expires_at, last_used_at, use_count, max_uses, revoked_at, status
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        scope_key, resource_key, fingerprint, project_id, project_label, scope,
+        session_id, choice, narrow, risk, title, created_at, expires_at,
+        last_used_at, use_count, max_uses, revoked_at, status
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       grant.id,
       grant.userId,
       grant.requestId,
@@ -317,9 +417,14 @@ export class PermissionStore {
       grant.toolName,
       grant.category,
       grant.scopeKey,
+      grant.resourceKey,
+      grant.fingerprint,
       grant.projectId,
       grant.projectLabel,
       grant.scope,
+      grant.sessionId,
+      grant.choice,
+      grant.narrow ? 1 : 0,
       grant.risk,
       grant.title,
       grant.createdAt,
@@ -359,16 +464,25 @@ export class PermissionStore {
     category: PermissionCategory;
     projectId: string;
     scopeKey: string;
+    resourceKey: string;
+    fingerprint: string;
+    sessionId: string;
     now: number;
   }): Promise<PermissionGrantRecord | null> {
     const row = (await this.db.getFirstAsync(
       `SELECT ${GRANT_COLUMNS} FROM permission_grants
        WHERE user_id = ? AND agent_id = ? AND tool_name = ? AND category = ?
-         AND project_id = ? AND scope_key = ? AND scope = 'persistent'
-         AND status = 'active' AND revoked_at IS NULL
-         AND risk <> 'high'
+         AND project_id = ? AND scope_key = ? AND resource_key = ? AND fingerprint = ?
+         AND narrow = 1 AND status = 'active' AND revoked_at IS NULL
+         AND risk NOT IN ('high', 'critical')
+         AND ((scope = 'persistent') OR (scope = 'session' AND session_id = ?))
          AND (expires_at IS NULL OR expires_at > ?)
          AND (max_uses IS NULL OR use_count < max_uses)
+         AND EXISTS (
+           SELECT 1 FROM permission_requests r
+           WHERE r.id = permission_grants.request_id
+             AND r.status IN ('approved_once', 'approved_session', 'approved_always', 'auto_approved', 'completed')
+         )
        ORDER BY created_at DESC LIMIT 1`,
       input.userId,
       input.agentId,
@@ -376,10 +490,190 @@ export class PermissionStore {
       input.category,
       input.projectId,
       input.scopeKey,
+      input.resourceKey,
+      input.fingerprint,
+      input.sessionId,
       input.now
     )) as GrantRow | null;
 
     return row ? grantFromRow(row) : null;
+  }
+
+  async findActiveDenial(input: {
+    userId: number;
+    agentId: string;
+    toolName: string;
+    category: PermissionCategory;
+    projectId: string;
+    scopeKey: string;
+    resourceKey: string;
+  }): Promise<PermissionDenialRecord | null> {
+    const row = (await this.db.getFirstAsync(
+      `SELECT ${DENIAL_COLUMNS} FROM permission_denials
+       WHERE user_id = ? AND agent_id = ? AND tool_name = ? AND category = ?
+         AND project_id = ? AND scope_key = ? AND resource_key = ?
+         AND revoked_at IS NULL
+       ORDER BY created_at DESC LIMIT 1`,
+      input.userId,
+      input.agentId,
+      input.toolName,
+      input.category,
+      input.projectId,
+      input.scopeKey,
+      input.resourceKey
+    )) as DenialRow | null;
+
+    return row ? denialFromRow(row) : null;
+  }
+
+  async findAskEveryTime(input: {
+    userId: number;
+    agentId: string;
+    toolName: string;
+    category: PermissionCategory;
+    projectId: string;
+    scopeKey: string;
+    resourceKey: string;
+  }): Promise<PermissionPreferenceRecord | null> {
+    const row = (await this.db.getFirstAsync(
+      `SELECT ${PREFERENCE_COLUMNS} FROM permission_preferences
+       WHERE user_id = ? AND agent_id = ? AND tool_name = ? AND category = ?
+         AND project_id = ? AND scope_key = ? AND resource_key = ?
+         AND choice = 'ask_every_time' AND revoked_at IS NULL
+       LIMIT 1`,
+      input.userId,
+      input.agentId,
+      input.toolName,
+      input.category,
+      input.projectId,
+      input.scopeKey,
+      input.resourceKey
+    )) as PreferenceRow | null;
+
+    return row ? preferenceFromRow(row) : null;
+  }
+
+  async insertDenial(denial: PermissionDenialRecord): Promise<void> {
+    await this.db.runAsync(
+      `INSERT INTO permission_denials (
+        id, user_id, agent_id, tool_name, category, project_id, scope_key,
+        resource_key, reason, created_at, revoked_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      denial.id,
+      denial.userId,
+      denial.agentId,
+      denial.toolName,
+      denial.category,
+      denial.projectId,
+      denial.scopeKey,
+      denial.resourceKey,
+      denial.reason,
+      denial.createdAt,
+      denial.revokedAt
+    );
+  }
+
+  async listDenials(userId: number, limit = 80): Promise<PermissionDenialRecord[]> {
+    const rows = (await this.db.getAllAsync(
+      `SELECT ${DENIAL_COLUMNS} FROM permission_denials
+       WHERE user_id = ? ORDER BY created_at DESC LIMIT ?`,
+      userId,
+      limit
+    )) as DenialRow[];
+
+    return rows.map(denialFromRow);
+  }
+
+  async revokeDenial(userId: number, id: string, now: number): Promise<boolean> {
+    const result = await this.db.runAsync(
+      `UPDATE permission_denials SET revoked_at = ?
+       WHERE id = ? AND user_id = ? AND revoked_at IS NULL`,
+      now,
+      id,
+      userId
+    );
+
+    return result.changes > 0;
+  }
+
+  async setAskEveryTime(preference: PermissionPreferenceRecord): Promise<void> {
+    await this.db.runAsync(
+      `INSERT INTO permission_preferences (
+        user_id, agent_id, tool_name, category, project_id, scope_key,
+        resource_key, choice, created_at, updated_at, revoked_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(user_id, agent_id, tool_name, category, project_id, scope_key, resource_key) DO UPDATE SET
+        choice = excluded.choice,
+        updated_at = excluded.updated_at,
+        revoked_at = NULL`,
+      preference.userId,
+      preference.agentId,
+      preference.toolName,
+      preference.category,
+      preference.projectId,
+      preference.scopeKey,
+      preference.resourceKey,
+      preference.choice,
+      preference.createdAt,
+      preference.updatedAt,
+      preference.revokedAt
+    );
+  }
+
+  async listPreferences(userId: number, limit = 80): Promise<PermissionPreferenceRecord[]> {
+    const rows = (await this.db.getAllAsync(
+      `SELECT ${PREFERENCE_COLUMNS} FROM permission_preferences
+       WHERE user_id = ? ORDER BY updated_at DESC LIMIT ?`,
+      userId,
+      limit
+    )) as PreferenceRow[];
+
+    return rows.map(preferenceFromRow);
+  }
+
+  async revokePreference(
+    userId: number,
+    input: Pick<
+      PermissionPreferenceRecord,
+      'agentId' | 'toolName' | 'category' | 'projectId' | 'scopeKey' | 'resourceKey'
+    >,
+    now: number
+  ): Promise<boolean> {
+    const result = await this.db.runAsync(
+      `UPDATE permission_preferences SET revoked_at = ?
+       WHERE user_id = ? AND agent_id = ? AND tool_name = ? AND category = ?
+         AND project_id = ? AND scope_key = ? AND resource_key = ? AND revoked_at IS NULL`,
+      now,
+      userId,
+      input.agentId,
+      input.toolName,
+      input.category,
+      input.projectId,
+      input.scopeKey,
+      input.resourceKey
+    );
+
+    return result.changes > 0;
+  }
+
+  async expireSessionGrants(sessionId: string, now: number): Promise<void> {
+    await this.db.runAsync(
+      `UPDATE permission_grants SET status = 'expired', revoked_at = ?
+       WHERE scope = 'session' AND session_id <> ? AND status = 'active'`,
+      now,
+      sessionId
+    );
+  }
+
+  async revokeSessionGrants(userId: number, now: number): Promise<number> {
+    const result = await this.db.runAsync(
+      `UPDATE permission_grants SET status = 'revoked', revoked_at = ?
+       WHERE user_id = ? AND scope = 'session' AND status = 'active'`,
+      now,
+      userId
+    );
+
+    return result.changes;
   }
 
   async markGrantUsed(id: string, now: number, consume: boolean): Promise<void> {

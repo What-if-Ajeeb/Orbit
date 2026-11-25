@@ -1,4 +1,5 @@
 import type { PolicyDecision } from '../policy';
+import type { ActivityRecord, ActiveOperation, StopReport } from '../safety/types';
 
 /**
  * Every protected capability Orbit can ask the user to authorize. Categories
@@ -25,11 +26,18 @@ export const PERMISSION_CATEGORIES = [
 
 export type PermissionCategory = (typeof PERMISSION_CATEGORIES)[number];
 
-export const RISK_LEVELS = ['low', 'medium', 'high'] as const;
+export const RISK_LEVELS = ['low', 'medium', 'high', 'critical'] as const;
 export type RiskLevel = (typeof RISK_LEVELS)[number];
 
-export type PermissionGrantScope = 'once' | 'persistent';
-export type PermissionDecisionOption = 'allow_once' | 'always_allow' | 'deny';
+/** `session` grants live only in the current app run and expire with it. */
+export type PermissionGrantScope = 'once' | 'session' | 'persistent';
+export type PermissionDecisionOption =
+  | 'allow_once'
+  | 'allow_session'
+  | 'always_allow'
+  | 'never_allow'
+  | 'ask_every_time'
+  | 'deny';
 
 export type AgentRole = 'master' | 'specialist' | 'dynamic';
 
@@ -61,6 +69,7 @@ export type PermissionRequestStatus =
   | 'pending'
   | 'auto_approved'
   | 'approved_once'
+  | 'approved_session'
   | 'approved_always'
   | 'denied'
   | 'cancelled'
@@ -72,18 +81,25 @@ export type PermissionRequestStatus =
 
 export type PermissionResolution =
   | 'allow_once'
+  | 'allow_session'
   | 'always_allow'
+  | 'never_allow'
+  | 'ask_every_time'
   | 'deny'
   | 'cancel'
   | 'auto_grant'
   | 'existing_grant'
+  | 'agent_stopped'
   | 'emergency_stop';
 
 export type PermissionAuditEvent =
   | 'request_created'
   | 'request_auto_approved'
   | 'approved_once'
+  | 'approved_session'
   | 'approved_always'
+  | 'never_allowed'
+  | 'ask_every_time'
   | 'denied'
   | 'cancelled'
   | 'expired'
@@ -93,6 +109,8 @@ export type PermissionAuditEvent =
   | 'execution_completed'
   | 'execution_failed'
   | 'execution_blocked'
+  | 'agent_stopped'
+  | 'agent_resumed'
   | 'emergency_stop'
   | 'emergency_resume'
   | 'device_paired'
@@ -119,6 +137,11 @@ export type PermissionRequestRecord = {
   reason: string;
   commandPreview: string | null;
   scopeKey: string;
+  resourceKey: string;
+  fingerprint: string;
+  freshConfirmation: boolean;
+  reversible: boolean;
+  external: boolean;
   allowAlways: boolean;
   status: PermissionRequestStatus;
   resolution: PermissionResolution | null;
@@ -137,9 +160,14 @@ export type PermissionGrantRecord = {
   toolName: string;
   category: PermissionCategory;
   scopeKey: string;
+  resourceKey: string;
+  fingerprint: string;
   projectId: string;
   projectLabel: string;
   scope: PermissionGrantScope;
+  sessionId: string;
+  choice: 'one_time' | 'allow_session' | 'always_allow';
+  narrow: boolean;
   risk: RiskLevel;
   title: string;
   createdAt: number;
@@ -149,6 +177,34 @@ export type PermissionGrantRecord = {
   maxUses: number | null;
   revokedAt: number | null;
   status: 'active' | 'consumed' | 'expired' | 'revoked';
+};
+
+export type PermissionDenialRecord = {
+  id: string;
+  userId: number;
+  agentId: string;
+  toolName: string;
+  category: PermissionCategory;
+  projectId: string;
+  scopeKey: string;
+  resourceKey: string;
+  reason: 'never_allow';
+  createdAt: number;
+  revokedAt: number | null;
+};
+
+export type PermissionPreferenceRecord = {
+  userId: number;
+  agentId: string;
+  toolName: string;
+  category: PermissionCategory;
+  projectId: string;
+  scopeKey: string;
+  resourceKey: string;
+  choice: 'ask_every_time';
+  createdAt: number;
+  updatedAt: number;
+  revokedAt: number | null;
 };
 
 export type PermissionAuditRecord = {
@@ -177,7 +233,14 @@ export type PermissionAuthorization = {
   category: PermissionCategory;
   risk: RiskLevel;
   scopeKey: string;
+  resourceKey: string;
+  fingerprint: string;
   projectId: string;
+  conversationId: number | null;
+  freshConfirmation: boolean;
+  reversible: boolean;
+  external: boolean;
+  action: string;
   once: boolean;
   issuedAt: number;
   expiresAt: number;
@@ -194,6 +257,11 @@ export type PermissionDenialReason =
   | 'authorization_expired'
   | 'authorization_consumed'
   | 'grant_revoked'
+  | 'never_allowed'
+  | 'ask_every_time'
+  | 'agent_stopped'
+  | 'risk_escalated'
+  | 'fingerprint_mismatch'
   | 'scope_mismatch'
   | 'android_permission_denied'
   | 'command_blocked'
@@ -205,7 +273,7 @@ export type PermissionOutcome =
       allowed: true;
       authorization: PermissionAuthorization;
       request: PermissionRequestRecord;
-      via: 'existing_grant' | 'allow_once' | 'always_allow' | 'auto';
+      via: 'existing_grant' | 'allow_once' | 'allow_session' | 'always_allow' | 'auto';
     }
   | {
       allowed: false;
@@ -232,6 +300,14 @@ export type ClassifiedPermissionAction = {
   projectId: string;
   projectLabel: string;
   scopeKey: string;
+  resourceKey: string;
+  fingerprint: string;
+  narrowable: boolean;
+  freshConfirmation: boolean;
+  reversible: boolean;
+  external: boolean;
+  cancellable: boolean;
+  consequences: string[];
   allowAlways: boolean;
   autoApprove: boolean;
   metadata: Record<string, string | number | boolean | null>;
@@ -252,6 +328,10 @@ export type PermissionState = {
   queue: PermissionRequestRecord[];
   emergencyStop: boolean;
   emergencyStopReason: string | null;
+  stoppedAgents: string[];
+  sessionId: string;
+  activityRevision: number;
+  lastStopReport: StopReport | null;
   loading: boolean;
   revision: number;
 };
@@ -275,8 +355,14 @@ export type PermissionDashboardData = {
   audit: PermissionAuditRecord[];
   devices: PairedDeviceRecord[];
   dynamicAgents: AgentIdentity[];
+  denials: PermissionDenialRecord[];
+  preferences: PermissionPreferenceRecord[];
+  activeOperations: ActiveOperation[];
+  activity: ActivityRecord[];
   emergencyStop: boolean;
   emergencyStopReason: string | null;
+  stoppedAgents: string[];
+  sessionId: string;
   pending: PermissionRequestRecord[];
 };
 
