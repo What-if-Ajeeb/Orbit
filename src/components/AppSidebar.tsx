@@ -1,11 +1,13 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, usePathname, type Href } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Alert,
   Animated,
   BackHandler,
   Easing,
+  PanResponder,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -30,22 +32,53 @@ type NavItem = {
   activeIcon: keyof typeof Ionicons.glyphMap;
 };
 
-const MAIN_ITEMS: NavItem[] = [
-  { label: 'Today', href: '/', icon: 'planet-outline', activeIcon: 'planet' },
-  { label: 'Agent', href: '/chat', icon: 'sparkles-outline', activeIcon: 'sparkles' },
-  { label: 'AI Agents', href: '/agents' as Href, icon: 'people-outline', activeIcon: 'people' },
-  { label: 'Conversations', href: '/conversations' as Href, icon: 'chatbubbles-outline', activeIcon: 'chatbubbles' },
-  { label: 'Connections', href: '/connections' as Href, icon: 'cloud-outline', activeIcon: 'cloud' },
-  { label: 'Marketplace', href: '/marketplace' as Href, icon: 'storefront-outline', activeIcon: 'storefront' },
-  { label: 'Tasks', href: '/tasks', icon: 'checkbox-outline', activeIcon: 'checkbox' },
-  { label: 'Workflows', href: '/workflows', icon: 'flash-outline', activeIcon: 'flash' },
-  { label: 'Artifacts', href: '/artifacts', icon: 'cube-outline', activeIcon: 'cube' },
+/** The six destinations from the ORBIT sidebar reference. */
+export const PRIMARY_NAV_ITEMS: NavItem[] = [
+  { label: 'Chats', href: '/chat', icon: 'chatbubbles-outline', activeIcon: 'chatbubbles' },
+  {
+    label: 'Projects',
+    href: '/projects' as Href,
+    icon: 'briefcase-outline',
+    activeIcon: 'briefcase',
+  },
+  {
+    label: 'Plugins',
+    href: '/plugins' as Href,
+    icon: 'extension-puzzle-outline',
+    activeIcon: 'extension-puzzle',
+  },
+  {
+    label: 'Marketplace',
+    href: '/marketplace' as Href,
+    icon: 'storefront-outline',
+    activeIcon: 'storefront',
+  },
   { label: 'Buddy', href: '/buddy', icon: 'paw-outline', activeIcon: 'paw' },
   { label: 'Settings', href: '/settings', icon: 'settings-outline', activeIcon: 'settings' },
 ];
 
+/** Existing features stay reachable without competing with primary navigation. */
+const WORKSPACE_ITEMS: NavItem[] = [
+  { label: 'Today', href: '/', icon: 'planet-outline', activeIcon: 'planet' },
+  { label: 'AI Agents', href: '/agents' as Href, icon: 'people-outline', activeIcon: 'people' },
+  {
+    label: 'Conversations',
+    href: '/conversations' as Href,
+    icon: 'chatbubble-outline',
+    activeIcon: 'chatbubble',
+  },
+  {
+    label: 'Connections',
+    href: '/connections' as Href,
+    icon: 'cloud-outline',
+    activeIcon: 'cloud',
+  },
+  { label: 'Tasks', href: '/tasks', icon: 'checkbox-outline', activeIcon: 'checkbox' },
+  { label: 'Workflows', href: '/workflows', icon: 'flash-outline', activeIcon: 'flash' },
+  { label: 'Artifacts', href: '/artifacts', icon: 'cube-outline', activeIcon: 'cube' },
+];
+
 const ADVANCED_ITEMS: NavItem[] = [
-  { label: 'Plugins', href: '/plugins' as Href, icon: 'extension-puzzle-outline', activeIcon: 'extension-puzzle' },
   { label: 'Harness', href: '/harness', icon: 'git-network-outline', activeIcon: 'git-network' },
   { label: 'Events', href: '/events', icon: 'receipt-outline', activeIcon: 'receipt' },
   { label: 'Telemetry', href: '/telemetry', icon: 'analytics-outline', activeIcon: 'analytics' },
@@ -77,7 +110,7 @@ const ADVANCED_ITEMS: NavItem[] = [
 
 const RECENT_LIMIT = 8;
 
-function getInitials(name: string): string {
+export function getInitials(name: string): string {
   return name
     .split(/\s+/)
     .filter(Boolean)
@@ -87,14 +120,7 @@ function getInitials(name: string): string {
     .toUpperCase();
 }
 
-function navIcon(name: string): keyof typeof Ionicons.glyphMap {
-  return name in Ionicons.glyphMap
-    ? (name as keyof typeof Ionicons.glyphMap)
-    : 'extension-puzzle-outline';
-}
-
-/** Links into the chat screen carry a timestamp so repeating the same action works twice. */
-function chatLink(params: Record<string, string | number>): Href {
+export function chatLink(params: Record<string, string | number>): Href {
   const query = Object.entries(params)
     .map(([key, value]) => `${key}=${encodeURIComponent(String(value))}`)
     .join('&');
@@ -102,19 +128,42 @@ function chatLink(params: Record<string, string | number>): Href {
   return `/chat?${query}&t=${Date.now()}` as Href;
 }
 
+export function isNavActive(pathname: string, href: Href): boolean {
+  const target = String(href);
+
+  if (target === '/') {
+    return pathname === '/' || pathname === '/index';
+  }
+
+  if (target === '/plugins') {
+    return pathname === '/plugins' || pathname.startsWith('/plugins/') || pathname.startsWith('/plugin/');
+  }
+
+  return pathname === target || pathname.startsWith(`${target}/`);
+}
+
+function navIcon(name: string): keyof typeof Ionicons.glyphMap {
+  return name in Ionicons.glyphMap
+    ? (name as keyof typeof Ionicons.glyphMap)
+    : 'extension-puzzle-outline';
+}
+
 export function AppSidebar() {
   const { colors } = useAppTheme();
   const styles = useStyles(makeStyles);
-  const { isOpen, close } = useSidebar();
-  const { user } = useSession();
+  const { isOpen, open, close } = useSidebar();
+  const { user, accounts, switchAccount } = useSession();
   const db = useSQLiteContext();
   const insets = useSafeAreaInsets();
   const pathname = usePathname();
   const { width } = useWindowDimensions();
   const { navigation } = usePluginSnapshot();
   const [progress] = useState(() => new Animated.Value(0));
+  const [dragX] = useState(() => new Animated.Value(0));
   const [recents, setRecents] = useState<Conversation[]>([]);
+  const [workspaceOpen, setWorkspaceOpen] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
 
   const panelWidth = Math.min(width * 0.86, 340);
   const userId = user?.id;
@@ -128,7 +177,6 @@ export function AppSidebar() {
     }).start();
   }, [isOpen, progress]);
 
-  // Refresh "Recents" every time the drawer opens.
   useEffect(() => {
     if (!isOpen || userId === undefined) {
       return;
@@ -166,6 +214,69 @@ export function AppSidebar() {
     return () => subscription.remove();
   }, [close, isOpen]);
 
+  // Deep links and notification taps can change routes without using navigate().
+  const lastPathname = useRef(pathname);
+
+  useEffect(() => {
+    if (lastPathname.current !== pathname) {
+      lastPathname.current = pathname;
+
+      if (isOpen) {
+        close();
+      }
+    }
+  }, [close, isOpen, pathname]);
+
+  const settleDrag = useCallback(() => {
+    Animated.timing(dragX, {
+      toValue: 0,
+      duration: motion.fast,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [dragX]);
+
+  const openResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: (_event, gesture) => !isOpen && gesture.x0 <= 28,
+        onMoveShouldSetPanResponder: (_event, gesture) =>
+          !isOpen && gesture.dx > 8 && Math.abs(gesture.dx) > Math.abs(gesture.dy),
+        onPanResponderMove: (_event, gesture) => {
+          dragX.setValue(Math.max(0, Math.min(panelWidth, gesture.dx)));
+        },
+        onPanResponderRelease: (_event, gesture) => {
+          settleDrag();
+
+          if (gesture.dx > 48 || gesture.vx > 0.35) {
+            open();
+          }
+        },
+        onPanResponderTerminate: () => settleDrag(),
+      }),
+    [dragX, isOpen, open, panelWidth, settleDrag]
+  );
+
+  const closeResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponder: (_event, gesture) =>
+          isOpen && gesture.dx < -8 && Math.abs(gesture.dx) > Math.abs(gesture.dy),
+        onPanResponderMove: (_event, gesture) => {
+          dragX.setValue(Math.max(-panelWidth, Math.min(0, gesture.dx)));
+        },
+        onPanResponderRelease: (_event, gesture) => {
+          settleDrag();
+
+          if (gesture.dx < -Math.min(80, panelWidth * 0.25) || gesture.vx < -0.35) {
+            close();
+          }
+        },
+        onPanResponderTerminate: () => settleDrag(),
+      }),
+    [close, dragX, isOpen, panelWidth, settleDrag]
+  );
+
   if (!user) {
     return null;
   }
@@ -175,18 +286,35 @@ export function AppSidebar() {
     router.navigate(href);
   }
 
+  async function selectAccount(nextUserId: number) {
+    setAccountMenuOpen(false);
+
+    if (nextUserId === userId) {
+      close();
+      return;
+    }
+
+    try {
+      await switchAccount(nextUserId);
+      close();
+      router.replace('/');
+    } catch (switchError) {
+      const message =
+        switchError instanceof Error ? switchError.message : 'The account could not be switched.';
+      Alert.alert('Account switch failed', message);
+    }
+  }
+
   const backdropOpacity = progress.interpolate({ inputRange: [0, 1], outputRange: [0, 1] });
   const translateX = progress.interpolate({
     inputRange: [0, 1],
     outputRange: [-panelWidth - 24, 0],
   });
-
-  function isActive(href: Href): boolean {
-    return href === '/' ? pathname === '/' || pathname === '/index' : pathname === href || pathname.startsWith(`${href}/`);
-  }
+  const panelTranslateX = Animated.add(translateX, dragX);
+  const visibleAccounts = accounts.length > 0 ? accounts : [user];
 
   function renderNavRow(item: NavItem, compact = false) {
-    const active = isActive(item.href);
+    const active = isNavActive(pathname, item.href);
 
     return (
       <Pressable
@@ -203,23 +331,51 @@ export function AppSidebar() {
       >
         <Ionicons
           name={active ? item.activeIcon : item.icon}
-          size={compact ? 20 : 24}
+          size={compact ? 20 : 22}
           color={active ? colors.text : colors.textMuted}
         />
-        <Text style={[styles.navLabel, compact && styles.navLabelCompact, active && styles.navLabelActive]}>
+        <Text
+          numberOfLines={1}
+          style={[styles.navLabel, compact && styles.navLabelCompact, active && styles.navLabelActive]}
+        >
           {item.label}
         </Text>
+        {active ? <View style={styles.activeMark} /> : null}
       </Pressable>
+    );
+  }
+
+  function renderExpandable(label: string, expanded: boolean, toggle: () => void, items: NavItem[]) {
+    return (
+      <View style={styles.sectionBlock}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityState={{ expanded }}
+          onPress={toggle}
+          style={({ pressed }) => [styles.sectionToggle, pressed && styles.pressed]}
+        >
+          <Text style={styles.sectionLabelInline}>{label}</Text>
+          <Ionicons
+            name={expanded ? 'chevron-up' : 'chevron-down'}
+            size={16}
+            color={colors.textMuted}
+          />
+        </Pressable>
+        {expanded ? items.map((item) => renderNavRow(item, true)) : null}
+      </View>
     );
   }
 
   return (
     <Animated.View
-      pointerEvents={isOpen ? 'auto' : 'none'}
+      pointerEvents={isOpen ? 'auto' : 'box-none'}
       style={styles.overlay}
       accessibilityViewIsModal={isOpen}
     >
-      <Animated.View style={[styles.backdrop, { opacity: backdropOpacity }]}>
+      <Animated.View
+        pointerEvents={isOpen ? 'auto' : 'none'}
+        style={[styles.backdrop, { opacity: backdropOpacity }]}
+      >
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Close menu"
@@ -228,22 +384,43 @@ export function AppSidebar() {
         />
       </Animated.View>
 
+      {!isOpen ? (
+        <View
+          accessibilityLabel="Swipe right to open navigation"
+          style={styles.edgeZone}
+          {...openResponder.panHandlers}
+        >
+          <View style={styles.edgeHandle} />
+        </View>
+      ) : null}
+
       <Animated.View
+        pointerEvents={isOpen ? 'auto' : 'none'}
         style={[
           styles.panel,
           {
             width: panelWidth,
             paddingTop: insets.top + spacing.md,
             paddingBottom: Math.max(insets.bottom, spacing.md),
-            transform: [{ translateX }],
+            transform: [{ translateX: panelTranslateX }],
           },
         ]}
+        {...closeResponder.panHandlers}
       >
-        <View style={styles.brandRow}>
-          <Brand size={32} />
+        <View style={styles.headerRow}>
+          <Brand size={30} />
           <Text accessibilityRole="header" style={styles.wordmark}>
-            Orbit
+            ORBIT
           </Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Collapse sidebar"
+            hitSlop={8}
+            onPress={close}
+            style={({ pressed }) => [styles.collapseButton, pressed && styles.pressed]}
+          >
+            <Ionicons name="chevron-back" size={20} color={colors.textMuted} />
+          </Pressable>
         </View>
 
         <ScrollView
@@ -251,11 +428,19 @@ export function AppSidebar() {
           contentContainerStyle={styles.navContent}
           showsVerticalScrollIndicator={false}
         >
-          {MAIN_ITEMS.map((item) => renderNavRow(item))}
+          <Text style={styles.primaryLabel}>WORKSPACE</Text>
+          {PRIMARY_NAV_ITEMS.map((item) => renderNavRow(item))}
+
+          <View style={styles.divider} />
+          {renderExpandable(
+            'More workspace',
+            workspaceOpen,
+            () => setWorkspaceOpen((value) => !value),
+            WORKSPACE_ITEMS
+          )}
 
           {navigation.length > 0 ? (
-            <>
-              <View style={styles.divider} />
+            <View style={styles.sectionBlock}>
               <Text style={styles.sectionLabel}>Plugin apps</Text>
               {navigation.map((entry) => {
                 const active = pathname.startsWith(`/plugin/${entry.pluginId}`);
@@ -268,85 +453,104 @@ export function AppSidebar() {
                     onPress={() => navigate(entry.path as Href)}
                     style={({ pressed }) => [
                       styles.navItem,
+                      styles.navItemCompact,
                       active && styles.navItemActive,
                       pressed && styles.pressed,
                     ]}
                   >
                     <Ionicons
                       name={navIcon(entry.icon)}
-                      size={24}
+                      size={20}
                       color={active ? colors.text : colors.textMuted}
                     />
-                    <Text
-                      numberOfLines={1}
-                      style={[styles.navLabel, active && styles.navLabelActive]}
-                    >
+                    <Text numberOfLines={1} style={[styles.navLabel, styles.navLabelCompact, active && styles.navLabelActive]}>
                       {entry.label}
                     </Text>
                   </Pressable>
                 );
               })}
-            </>
+            </View>
           ) : null}
 
           <View style={styles.divider} />
 
-          <Text style={styles.sectionLabel}>Recents</Text>
-
-          {recents.length === 0 ? (
-            <Text style={styles.recentEmpty}>Your conversations will show up here.</Text>
-          ) : (
-            recents.map((chat) => (
-              <Pressable
-                key={chat.id}
-                accessibilityRole="button"
-                accessibilityLabel={`Open chat ${chat.title}`}
-                onPress={() => navigate(chatLink({ c: chat.id }))}
-                style={({ pressed }) => [styles.recentRow, pressed && styles.pressed]}
-              >
-                <Ionicons name="chatbubble-outline" size={18} color={colors.textMuted} />
-                <Text numberOfLines={1} style={styles.recentTitle}>
-                  {chat.title}
-                </Text>
-              </Pressable>
-            ))
-          )}
-
-          {recents.length > 0 ? (
+          <View style={styles.sectionBlock}>
+            <Text style={styles.sectionLabel}>Recents</Text>
+            {recents.length === 0 ? (
+              <Text style={styles.recentEmpty}>Your conversations will show up here.</Text>
+            ) : (
+              recents.map((chat) => (
+                <Pressable
+                  key={chat.id}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Open chat ${chat.title}`}
+                  onPress={() => navigate(chatLink({ c: chat.id }))}
+                  style={({ pressed }) => [styles.recentRow, pressed && styles.pressed]}
+                >
+                  <Ionicons name="chatbubble-outline" size={18} color={colors.textMuted} />
+                  <Text numberOfLines={1} style={styles.recentTitle}>
+                    {chat.title}
+                  </Text>
+                </Pressable>
+              ))
+            )}
             <Pressable
               accessibilityRole="button"
-              onPress={() => navigate(chatLink({ h: 1 }))}
+              onPress={() => navigate('/conversations' as Href)}
               style={({ pressed }) => [styles.allChats, pressed && styles.pressed]}
             >
-              <Text style={styles.allChatsText}>All chats</Text>
+              <Text style={styles.allChatsText}>Manage chat history</Text>
               <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
             </Pressable>
-          ) : null}
+          </View>
 
           <View style={styles.divider} />
+          {renderExpandable(
+            'Advanced',
+            advancedOpen,
+            () => setAdvancedOpen((value) => !value),
+            ADVANCED_ITEMS
+          )}
 
-          <Pressable
-            accessibilityRole="button"
-            accessibilityState={{ expanded: advancedOpen }}
-            onPress={() => setAdvancedOpen((open) => !open)}
-            style={({ pressed }) => [styles.allChats, pressed && styles.pressed]}
-          >
-            <Text style={styles.sectionLabelInline}>Advanced</Text>
-            <Ionicons
-              name={advancedOpen ? 'chevron-up' : 'chevron-down'}
-              size={16}
-              color={colors.textMuted}
-            />
-          </Pressable>
+          {accountMenuOpen ? (
+            <View style={styles.accountMenu}>
+              <Text style={styles.sectionLabel}>Accounts on this device</Text>
+              {visibleAccounts.map((account) => {
+                const active = account.id === userId;
 
-          {advancedOpen ? ADVANCED_ITEMS.map((item) => renderNavRow(item, true)) : null}
+                return (
+                  <Pressable
+                    key={account.id}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: active }}
+                    onPress={() => void selectAccount(account.id)}
+                    style={({ pressed }) => [styles.accountRow, pressed && styles.pressed]}
+                  >
+                    <View style={[styles.smallAvatar, active && styles.smallAvatarActive]}>
+                      <Text style={styles.smallAvatarText}>{getInitials(account.name) || 'O'}</Text>
+                    </View>
+                    <View style={styles.accountText}>
+                      <Text numberOfLines={1} style={styles.accountName}>
+                        {account.name}
+                      </Text>
+                      <Text numberOfLines={1} style={styles.accountEmail}>
+                        {account.email}
+                      </Text>
+                    </View>
+                    {active ? <Ionicons name="checkmark" size={18} color={colors.accent} /> : null}
+                  </Pressable>
+                );
+              })}
+            </View>
+          ) : null}
         </ScrollView>
 
         <View style={styles.bottomBar}>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Open settings"
-            onPress={() => navigate('/settings')}
+            accessibilityLabel="Switch account"
+            accessibilityState={{ expanded: accountMenuOpen }}
+            onPress={() => setAccountMenuOpen((value) => !value)}
             style={({ pressed }) => [styles.bottomUser, pressed && styles.pressed]}
           >
             <View style={styles.avatar}>
@@ -357,9 +561,14 @@ export function AppSidebar() {
                 {user.name}
               </Text>
               <Text numberOfLines={1} style={styles.bottomUserHint}>
-                Account settings
+                {visibleAccounts.length > 1 ? 'Switch account' : 'Account settings'}
               </Text>
             </View>
+            <Ionicons
+              name={accountMenuOpen ? 'chevron-up' : 'chevron-down'}
+              size={16}
+              color={colors.textMuted}
+            />
           </Pressable>
 
           <Pressable
@@ -368,7 +577,7 @@ export function AppSidebar() {
             onPress={() => navigate(chatLink({ n: 1 }))}
             style={({ pressed }) => [styles.newChat, pressed && styles.pressed]}
           >
-            <Ionicons name="add" size={22} color={colors.onInverse} />
+            <Ionicons name="add" size={20} color={colors.onInverse} />
             <Text style={styles.newChatText}>New chat</Text>
           </Pressable>
         </View>
@@ -399,6 +608,21 @@ const makeStyles = ({ colors }: AppTheme) =>
     backdropPress: {
       flex: 1,
     },
+    edgeZone: {
+      position: 'absolute',
+      top: 0,
+      bottom: 0,
+      left: 0,
+      width: 24,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    edgeHandle: {
+      width: 3,
+      height: 48,
+      borderRadius: 2,
+      backgroundColor: colors.accentSoft,
+    },
     panel: {
       position: 'absolute',
       top: 0,
@@ -409,18 +633,29 @@ const makeStyles = ({ colors }: AppTheme) =>
       borderRightColor: colors.border,
       paddingHorizontal: spacing.md,
     },
-    brandRow: {
+    headerRow: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: spacing.sm,
-      paddingHorizontal: spacing.sm,
-      paddingTop: spacing.sm,
+      paddingHorizontal: spacing.xs,
       paddingBottom: spacing.md,
     },
     wordmark: {
+      flex: 1,
       color: colors.text,
       fontFamily: fonts.serif,
       ...typography.title,
+      letterSpacing: 2,
+    },
+    collapseButton: {
+      width: layout.iconButton,
+      height: layout.iconButton,
+      borderRadius: radius.pill,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.surface,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
     },
     navScroll: {
       flex: 1,
@@ -428,11 +663,27 @@ const makeStyles = ({ colors }: AppTheme) =>
     navContent: {
       paddingBottom: spacing.md,
     },
+    primaryLabel: {
+      color: colors.textFaint,
+      ...typography.overline,
+      paddingHorizontal: spacing.sm,
+      marginBottom: spacing.sm,
+    },
+    sectionBlock: {
+      gap: 2,
+    },
+    sectionToggle: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      minHeight: layout.touchTarget,
+      paddingHorizontal: spacing.sm,
+    },
     navItem: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: spacing.md,
-      minHeight: layout.touchTarget + 8,
+      minHeight: layout.touchTarget + 4,
       paddingHorizontal: spacing.sm + 2,
       borderRadius: radius.md,
     },
@@ -442,10 +693,9 @@ const makeStyles = ({ colors }: AppTheme) =>
     },
     navItemActive: {
       backgroundColor: colors.surface,
-      borderWidth: StyleSheet.hairlineWidth,
-      borderColor: colors.border,
     },
     navLabel: {
+      flex: 1,
       color: colors.textMuted,
       ...typography.body,
     },
@@ -454,6 +704,13 @@ const makeStyles = ({ colors }: AppTheme) =>
     },
     navLabelActive: {
       color: colors.text,
+      fontWeight: '600',
+    },
+    activeMark: {
+      width: 4,
+      height: 20,
+      borderRadius: 2,
+      backgroundColor: colors.accent,
     },
     divider: {
       height: StyleSheet.hairlineWidth,
@@ -494,7 +751,7 @@ const makeStyles = ({ colors }: AppTheme) =>
     allChats: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: spacing.xs,
+      justifyContent: 'space-between',
       minHeight: layout.touchTarget,
       paddingHorizontal: spacing.sm + 2,
     },
@@ -503,12 +760,61 @@ const makeStyles = ({ colors }: AppTheme) =>
       ...typography.bodySmall,
       fontWeight: '600',
     },
+    accountMenu: {
+      gap: spacing.xs,
+      marginTop: spacing.md,
+      paddingTop: spacing.md,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border,
+    },
+    accountRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      minHeight: layout.touchTarget,
+      paddingHorizontal: spacing.sm,
+      borderRadius: radius.md,
+    },
+    smallAvatar: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.surfaceAlt,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
+    },
+    smallAvatarActive: {
+      backgroundColor: colors.accentSoft,
+      borderColor: colors.accent,
+    },
+    smallAvatarText: {
+      color: colors.text,
+      fontSize: 13,
+      fontWeight: '700',
+    },
+    accountText: {
+      flex: 1,
+      gap: 2,
+    },
+    accountName: {
+      color: colors.text,
+      ...typography.bodySmall,
+      fontWeight: '600',
+    },
+    accountEmail: {
+      color: colors.textFaint,
+      ...typography.caption,
+    },
     bottomBar: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
       gap: spacing.sm,
       paddingTop: spacing.md,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border,
     },
     bottomUser: {
       flexDirection: 'row',
@@ -547,7 +853,7 @@ const makeStyles = ({ colors }: AppTheme) =>
       flexDirection: 'row',
       alignItems: 'center',
       gap: spacing.xs,
-      minHeight: layout.touchTarget + 4,
+      minHeight: layout.touchTarget,
       paddingHorizontal: spacing.md,
       borderRadius: radius.pill,
       backgroundColor: colors.inverse,

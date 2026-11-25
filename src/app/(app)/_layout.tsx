@@ -98,6 +98,7 @@ export default function AppLayout() {
             }}
           >
             <Stack.Screen name="(tabs)" />
+            <Stack.Screen name="projects" />
             <Stack.Screen name="artifact" />
             <Stack.Screen name="agents/index" />
             <Stack.Screen name="agents/[agentId]/index" />

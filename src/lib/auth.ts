@@ -195,6 +195,36 @@ export async function getUserForSession(
   return row ? toUser(row) : null;
 }
 
+/** Accounts stored on this device, available for local account switching. */
+export async function listLocalAccounts(db: SQLiteDatabase): Promise<User[]> {
+  const rows = await db.getAllAsync<UserRow>(
+    'SELECT id, name, email, created_at FROM users ORDER BY name COLLATE NOCASE, id'
+  );
+
+  return rows.map(toUser);
+}
+
+/**
+ * Starts a new session for an existing local account. The previous session is
+ * left intact so switching back does not require signing in again.
+ */
+export async function switchAccount(
+  db: SQLiteDatabase,
+  userId: number
+): Promise<{ user: User; token: string }> {
+  const row = await db.getFirstAsync<UserRow>(
+    'SELECT id, name, email, created_at FROM users WHERE id = ?',
+    userId
+  );
+
+  if (!row) {
+    throw new AuthError('That account is no longer available on this device.');
+  }
+
+  const token = await createSession(db, userId);
+  return { user: toUser(row), token };
+}
+
 export async function destroySession(db: SQLiteDatabase, token: string): Promise<void> {
   await db.runAsync('DELETE FROM sessions WHERE token_hash = ?', hashSessionToken(token));
 }
