@@ -12,8 +12,10 @@ import {
 import {
   destroySession,
   getUserForSession,
+  listLocalAccounts,
   signInWithEmail,
   signUpWithEmail,
+  switchAccount as switchAccountWithId,
   type SignUpInput,
   type User,
 } from '@/lib/auth';
@@ -26,9 +28,11 @@ import {
 type AuthContextValue = {
   user: User | null;
   isLoading: boolean;
+  accounts: User[];
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (input: SignUpInput) => Promise<void>;
   signOut: () => Promise<void>;
+  switchAccount: (userId: number) => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -36,7 +40,17 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function SessionProvider({ children }: PropsWithChildren) {
   const db = useSQLiteContext();
   const [user, setUser] = useState<User | null>(null);
+  const [accounts, setAccounts] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+
+  const refreshAccounts = useCallback(async () => {
+    try {
+      const list = await listLocalAccounts(db);
+      setAccounts(list);
+    } catch (error) {
+      console.warn('Could not load local accounts.', error);
+    }
+  }, [db]);
 
   useEffect(() => {
     let isActive = true;
@@ -64,6 +78,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
       } finally {
         if (isActive) {
           setIsLoading(false);
+          await refreshAccounts();
         }
       }
     }
@@ -73,15 +88,16 @@ export function SessionProvider({ children }: PropsWithChildren) {
     return () => {
       isActive = false;
     };
-  }, [db]);
+  }, [db, refreshAccounts]);
 
   const signIn = useCallback(
     async (email: string, password: string) => {
       const result = await signInWithEmail(db, { email, password });
       await setStoredSessionToken(result.token);
       setUser(result.user);
+      await refreshAccounts();
     },
-    [db]
+    [db, refreshAccounts]
   );
 
   const signUp = useCallback(
@@ -89,8 +105,9 @@ export function SessionProvider({ children }: PropsWithChildren) {
       const result = await signUpWithEmail(db, input);
       await setStoredSessionToken(result.token);
       setUser(result.user);
+      await refreshAccounts();
     },
-    [db]
+    [db, refreshAccounts]
   );
 
   const signOut = useCallback(async () => {
@@ -104,9 +121,18 @@ export function SessionProvider({ children }: PropsWithChildren) {
     setUser(null);
   }, [db]);
 
+  const switchAccount = useCallback(
+    async (userId: number) => {
+      const result = await switchAccountWithId(db, userId);
+      await setStoredSessionToken(result.token);
+      setUser(result.user);
+    },
+    [db]
+  );
+
   const value = useMemo(
-    () => ({ user, isLoading, signIn, signUp, signOut }),
-    [user, isLoading, signIn, signUp, signOut]
+    () => ({ user, isLoading, accounts, signIn, signUp, signOut, switchAccount }),
+    [user, isLoading, accounts, signIn, signUp, signOut, switchAccount]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

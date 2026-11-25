@@ -5,8 +5,10 @@ import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect, useState } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { AgentActionCard } from '@/components/actions/AgentActionCard';
 import { ToolStatusList } from '@/components/ToolStatusList';
 import { useSession } from '@/context/auth';
+import { parseAgentActionRef } from '@/lib/agent-actions/service';
 import { ArtifactStore } from '@/lib/artifacts/store';
 import { artifactTypeLabel, type ArtifactRef, type ArtifactType } from '@/lib/artifacts/types';
 import type { ChatAttachment, ChatMessage } from '@/lib/chat';
@@ -131,6 +133,14 @@ export function ChatBubble({ message }: ChatBubbleProps) {
   const isUser = message.role === 'user';
   const attachments = message.attachments ?? [];
   const toolEvents = message.toolEvents ?? [];
+  const actionIds = Array.from(
+    new Set(
+      toolEvents
+        .filter((event) => event.toolName === 'agent_action_propose')
+        .map((event) => parseAgentActionRef(event.detail ?? ''))
+        .filter((value): value is string => value !== null)
+    )
+  );
 
   return (
     <View style={[styles.wrap, isUser ? styles.wrapUser : styles.wrapAssistant]}>
@@ -166,6 +176,14 @@ export function ChatBubble({ message }: ChatBubbleProps) {
       ) : null}
 
       <ToolStatusList events={toolEvents} />
+
+      {actionIds.length > 0 ? (
+        <View style={styles.actionCards}>
+          {actionIds.map((actionId) => (
+            <AgentActionCard key={actionId} actionId={actionId} />
+          ))}
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -304,6 +322,11 @@ const makeStyles = ({ colors }: AppTheme) =>
   },
   cardDeleted: {
     color: colors.danger,
+  },
+  actionCards: {
+    alignSelf: 'stretch',
+    gap: spacing.xs,
+    paddingTop: 4,
   },
   traces: {
     gap: 4,

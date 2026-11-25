@@ -6,8 +6,10 @@ import type {
   AgentIdentity,
   ClassifiedPermissionAction,
   PairedDeviceRecord,
+  PermissionAuthorization,
   PermissionCategory,
   PermissionDenialReason,
+  PermissionRequestRecord,
   RiskLevel,
 } from './types';
 import { ensureAndroidRuntimePermission } from './android';
@@ -70,6 +72,13 @@ type SecureToolInput = {
   timeoutMs?: number;
   /** User stop / navigation signal. Aborting denies the in-flight call. */
   signal?: AbortSignal;
+  /**
+   * Pre-issued authorization from an explicit Agent Action Card confirmation.
+   * All guards below still run, including immediate revalidation. Callers can
+   * only obtain this token by resolving a real permission request.
+   */
+  authorization?: PermissionAuthorization;
+  authorizationRequest?: PermissionRequestRecord;
   execute: (signal: AbortSignal) => Promise<ToolExecution>;
 };
 
@@ -259,12 +268,20 @@ export async function secureExecuteTool(input: SecureToolInput): Promise<SecureT
     return deniedResult(input, 'invalid_request', message, null, pipeline, action);
   }
 
-  const outcome = await permissionManager.requestToolPermission({
-    userId: input.userId,
-    conversationId: input.conversationId ?? null,
-    action,
-    policy: input.policy,
-  });
+  const outcome =
+    input.authorization && input.authorizationRequest
+      ? ({
+          allowed: true,
+          authorization: input.authorization,
+          request: input.authorizationRequest,
+          via: 'allow_once',
+        } as const)
+      : await permissionManager.requestToolPermission({
+          userId: input.userId,
+          conversationId: input.conversationId ?? null,
+          action,
+          policy: input.policy,
+        });
 
   if (!outcome.allowed) {
     return deniedResult(

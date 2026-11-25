@@ -20,7 +20,7 @@ function migrationDb(version: number, columns: string[] = []) {
   return { db: db as unknown as SQLiteDatabase, executed, mocks: db };
 }
 
-describe('database migration v14', () => {
+describe('database migration v15', () => {
   it('adds scoped safety tables without touching a newer schema', async () => {
     const { db, executed, mocks } = migrationDb(13, ['id', 'user_id', 'title']);
 
@@ -39,11 +39,12 @@ describe('database migration v14', () => {
     expect(sql).toContain('CREATE TABLE IF NOT EXISTS agent_activity');
     expect(sql).toContain('CREATE TABLE IF NOT EXISTS trash_items');
     expect(sql).toContain('CREATE TABLE IF NOT EXISTS active_operations');
-    expect(sql).toContain('PRAGMA user_version = 14');
-    expect(sql).not.toContain('PRAGMA user_version = 13');
+    expect(sql).toContain('CREATE TABLE IF NOT EXISTS agent_actions');
+    expect(sql).toContain('PRAGMA user_version = 15');
+    expect(sql).not.toContain('PRAGMA user_version = 14');
   });
 
-  it('applies the older agent migration on the way to v14', async () => {
+  it('applies the older agent migration on the way to v15', async () => {
     const { db, executed, mocks } = migrationDb(12, ['id', 'user_id', 'title']);
 
     await migrateDbIfNeeded(db);
@@ -54,11 +55,23 @@ describe('database migration v14', () => {
     expect(sql).toContain('ALTER TABLE conversations ADD COLUMN agent_id TEXT');
     expect(sql).toContain("UPDATE conversations SET agent_id = 'master'");
     expect(sql).toContain('CREATE TABLE IF NOT EXISTS agent_configs');
-    expect(sql).toContain('PRAGMA user_version = 14');
+    expect(sql).toContain('PRAGMA user_version = 15');
+  });
+
+  it('adds agent action cards when upgrading from v14', async () => {
+    const { db, executed } = migrationDb(14);
+
+    await migrateDbIfNeeded(db);
+
+    const sql = executed.join('\n');
+
+    expect(sql).toContain('CREATE TABLE IF NOT EXISTS agent_actions');
+    expect(sql).toContain('CREATE INDEX IF NOT EXISTS idx_agent_actions_user_updated');
+    expect(sql).toContain('PRAGMA user_version = 15');
   });
 
   it('does nothing when the schema is already current', async () => {
-    const { db, executed } = migrationDb(14);
+    const { db, executed } = migrationDb(15);
 
     await migrateDbIfNeeded(db);
 

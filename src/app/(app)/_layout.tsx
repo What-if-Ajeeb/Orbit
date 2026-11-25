@@ -4,12 +4,15 @@ import { Platform, StyleSheet, View } from 'react-native';
 import { useSQLiteContext } from 'expo-sqlite';
 
 import { AppSidebar } from '@/components/AppSidebar';
+import { BottomNavigation } from '@/components/BottomNavigation';
 import { PermissionHost } from '@/components/permissions/PermissionHost';
 import { PluginApprovalHost } from '@/components/plugins/PluginApprovalHost';
+import { BottomNavigationProvider } from '@/context/bottom-navigation';
 import { SidebarProvider } from '@/context/sidebar';
 import { PluginPlatformProvider } from '@/context/plugins';
 import { useAppTheme, useStyles, type AppTheme } from '@/context/theme';
 import { setOrbitDb } from '@/lib/harness/plugins/orbit-session';
+import { layout, spacing } from '@/theme';
 import { permissionManager } from '@/lib/permissions';
 import { SafetyTrash } from '@/lib/safety/trash';
 
@@ -86,44 +89,60 @@ export default function AppLayout() {
 
   return (
     <PluginPlatformProvider>
-      <SidebarProvider>
-        <View style={styles.root}>
-          <NotificationRedirect />
-          <SafetyLifecycle />
-          <Stack
-            screenOptions={{
-              headerShown: false,
-              contentStyle: { backgroundColor: colors.background },
-              animation: 'slide_from_right',
-            }}
-          >
-            <Stack.Screen name="(tabs)" />
-            <Stack.Screen name="artifact" />
-            <Stack.Screen name="agents/index" />
-            <Stack.Screen name="agents/[agentId]/index" />
-            <Stack.Screen name="agents/[agentId]/tools" />
-            <Stack.Screen name="conversations" />
-            <Stack.Screen name="connections" />
-            <Stack.Screen name="marketplace" />
-            <Stack.Screen name="tool-permissions" />
-            <Stack.Screen name="approvals" />
-            <Stack.Screen name="harness" />
-            <Stack.Screen name="permissions" />
-            <Stack.Screen name="events" />
-            <Stack.Screen name="telemetry" />
-            <Stack.Screen name="policy" />
-            <Stack.Screen name="plugins/index" />
-            <Stack.Screen name="plugins/[pluginId]" />
-            <Stack.Screen name="plugin/[pluginId]" />
-            <Stack.Screen name="buddy/tree" />
-            <Stack.Screen name="buddy/evolve" />
-            <Stack.Screen name="buddy/collection" />
-          </Stack>
-          <AppSidebar />
-          <PermissionHost />
-          <PluginApprovalHost />
-        </View>
-      </SidebarProvider>
+      <BottomNavigationProvider>
+        <SidebarProvider>
+          <View style={styles.root}>
+            <NotificationRedirect />
+            <SafetyLifecycle />
+            <Stack
+              screenOptions={{
+                headerShown: false,
+                contentStyle: {
+                  backgroundColor: colors.background,
+                  paddingBottom: layout.touchTarget + spacing.md,
+                },
+                animation: 'slide_from_right',
+              }}
+            >
+              <Stack.Screen name="(tabs)" />
+              <Stack.Screen name="projects" />
+              <Stack.Screen name="artifact" />
+              <Stack.Screen name="agents/index" />
+              <Stack.Screen name="agents/[agentId]/index" />
+              <Stack.Screen name="agents/[agentId]/tools" />
+              <Stack.Screen name="conversations" />
+              <Stack.Screen name="connections" />
+              <Stack.Screen name="marketplace" />
+              <Stack.Screen name="tool-permissions" />
+              <Stack.Screen name="approvals" />
+              <Stack.Screen name="harness" />
+              <Stack.Screen name="permissions" />
+              <Stack.Screen name="events" />
+              <Stack.Screen name="telemetry" />
+              <Stack.Screen name="policy" />
+              <Stack.Screen name="plugins/index" />
+              <Stack.Screen name="plugins/[pluginId]" />
+              <Stack.Screen name="plugin/[pluginId]" />
+              <Stack.Screen name="settings/appearance" />
+              <Stack.Screen name="settings/ai-connection" />
+              <Stack.Screen name="settings/models" />
+              <Stack.Screen name="settings/memory" />
+              <Stack.Screen name="settings/mcp" />
+              <Stack.Screen name="settings/navigation" />
+              <Stack.Screen name="settings/notifications" />
+              <Stack.Screen name="settings/data" />
+              <Stack.Screen name="settings/account" />
+              <Stack.Screen name="buddy/tree" />
+              <Stack.Screen name="buddy/evolve" />
+              <Stack.Screen name="buddy/collection" />
+            </Stack>
+            <BottomNavigation />
+            <AppSidebar />
+            <PermissionHost />
+            <PluginApprovalHost />
+          </View>
+        </SidebarProvider>
+      </BottomNavigationProvider>
     </PluginPlatformProvider>
   );
 }
