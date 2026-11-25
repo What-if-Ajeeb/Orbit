@@ -115,6 +115,14 @@ export default function AppLayout() {
             <Stack.Screen name="plugins/index" />
             <Stack.Screen name="plugins/[pluginId]" />
             <Stack.Screen name="plugin/[pluginId]" />
+            <Stack.Screen name="settings/appearance" />
+            <Stack.Screen name="settings/ai-connection" />
+            <Stack.Screen name="settings/models" />
+            <Stack.Screen name="settings/memory" />
+            <Stack.Screen name="settings/mcp" />
+            <Stack.Screen name="settings/notifications" />
+            <Stack.Screen name="settings/data" />
+            <Stack.Screen name="settings/account" />
             <Stack.Screen name="buddy/tree" />
             <Stack.Screen name="buddy/evolve" />
             <Stack.Screen name="buddy/collection" />
