@@ -146,6 +146,15 @@ describe('AppSidebar', () => {
     expect(view.getByText('Settings')).toBeTruthy();
   });
 
+  it('keeps secondary and advanced destinations out of the sidebar', async () => {
+    const view = await render(<AppSidebar />);
+    await act(async () => {});
+
+    expect(view.queryByText('More workspace')).toBeNull();
+    expect(view.queryByText('Manage chat history')).toBeNull();
+    expect(view.queryByText('Advanced')).toBeNull();
+  });
+
   it('navigates to the real Projects route and closes the drawer', async () => {
     const view = await render(<AppSidebar />);
     await act(async () => {});
