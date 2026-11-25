@@ -19,9 +19,9 @@ and **expo-notifications**.
 - Tool-using agent: create, list, update, complete, and delete tasks
 - Local notifications for due dates and reminders, even when the app is closed
 - Task list with quick-add (`pay bill tomorrow 5pm`), filters, and long-press delete
-- App-wide navigation drawer with profile, AI status, and sign out
-- Glassmorphism UI: frosted panels, ambient glows, and translucent surfaces
-- Light / Dark / System color mode — flat warm-neutral design with a coral accent and serif headings; navigation lives in the left drawer (Recents, New chat)
+- Sidebar-first workspace with a collapsible drawer, six primary destinations, readable chat recents, local account switching, and a persistent New chat action
+- Projects overview built from real stored conversations, tasks, artifacts, files and workflow runs — no placeholder projects
+- Light / Dark / System color mode — flat warm-neutral design with a coral accent and serif headings; navigation lives in the left drawer
 - Multi-conversation chat history with per-chat delete and a slide-in history panel
 - Individual AI agents with dedicated chats, instructions/memory, and per-agent tool allowlists
 - Image and text-document attachments, streaming replies, cancellation, retry, and offline/local states
@@ -38,7 +38,7 @@ and **expo-notifications**.
 - MCP server connections (HTTP endpoints + optional bearer token) with per-server sync status
 - Runtime extension layer: skill registry, reviewed built-in lifecycle hooks, and delegated subagent tasks (legacy hook scripts are disabled)
 - **Plugin platform**: declarative manifests, default-deny permissions, namespaced tools/storage, and a Plugin Manager (`Plugins` in the drawer)
-- **Android mobile sandbox** (Android-only): Rust policy core in an isolated Android service, owned from RN through an Expo Module; manage it from **Sandbox** in the drawer. See [`docs/MOBILE_SANDBOX.md`](docs/MOBILE_SANDBOX.md).
+- **Android mobile sandbox** (Android-only): backend-only Rust policy core in an isolated Android service, owned from RN through an Expo Module. It has no screen, drawer item, setting, or branding. See [`docs/MOBILE_SANDBOX.md`](docs/MOBILE_SANDBOX.md).
 - Offline **local mode** for basic commands when no API key is configured
 
 ## Connect the AI brain

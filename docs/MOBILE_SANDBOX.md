@@ -95,19 +95,14 @@ Before every execution, `MobileSandboxManager` asks the existing
 approval host means the Rust core is never called. There is no persistent blanket
 grant for this path.
 
-## Using the UI
+## User-facing surface
 
-Open **Sandbox** in the drawer (under **Advanced → Plugins**). The screen:
-
-1. connects to the native core and shows its version, policy, and limits;
-2. lets you edit manifest and input JSON;
-3. validates without executing;
-4. runs a validated program after ORBIT approval;
-5. shows bounded session history, outputs, and failures;
-6. can clear history or unbind the service.
-
-The screen degrades gracefully on web, iOS, and Expo Go. Those platforms show an
-Android-only notice; the native module is never loaded there.
+The mobile sandbox is backend-only. It has no screen, sidebar item, settings
+entry, or ORBIT branding. Users see only the normal permission/approval flow:
+when a reviewed plugin requests sandbox execution, `PluginApprovalHost` shows the
+action and risk, and the Rust core runs only after explicit approval. On web,
+iOS, and Expo Go the native module is never loaded, so the code path is never
+available.
 
 ## Building
 
