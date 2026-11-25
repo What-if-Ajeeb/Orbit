@@ -279,7 +279,7 @@ export function AppSidebar() {
         <Ionicons
           name={active ? item.activeIcon : item.icon}
           size={22}
-          color={active ? colors.text : colors.textMuted}
+          color={active ? colors.accent : colors.textMuted}
         />
         <Text
           numberOfLines={1}
@@ -383,7 +383,7 @@ export function AppSidebar() {
                       <Ionicons
                         name={navIcon(entry.icon)}
                         size={20}
-                        color={active ? colors.text : colors.textMuted}
+                        color={active ? colors.accent : colors.textMuted}
                       />
                       <Text
                         numberOfLines={1}
@@ -473,7 +473,11 @@ export function AppSidebar() {
 
               setAccountMenuOpen((value) => !value);
             }}
-            style={({ pressed }) => [styles.bottomUser, pressed && styles.pressed]}
+            style={({ pressed }) => [
+              styles.bottomUser,
+              accountMenuOpen && styles.bottomUserActive,
+              pressed && styles.pressed,
+            ]}
           >
             <View style={styles.avatar}>
               <Text style={styles.avatarText}>{getInitials(user.name) || 'O'}</Text>
@@ -602,7 +606,7 @@ const makeStyles = ({ colors }: AppTheme) =>
       paddingLeft: spacing.lg,
     },
     navItemActive: {
-      backgroundColor: colors.surface,
+      backgroundColor: colors.accentSoft,
     },
     navLabel: {
       flex: 1,
@@ -613,7 +617,7 @@ const makeStyles = ({ colors }: AppTheme) =>
       ...typography.bodySmall,
     },
     navLabelActive: {
-      color: colors.text,
+      color: colors.accent,
       fontWeight: '600',
     },
     activeMark: {
@@ -701,11 +705,8 @@ const makeStyles = ({ colors }: AppTheme) =>
       ...typography.caption,
     },
     bottomBar: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
       gap: spacing.sm,
-      paddingTop: spacing.md,
+      paddingTop: spacing.sm,
       borderTopWidth: StyleSheet.hairlineWidth,
       borderTopColor: colors.border,
     },
@@ -713,8 +714,12 @@ const makeStyles = ({ colors }: AppTheme) =>
       flexDirection: 'row',
       alignItems: 'center',
       gap: spacing.sm,
-      flex: 1,
       minHeight: layout.touchTarget + 8,
+      paddingHorizontal: spacing.sm,
+      borderRadius: radius.md,
+    },
+    bottomUserActive: {
+      backgroundColor: colors.accentSoft,
     },
     bottomUserText: {
       flex: 1,
@@ -745,9 +750,9 @@ const makeStyles = ({ colors }: AppTheme) =>
     newChat: {
       flexDirection: 'row',
       alignItems: 'center',
+      justifyContent: 'center',
       gap: spacing.xs,
-      minHeight: layout.touchTarget,
-      paddingHorizontal: spacing.md,
+      minHeight: layout.touchTarget + 4,
       borderRadius: radius.pill,
       backgroundColor: colors.inverse,
     },
