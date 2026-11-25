@@ -17,32 +17,25 @@ import {
   MessagesSquare,
   Palette,
   Puzzle,
-  SearchX,
   Server,
   ShieldCheck,
   UserRound,
   Wrench,
   type LucideIcon,
 } from 'lucide-react-native';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   Alert,
-  BackHandler,
-  Keyboard,
-  KeyboardAvoidingView,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
-  type TextInputInstance,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { SettingsGroup } from '@/components/settings/SettingsGroup';
 import { SettingsHeader } from '@/components/settings/SettingsHeader';
 import { SettingsRow } from '@/components/settings/SettingsRow';
-import { SettingsSearch } from '@/components/settings/SettingsSearch';
 import { useSession } from '@/context/auth';
 import { usePluginSnapshot } from '@/context/plugins';
 import { useAppTheme, useStyles, type AppTheme } from '@/context/theme';
@@ -55,13 +48,11 @@ import { fonts, layout, radius, spacing, typography } from '@/theme';
 
 type SettingsEntry = {
   id: string;
-  group: string;
   title: string;
   description: string;
   icon: LucideIcon;
   href?: Href;
   action?: 'signOut';
-  keywords?: string[];
   destructive?: boolean;
   value?: string;
 };
@@ -90,14 +81,10 @@ const PERMISSION_VALUES: Record<NotificationPermissionState, string> = {
 export default function SettingsScreen() {
   const { colors } = useAppTheme();
   const styles = useStyles(makeStyles);
-  const insets = useSafeAreaInsets();
   const { user, signOut } = useSession();
   const snapshot = usePluginSnapshot();
   const [aiSettings, setAiSettings] = useState<AiSettings | null>(null);
   const [permission, setPermission] = useState<NotificationPermissionState>('undetermined');
-  const [query, setQuery] = useState('');
-  const [searchFocused, setSearchFocused] = useState(false);
-  const searchRef = useRef<TextInputInstance | null>(null);
 
   const aiConfigured = aiSettings ? isAiConfigured(aiSettings) : false;
 
@@ -108,51 +95,41 @@ export default function SettingsScreen() {
         items: [
           {
             id: 'appearance',
-            group: 'General',
             title: 'Appearance',
             description: 'Theme, color mode and how ORBIT looks.',
             icon: Palette,
             href: '/settings/appearance' as Href,
-            keywords: ['theme', 'dark', 'light', 'system', 'colors'],
           },
           {
             id: 'ai-connection',
-            group: 'General',
             title: 'AI Connection',
             description: 'Provider, server URL, keys and connection test.',
             icon: Cloud,
             href: '/settings/ai-connection' as Href,
             value: aiConfigured ? 'Configured' : 'Not set',
-            keywords: ['api', 'key', 'ollama', 'cloud', 'local', 'provider', 'server'],
           },
           {
             id: 'models',
-            group: 'General',
             title: 'Model Preferences',
             description: 'Choose the model used for agent chat.',
             icon: Cpu,
             href: '/settings/models' as Href,
             value: aiSettings?.model || 'Not set',
-            keywords: ['ollama', 'model', 'gpt', 'deepseek', 'gemini', 'claude'],
           },
           {
             id: 'memory',
-            group: 'General',
             title: 'Memory',
             description: 'Notes each agent remembers across conversations.',
             icon: Brain,
             href: '/settings/memory' as Href,
-            keywords: ['remember', 'context', 'agent', 'notes'],
           },
           {
             id: 'navigation',
-            group: 'General',
             title: 'Navigation',
             description: 'Choose and reorder the three bottom navigation slots.',
             icon: LayoutGrid,
             href: '/settings/navigation' as Href,
             value: '3 slots',
-            keywords: ['tabs', 'bottom', 'navigation', 'reorder', 'plugins'],
           },
         ],
       },
@@ -161,31 +138,25 @@ export default function SettingsScreen() {
         items: [
           {
             id: 'plugins',
-            group: 'Integrations',
             title: 'Plugins',
             description: 'Install, enable and review plugin permissions.',
             icon: Puzzle,
             href: '/plugins' as Href,
             value: `${snapshot.stats.installed} installed`,
-            keywords: ['extensions', 'marketplace', 'add-ons'],
           },
           {
             id: 'mcp',
-            group: 'Integrations',
             title: 'MCP Servers',
             description: 'Connect external tool servers.',
             icon: Server,
             href: '/settings/mcp' as Href,
-            keywords: ['model context protocol', 'tools', 'server', 'token'],
           },
           {
             id: 'connected-tools',
-            group: 'Integrations',
             title: 'Connected Tools',
             description: 'Tool access, allowlists and saved grants.',
             icon: Wrench,
             href: '/tool-permissions' as Href,
-            keywords: ['grants', 'allowlist', 'permissions', 'tools'],
           },
         ],
       },
@@ -194,30 +165,24 @@ export default function SettingsScreen() {
         items: [
           {
             id: 'agent-permissions',
-            group: 'Security',
             title: 'Agent Permissions',
             description: 'Active grants, pending approvals and emergency stop.',
             icon: ShieldCheck,
             href: '/permissions' as Href,
-            keywords: ['approve', 'deny', 'grants', 'agents', 'stop'],
           },
           {
             id: 'approval-history',
-            group: 'Security',
             title: 'Approval History',
             description: 'Past permission decisions and denials.',
             icon: History,
             href: '/permissions?tab=audit' as Href,
-            keywords: ['audit', 'approved', 'denied', 'decisions', 'history'],
           },
           {
             id: 'connected-accounts',
-            group: 'Security',
             title: 'Connected Accounts',
             description: 'Google and external service access.',
             icon: Link2,
             href: '/connections' as Href,
-            keywords: ['google', 'oauth', 'sign in', 'accounts'],
           },
         ],
       },
@@ -226,31 +191,25 @@ export default function SettingsScreen() {
         items: [
           {
             id: 'activity-history',
-            group: 'Activity',
             title: 'Activity History',
             description: 'Turns, tool calls and AI requests.',
             icon: Activity,
             href: '/events' as Href,
-            keywords: ['events', 'log', 'tool calls', 'turns'],
           },
           {
             id: 'agent-execution-history',
-            group: 'Activity',
             title: 'Agent Execution History',
             description: 'Completed, denied and failed agent actions.',
             icon: ListChecks,
             href: '/permissions?tab=activity' as Href,
-            keywords: ['executions', 'runs', 'operations', 'denied', 'failed'],
           },
           {
             id: 'notifications',
-            group: 'Activity',
             title: 'Notifications',
             description: 'Task reminders and test delivery.',
             icon: Bell,
             href: '/settings/notifications' as Href,
             value: PERMISSION_VALUES[permission],
-            keywords: ['reminders', 'alerts', 'push', 'permission'],
           },
         ],
       },
@@ -259,21 +218,17 @@ export default function SettingsScreen() {
         items: [
           {
             id: 'chat-history',
-            group: 'Data',
             title: 'Chat History',
             description: 'Browse and delete agent conversations.',
             icon: MessagesSquare,
             href: '/conversations' as Href,
-            keywords: ['chats', 'conversations', 'messages', 'delete'],
           },
           {
             id: 'data-management',
-            group: 'Data',
             title: 'Data Management',
             description: 'Clear local chat data and review storage.',
             icon: Database,
             href: '/settings/data' as Href,
-            keywords: ['storage', 'clear', 'delete', 'privacy', 'local'],
           },
         ],
       },
@@ -282,22 +237,18 @@ export default function SettingsScreen() {
         items: [
           {
             id: 'account-details',
-            group: 'Account',
             title: 'Account Details',
             description: 'Your local profile and session.',
             icon: UserRound,
             href: '/settings/account' as Href,
-            keywords: ['profile', 'email', 'name', 'session'],
           },
           {
             id: 'sign-out',
-            group: 'Account',
             title: 'Sign Out',
             description: 'End this session on the device.',
             icon: LogOut,
             action: 'signOut',
             destructive: true,
-            keywords: ['logout', 'leave', 'account'],
           },
         ],
       },
@@ -327,51 +278,11 @@ export default function SettingsScreen() {
     }, [])
   );
 
-  useEffect(() => {
-    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (query.length === 0 && !searchFocused) {
-        return false;
-      }
-
-      if (query.length > 0) {
-        setQuery('');
-      } else {
-        searchRef.current?.blur();
-        setSearchFocused(false);
-      }
-
-      Keyboard.dismiss();
-      return true;
-    });
-
-    return () => subscription.remove();
-  }, [query, searchFocused]);
-
   if (!user) {
     return null;
   }
 
-  const trimmedQuery = query.trim().toLowerCase();
-  const results = trimmedQuery
-    ? groups
-        .flatMap((group) => group.items)
-        .filter((entry) =>
-          [entry.title, entry.description, entry.group, ...(entry.keywords ?? [])]
-            .join(' ')
-            .toLowerCase()
-            .includes(trimmedQuery)
-        )
-    : [];
-
-  function closeSearch() {
-    Keyboard.dismiss();
-    searchRef.current?.blur();
-    setSearchFocused(false);
-    setQuery('');
-  }
-
   function openRoute(href: Href) {
-    closeSearch();
     router.push(href);
   }
 
@@ -389,8 +300,6 @@ export default function SettingsScreen() {
   }
 
   function selectEntry(entry: SettingsEntry) {
-    closeSearch();
-
     if (entry.action === 'signOut') {
       confirmSignOut();
       return;
@@ -434,112 +343,54 @@ export default function SettingsScreen() {
         }
       />
 
-      <KeyboardAvoidingView
-        behavior="padding"
-        style={styles.flex}
+      <ScrollView
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
       >
-        <ScrollView
-          contentContainerStyle={styles.content}
-          keyboardDismissMode="on-drag"
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Account details for ${user.name}`}
+          onPress={() => openRoute('/settings/account' as Href)}
+          style={({ pressed }) => [styles.profile, pressed && styles.profilePressed]}
         >
-          {!trimmedQuery ? (
-            <>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={`Account details for ${user.name}`}
-                onPress={() => openRoute('/settings/account' as Href)}
-                style={({ pressed }) => [
-                  styles.profile,
-                  pressed && styles.profilePressed,
-                ]}
-              >
-                <View style={styles.avatar}>
-                  <Text style={styles.avatarText}>{initialsFor(user.name)}</Text>
-                </View>
-                <View style={styles.profileCopy}>
-                  <Text numberOfLines={1} style={styles.profileName}>
-                    {user.name}
-                  </Text>
-                  <Text numberOfLines={1} style={styles.profileEmail}>
-                    {user.email}
-                  </Text>
-                </View>
-                <View style={styles.localBadge}>
-                  <Text style={styles.localBadgeText}>Local</Text>
-                </View>
-                <ChevronRight size={18} color={colors.textFaint} strokeWidth={2} />
-              </Pressable>
+          <View style={styles.avatar}>
+            <Text style={styles.avatarText}>{initialsFor(user.name)}</Text>
+          </View>
+          <View style={styles.profileCopy}>
+            <Text numberOfLines={1} style={styles.profileName}>
+              {user.name}
+            </Text>
+            <Text numberOfLines={1} style={styles.profileEmail}>
+              {user.email}
+            </Text>
+          </View>
+          <View style={styles.localBadge}>
+            <Text style={styles.localBadgeText}>Local</Text>
+          </View>
+          <ChevronRight size={18} color={colors.textFaint} strokeWidth={2} />
+        </Pressable>
 
-              {groups.map((group) => (
-                <SettingsGroup key={group.title} title={group.title}>
-                  {group.items.map((entry) => (
-                    <SettingsRow
-                      key={entry.id}
-                      icon={entry.icon}
-                      title={entry.title}
-                      description={entry.description}
-                      value={entry.value}
-                      destructive={entry.destructive}
-                      showChevron={entry.action !== 'signOut'}
-                      onPress={() => selectEntry(entry)}
-                    />
-                  ))}
-                </SettingsGroup>
-              ))}
+        {groups.map((group) => (
+          <SettingsGroup key={group.title} title={group.title}>
+            {group.items.map((entry) => (
+              <SettingsRow
+                key={entry.id}
+                icon={entry.icon}
+                title={entry.title}
+                description={entry.description}
+                value={entry.value}
+                destructive={entry.destructive}
+                showChevron={entry.action !== 'signOut'}
+                onPress={() => selectEntry(entry)}
+              />
+            ))}
+          </SettingsGroup>
+        ))}
 
-              <Text style={styles.footer}>
-                ORBIT v{Constants.expoConfig?.version ?? '1.10.6'} · local-first
-              </Text>
-            </>
-          ) : results.length > 0 ? (
-            <SettingsGroup title={`Results · ${results.length}`}>
-              {results.map((entry) => (
-                <SettingsRow
-                  key={entry.id}
-                  icon={entry.icon}
-                  title={entry.title}
-                  description={entry.description}
-                  value={entry.group}
-                  destructive={entry.destructive}
-                  showChevron={entry.action !== 'signOut'}
-                  onPress={() => selectEntry(entry)}
-                />
-              ))}
-            </SettingsGroup>
-          ) : (
-            <View style={styles.empty}>
-              <View style={styles.emptyIcon}>
-                <SearchX size={24} color={colors.textMuted} strokeWidth={2} />
-              </View>
-              <Text accessibilityRole="header" style={styles.emptyTitle}>
-                No settings found
-              </Text>
-              <Text style={styles.emptyText}>
-                Try “theme”, “model”, “permissions”, or “notifications”.
-              </Text>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Clear settings search"
-                onPress={closeSearch}
-                style={({ pressed }) => [styles.clearButton, pressed && styles.pressed]}
-              >
-                <Text style={styles.clearButtonText}>Clear search</Text>
-              </Pressable>
-            </View>
-          )}
-        </ScrollView>
-
-        <SettingsSearch
-          value={query}
-          onChangeText={setQuery}
-          inputRef={searchRef}
-          bottomInset={insets.bottom}
-          onFocus={() => setSearchFocused(true)}
-          onBlur={() => setSearchFocused(false)}
-        />
-      </KeyboardAvoidingView>
+        <Text style={styles.footer}>
+          ORBIT v{Constants.expoConfig?.version ?? '1.10.6'} · local-first
+        </Text>
+      </ScrollView>
     </View>
   );
 }
@@ -549,9 +400,6 @@ const makeStyles = ({ colors }: AppTheme) =>
     root: {
       flex: 1,
       backgroundColor: colors.background,
-    },
-    flex: {
-      flex: 1,
     },
     content: {
       flexGrow: 1,
@@ -569,9 +417,6 @@ const makeStyles = ({ colors }: AppTheme) =>
       borderRadius: radius.pill,
       alignItems: 'center',
       justifyContent: 'center',
-    },
-    headerIcon: {
-      color: colors.text,
     },
     pressed: {
       opacity: 0.65,
@@ -628,59 +473,11 @@ const makeStyles = ({ colors }: AppTheme) =>
       fontSize: 11,
       fontWeight: '600',
     },
-    chevron: {
-      color: colors.textFaint,
-    },
     footer: {
       color: colors.textFaint,
       ...typography.caption,
       textAlign: 'center',
       marginTop: spacing.xs,
       marginBottom: spacing.sm,
-    },
-    empty: {
-      flex: 1,
-      alignItems: 'center',
-      justifyContent: 'center',
-      paddingVertical: spacing.xl,
-      gap: spacing.sm,
-    },
-    emptyIcon: {
-      width: 56,
-      height: 56,
-      borderRadius: 28,
-      alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: colors.surface,
-      borderWidth: StyleSheet.hairlineWidth,
-      borderColor: colors.border,
-      marginBottom: spacing.xs,
-    },
-    emptyIconColor: {
-      color: colors.textMuted,
-    },
-    emptyTitle: {
-      color: colors.text,
-      ...typography.section,
-      textAlign: 'center',
-    },
-    emptyText: {
-      color: colors.textMuted,
-      ...typography.bodySmall,
-      textAlign: 'center',
-      maxWidth: 300,
-    },
-    clearButton: {
-      marginTop: spacing.sm,
-      minHeight: layout.touchTarget,
-      justifyContent: 'center',
-      paddingHorizontal: spacing.lg,
-      borderRadius: radius.pill,
-      backgroundColor: colors.surfaceAlt,
-    },
-    clearButtonText: {
-      color: colors.accent,
-      ...typography.bodySmall,
-      fontWeight: '600',
     },
   });
