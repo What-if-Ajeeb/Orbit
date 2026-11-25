@@ -57,57 +57,6 @@ export const PRIMARY_NAV_ITEMS: NavItem[] = [
   { label: 'Settings', href: '/settings', icon: 'settings-outline', activeIcon: 'settings' },
 ];
 
-/** Existing features stay reachable without competing with primary navigation. */
-const WORKSPACE_ITEMS: NavItem[] = [
-  { label: 'Today', href: '/', icon: 'planet-outline', activeIcon: 'planet' },
-  { label: 'AI Agents', href: '/agents' as Href, icon: 'people-outline', activeIcon: 'people' },
-  {
-    label: 'Conversations',
-    href: '/conversations' as Href,
-    icon: 'chatbubble-outline',
-    activeIcon: 'chatbubble',
-  },
-  {
-    label: 'Connections',
-    href: '/connections' as Href,
-    icon: 'cloud-outline',
-    activeIcon: 'cloud',
-  },
-  { label: 'Tasks', href: '/tasks', icon: 'checkbox-outline', activeIcon: 'checkbox' },
-  { label: 'Workflows', href: '/workflows', icon: 'flash-outline', activeIcon: 'flash' },
-  { label: 'Artifacts', href: '/artifacts', icon: 'cube-outline', activeIcon: 'cube' },
-];
-
-const ADVANCED_ITEMS: NavItem[] = [
-  { label: 'Harness', href: '/harness', icon: 'git-network-outline', activeIcon: 'git-network' },
-  { label: 'Events', href: '/events', icon: 'receipt-outline', activeIcon: 'receipt' },
-  { label: 'Telemetry', href: '/telemetry', icon: 'analytics-outline', activeIcon: 'analytics' },
-  {
-    label: 'Policy',
-    href: '/policy',
-    icon: 'shield-checkmark-outline',
-    activeIcon: 'shield-checkmark',
-  },
-  {
-    label: 'Permissions',
-    href: '/permissions' as Href,
-    icon: 'finger-print-outline',
-    activeIcon: 'finger-print',
-  },
-  {
-    label: 'Tool permissions',
-    href: '/tool-permissions' as Href,
-    icon: 'key-outline',
-    activeIcon: 'key',
-  },
-  {
-    label: 'Approvals',
-    href: '/approvals' as Href,
-    icon: 'checkmark-done-outline',
-    activeIcon: 'checkmark-done',
-  },
-];
-
 const RECENT_LIMIT = 8;
 
 export function getInitials(name: string): string {
@@ -161,8 +110,6 @@ export function AppSidebar() {
   const [progress] = useState(() => new Animated.Value(0));
   const [dragX] = useState(() => new Animated.Value(0));
   const [recents, setRecents] = useState<Conversation[]>([]);
-  const [workspaceOpen, setWorkspaceOpen] = useState(false);
-  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
 
   const panelWidth = Math.min(width * 0.86, 340);
@@ -314,7 +261,7 @@ export function AppSidebar() {
   const visibleAccounts = accounts.length > 0 ? accounts : [user];
   const canSwitchAccount = visibleAccounts.length > 1;
 
-  function renderNavRow(item: NavItem, compact = false) {
+  function renderNavRow(item: NavItem) {
     const active = isNavActive(pathname, item.href);
 
     return (
@@ -325,45 +272,23 @@ export function AppSidebar() {
         onPress={() => navigate(item.href)}
         style={({ pressed }) => [
           styles.navItem,
-          compact && styles.navItemCompact,
           active && styles.navItemActive,
           pressed && styles.pressed,
         ]}
       >
         <Ionicons
           name={active ? item.activeIcon : item.icon}
-          size={compact ? 20 : 22}
+          size={22}
           color={active ? colors.text : colors.textMuted}
         />
         <Text
           numberOfLines={1}
-          style={[styles.navLabel, compact && styles.navLabelCompact, active && styles.navLabelActive]}
+          style={[styles.navLabel, active && styles.navLabelActive]}
         >
           {item.label}
         </Text>
         {active ? <View style={styles.activeMark} /> : null}
       </Pressable>
-    );
-  }
-
-  function renderExpandable(label: string, expanded: boolean, toggle: () => void, items: NavItem[]) {
-    return (
-      <View style={styles.sectionBlock}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityState={{ expanded }}
-          onPress={toggle}
-          style={({ pressed }) => [styles.sectionToggle, pressed && styles.pressed]}
-        >
-          <Text style={styles.sectionLabelInline}>{label}</Text>
-          <Ionicons
-            name={expanded ? 'chevron-up' : 'chevron-down'}
-            size={16}
-            color={colors.textMuted}
-          />
-        </Pressable>
-        {expanded ? items.map((item) => renderNavRow(item, true)) : null}
-      </View>
     );
   }
 
@@ -434,45 +359,47 @@ export function AppSidebar() {
           <Text style={styles.primaryLabel}>WORKSPACE</Text>
           {PRIMARY_NAV_ITEMS.map((item) => renderNavRow(item))}
 
-          <View style={styles.divider} />
-          {renderExpandable(
-            'More workspace',
-            workspaceOpen,
-            () => setWorkspaceOpen((value) => !value),
-            WORKSPACE_ITEMS
-          )}
-
           {navigation.length > 0 ? (
-            <View style={styles.sectionBlock}>
-              <Text style={styles.sectionLabel}>Plugin apps</Text>
-              {navigation.map((entry) => {
-                const active = pathname.startsWith(`/plugin/${entry.pluginId}`);
+            <>
+              <View style={styles.divider} />
+              <View style={styles.sectionBlock}>
+                <Text style={styles.sectionLabel}>Plugin apps</Text>
+                {navigation.map((entry) => {
+                  const active = pathname.startsWith(`/plugin/${entry.pluginId}`);
 
-                return (
-                  <Pressable
-                    key={`${entry.pluginId}:${entry.id}`}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: active }}
-                    onPress={() => navigate(entry.path as Href)}
-                    style={({ pressed }) => [
-                      styles.navItem,
-                      styles.navItemCompact,
-                      active && styles.navItemActive,
-                      pressed && styles.pressed,
-                    ]}
-                  >
-                    <Ionicons
-                      name={navIcon(entry.icon)}
-                      size={20}
-                      color={active ? colors.text : colors.textMuted}
-                    />
-                    <Text numberOfLines={1} style={[styles.navLabel, styles.navLabelCompact, active && styles.navLabelActive]}>
-                      {entry.label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
+                  return (
+                    <Pressable
+                      key={`${entry.pluginId}:${entry.id}`}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: active }}
+                      onPress={() => navigate(entry.path as Href)}
+                      style={({ pressed }) => [
+                        styles.navItem,
+                        styles.navItemCompact,
+                        active && styles.navItemActive,
+                        pressed && styles.pressed,
+                      ]}
+                    >
+                      <Ionicons
+                        name={navIcon(entry.icon)}
+                        size={20}
+                        color={active ? colors.text : colors.textMuted}
+                      />
+                      <Text
+                        numberOfLines={1}
+                        style={[
+                          styles.navLabel,
+                          styles.navLabelCompact,
+                          active && styles.navLabelActive,
+                        ]}
+                      >
+                        {entry.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </>
           ) : null}
 
           <View style={styles.divider} />
@@ -497,23 +424,7 @@ export function AppSidebar() {
                 </Pressable>
               ))
             )}
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => navigate('/conversations' as Href)}
-              style={({ pressed }) => [styles.allChats, pressed && styles.pressed]}
-            >
-              <Text style={styles.allChatsText}>Manage chat history</Text>
-              <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
-            </Pressable>
           </View>
-
-          <View style={styles.divider} />
-          {renderExpandable(
-            'Advanced',
-            advancedOpen,
-            () => setAdvancedOpen((value) => !value),
-            ADVANCED_ITEMS
-          )}
 
           {accountMenuOpen ? (
             <View style={styles.accountMenu}>
@@ -689,13 +600,6 @@ const makeStyles = ({ colors }: AppTheme) =>
     sectionBlock: {
       gap: 2,
     },
-    sectionToggle: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      minHeight: layout.touchTarget,
-      paddingHorizontal: spacing.sm,
-    },
     navItem: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -741,11 +645,6 @@ const makeStyles = ({ colors }: AppTheme) =>
       paddingHorizontal: spacing.sm + 2,
       marginBottom: spacing.xs,
     },
-    sectionLabelInline: {
-      color: colors.textMuted,
-      ...typography.bodySmall,
-      fontWeight: '600',
-    },
     recentRow: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -764,18 +663,6 @@ const makeStyles = ({ colors }: AppTheme) =>
       ...typography.bodySmall,
       paddingHorizontal: spacing.sm + 2,
       paddingVertical: spacing.xs,
-    },
-    allChats: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      minHeight: layout.touchTarget,
-      paddingHorizontal: spacing.sm + 2,
-    },
-    allChatsText: {
-      color: colors.textMuted,
-      ...typography.bodySmall,
-      fontWeight: '600',
     },
     accountMenu: {
       gap: spacing.xs,
