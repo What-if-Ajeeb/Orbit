@@ -112,7 +112,15 @@ jest.mock('@/lib/chat', () => ({
   getChatStore: () => mockChatStore,
 }));
 
+// The drawer mounts Animated views and a scroll view; give the renderer enough
+// time on cold Jest workers without slowing down the rest of the suite.
+jest.setTimeout(30000);
+
 describe('AppSidebar', () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
   beforeEach(() => {
     jest.clearAllMocks();
     mockSidebarOpen = true;
@@ -145,6 +153,26 @@ describe('AppSidebar', () => {
     fireEvent.press(view.getByText('Projects'));
 
     expect(mockNavigate).toHaveBeenCalledWith('/projects');
+    expect(mockClose).toHaveBeenCalled();
+  });
+
+  it('opens Settings from the primary navigation', async () => {
+    const view = await render(<AppSidebar />);
+    await act(async () => {});
+
+    fireEvent.press(view.getByText('Settings'));
+
+    expect(mockNavigate).toHaveBeenCalledWith('/settings');
+    expect(mockClose).toHaveBeenCalled();
+  });
+
+  it('opens account settings when no other account is available', async () => {
+    const view = await render(<AppSidebar />);
+    await act(async () => {});
+
+    fireEvent.press(view.getByLabelText('Account settings'));
+
+    expect(mockNavigate).toHaveBeenCalledWith('/settings/account');
     expect(mockClose).toHaveBeenCalled();
   });
 
