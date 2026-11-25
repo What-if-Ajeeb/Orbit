@@ -11,10 +11,14 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { Button } from '@/components/Button';
+import { EmptyState } from '@/components/EmptyState';
 import { GlassBackdrop } from '@/components/GlassBackdrop';
 import { GlassView } from '@/components/GlassView';
 import { ScreenHeader } from '@/components/ScreenHeader';
+import { SettingsSection } from '@/components/SettingsSection';
 import { SidebarButton } from '@/components/SidebarButton';
+import { StatusPill, type StatusTone } from '@/components/StatusPill';
 import { usePluginPlatform, usePluginPlatformError, usePluginSnapshot } from '@/context/plugins';
 import { useSidebar } from '@/context/sidebar';
 import { useAppTheme, useStyles, type AppTheme } from '@/context/theme';
@@ -23,7 +27,7 @@ import type {
   PluginSummary,
   PluginTrustLevel,
 } from '@/lib/plugins/types';
-import { radius, spacing } from '@/theme';
+import { layout, radius, spacing, typography } from '@/theme';
 
 import { SmartPluginActivity } from '@/components/plugins/SmartPluginActivity';
 import { usePluginActions } from '@/components/plugins/usePluginActions';
@@ -63,12 +67,52 @@ function iconOrFallback(name: string | undefined): keyof typeof Ionicons.glyphMa
     : 'extension-puzzle-outline';
 }
 
-function statusLabel(summary: PluginSummary): string {
-  if (summary.legacy) {
-    return 'Legacy · quarantined';
+function statusTone(summary: PluginSummary): StatusTone {
+  if (summary.legacy || summary.status === 'error') {
+    return 'danger';
   }
 
   switch (summary.status) {
+    case 'running':
+      return 'success';
+    case 'available':
+      return 'accent';
+    case 'installed':
+    case 'enabled':
+      return 'info';
+    case 'enabling':
+    case 'starting':
+    case 'stopping':
+    case 'updating':
+    case 'installing':
+      return 'warning';
+    default:
+      return 'neutral';
+  }
+}
+
+function statusLabel(summary: PluginSummary): string {
+  if (summary.legacy) {
+    return 'Legacy';
+  }
+
+  switch (summary.status) {
+    case 'enabling':
+      return 'Enabling…';
+    case 'starting':
+      return 'Starting…';
+    case 'stopping':
+      return 'Stopping…';
+    case 'updating':
+      return 'Updating…';
+    case 'installing':
+      return 'Installing…';
+    case 'uninstalling':
+      return 'Uninstalling…';
+    case 'enabled':
+      return 'Enabled';
+    case 'discovered':
+      return 'Discovered';
     case 'running':
       return 'Running';
     case 'disabled':
@@ -82,25 +126,6 @@ function statusLabel(summary: PluginSummary): string {
     default:
       return summary.status;
   }
-}
-
-function statusColor(
-  summary: PluginSummary,
-  colors: AppTheme['colors']
-): string {
-  if (summary.legacy || summary.status === 'error') {
-    return colors.danger;
-  }
-
-  if (summary.status === 'running') {
-    return colors.success;
-  }
-
-  if (summary.status === 'available') {
-    return colors.accent;
-  }
-
-  return colors.textMuted;
 }
 
 export default function PluginsScreen() {
@@ -143,96 +168,80 @@ export default function PluginsScreen() {
     const busy = actions.busyPluginId === pluginId;
 
     if (busy) {
-      return <ActivityIndicator size="small" color={colors.accent} />;
+      return (
+        <View style={styles.busyAction} accessibilityRole="text" accessibilityLabel="Working">
+          <ActivityIndicator size="small" color={colors.accent} />
+        </View>
+      );
     }
 
     if (summary.legacy) {
       return (
-        <Pressable
-          accessibilityRole="button"
+        <Button
+          label="Review"
+          variant="secondary"
           onPress={() => openDetail(pluginId)}
-          style={({ pressed }) => [styles.action, pressed && styles.pressed]}
-        >
-          <Text style={styles.actionText}>Review</Text>
-          <Ionicons name="chevron-forward" size={14} color={colors.accent} />
-        </Pressable>
+          style={styles.actionButton}
+        />
       );
     }
 
     if (summary.hasUpdate) {
       return (
-        <Pressable
-          accessibilityRole="button"
+        <Button
+          label="Update"
           onPress={() => {
             void actions.update(pluginId);
           }}
-          style={({ pressed }) => [
-            styles.action,
-            styles.actionAccent,
-            pressed && styles.pressed,
-          ]}
-        >
-          <Ionicons name="cloud-download-outline" size={14} color={colors.onInverse} />
-          <Text style={styles.actionTextOnAccent}>Update</Text>
-        </Pressable>
+          style={styles.actionButton}
+        />
       );
     }
 
     if (summary.status === 'available') {
       return (
-        <Pressable
-          accessibilityRole="button"
+        <Button
+          label="Install"
           onPress={() => {
             void actions.install(pluginId);
           }}
-          style={({ pressed }) => [
-            styles.action,
-            styles.actionAccent,
-            pressed && styles.pressed,
-          ]}
-        >
-          <Ionicons name="add" size={15} color={colors.onInverse} />
-          <Text style={styles.actionTextOnAccent}>Install</Text>
-        </Pressable>
+          style={styles.actionButton}
+        />
       );
     }
 
     if (summary.status === 'running') {
       return (
-        <Pressable
-          accessibilityRole="button"
+        <Button
+          label="Open"
+          variant="secondary"
           onPress={() =>
             router.navigate(
               `/plugin/${encodeURIComponent(pluginId)}` as Href
             )
           }
-          style={({ pressed }) => [styles.action, pressed && styles.pressed]}
-        >
-          <Text style={styles.actionText}>Open</Text>
-          <Ionicons name="arrow-forward" size={14} color={colors.accent} />
-        </Pressable>
+          style={styles.actionButton}
+        />
       );
     }
 
     return (
-      <Pressable
-        accessibilityRole="button"
+      <Button
+        label={summary.status === 'error' ? 'Retry' : 'Enable'}
         onPress={() => {
           void actions.enable(pluginId);
         }}
-        style={({ pressed }) => [
-          styles.action,
-          styles.actionAccent,
-          pressed && styles.pressed,
-        ]}
-      >
-        <Ionicons name="play" size={13} color={colors.onInverse} />
-        <Text style={styles.actionTextOnAccent}>
-          {summary.status === 'error' ? 'Retry' : 'Enable'}
-        </Text>
-      </Pressable>
+        style={styles.actionButton}
+      />
     );
   }
+
+  const emptyMessage =
+    filter === 'available'
+      ? 'Every bundled plugin is already installed. Choose another filter to review them.'
+      : filter === 'updates'
+        ? 'All installed plugins are up to date.'
+        : 'Switch filters to review installed or available plugins.';
 
   return (
     <View style={styles.root}>
@@ -294,123 +303,135 @@ export default function PluginsScreen() {
 
         <SmartPluginActivity />
 
-        <View style={styles.filters}>
-          {FILTERS.map((item) => {
-            const selected = filter === item.id;
-
-            return (
-              <Pressable
-                key={item.id}
-                accessibilityRole="button"
-                accessibilityState={{ selected }}
-                onPress={() => setFilter(item.id)}
-                style={({ pressed }) => [
-                  styles.filter,
-                  selected && styles.filterSelected,
-                  pressed && styles.pressed,
-                ]}
-              >
-                <Text
-                  style={[styles.filterText, selected && styles.filterTextSelected]}
-                >
-                  {item.label}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-
-        {summaries.length === 0 ? (
-          <GlassView style={styles.empty}>
-            <Ionicons name="extension-puzzle-outline" size={28} color={colors.textMuted} />
-            <Text style={styles.emptyTitle}>No plugins here yet</Text>
-            <Text style={styles.emptyBody}>
-              {filter === 'available'
-                ? 'Every bundled plugin is already installed.'
-                : 'Switch filters or install the bundled example plugin from Available.'}
+        <SettingsSection
+          title="Plugin library"
+          description="Bundled extensions are reviewed before they are installed."
+          action={
+            <Text style={styles.count}>
+              {snapshot.summaries.length} total
             </Text>
-          </GlassView>
-        ) : null}
+          }
+        >
+          <View style={styles.filters}>
+            {FILTERS.map((item) => {
+              const selected = filter === item.id;
 
-        {summaries.map((summary) => {
-          const pluginId = summary.manifest.pluginId;
-          const core = snapshot.corePluginIds.includes(pluginId);
-
-          return (
-            <GlassView key={pluginId} style={styles.card}>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={`Open ${summary.manifest.name}`}
-                onPress={() => openDetail(pluginId)}
-                style={({ pressed }) => [styles.cardMain, pressed && styles.pressed]}
-              >
-                <View style={styles.iconBubble}>
-                  <Ionicons
-                    name={iconOrFallback(summary.manifest.icon)}
-                    size={22}
-                    color={colors.accent}
-                  />
-                </View>
-
-                <View style={styles.cardText}>
-                  <View style={styles.nameRow}>
-                    <Text numberOfLines={1} style={styles.name}>
-                      {summary.manifest.name}
-                    </Text>
-                    <View style={styles.versionPill}>
-                      <Text style={styles.versionText}>
-                        v{summary.manifest.version}
-                      </Text>
-                    </View>
-                    {core ? (
-                      <View style={styles.corePill}>
-                        <Text style={styles.coreText}>CORE</Text>
-                      </View>
-                    ) : null}
-                  </View>
-
-                  <Text numberOfLines={2} style={styles.description}>
-                    {summary.manifest.description}
+              return (
+                <Pressable
+                  key={item.id}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected }}
+                  onPress={() => setFilter(item.id)}
+                  style={({ pressed }) => [
+                    styles.filter,
+                    selected && styles.filterSelected,
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <Text
+                    style={[styles.filterText, selected && styles.filterTextSelected]}
+                  >
+                    {item.label}
                   </Text>
+                </Pressable>
+              );
+            })}
+          </View>
 
-                  <View style={styles.metaRow}>
-                    <Text
-                      style={[
-                        styles.status,
-                        { color: statusColor(summary, colors) },
-                      ]}
+          {summaries.length === 0 ? (
+            <EmptyState
+              icon="extension-puzzle-outline"
+              title="No plugins to show"
+              message={emptyMessage}
+              actionLabel={filter === 'all' ? 'Browse marketplace' : 'Show all plugins'}
+              onAction={() => {
+                if (filter === 'all') {
+                  router.push('/marketplace' as Href);
+                } else {
+                  setFilter('all');
+                }
+              }}
+            />
+          ) : (
+            <View style={styles.list}>
+              {summaries.map((summary) => {
+                const pluginId = summary.manifest.pluginId;
+                const core = snapshot.corePluginIds.includes(pluginId);
+                const tone = statusTone(summary);
+
+                return (
+                  <GlassView key={pluginId} style={styles.card}>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={`Open ${summary.manifest.name}`}
+                      onPress={() => openDetail(pluginId)}
+                      style={({ pressed }) => [styles.cardMain, pressed && styles.pressed]}
                     >
-                      ● {statusLabel(summary)}
-                    </Text>
-                    <Text style={styles.trust}>
-                      {TRUST_LABEL[summary.trustLevel]} · {summary.source}
-                    </Text>
-                  </View>
+                      <View style={styles.iconWrap}>
+                        <Ionicons
+                          name={iconOrFallback(summary.manifest.icon)}
+                          size={21}
+                          color={colors.accent}
+                        />
+                      </View>
 
-                  {summary.missingPermissions.length > 0 &&
-                  INSTALLED_STATUSES.has(summary.status) ? (
-                    <View style={styles.permissionHint}>
-                      <Ionicons name="lock-closed-outline" size={12} color={colors.warning} />
-                      <Text style={styles.permissionHintText}>
-                        Needs {summary.missingPermissions
-                          .map((permission) => PLUGIN_PERMISSION_META[permission].label)
-                          .join(', ')}
-                      </Text>
-                    </View>
-                  ) : null}
+                      <View style={styles.cardText}>
+                        <View style={styles.titleRow}>
+                          <Text numberOfLines={1} style={styles.name}>
+                            {summary.manifest.name}
+                          </Text>
+                          <StatusPill
+                            label={statusLabel(summary)}
+                            tone={tone}
+                            showDot={tone === 'success' || tone === 'danger'}
+                            style={styles.statusPill}
+                          />
+                        </View>
 
-                  {summary.error ? (
-                    <Text numberOfLines={2} style={styles.errorText}>
-                      {summary.error}
-                    </Text>
-                  ) : null}
-                </View>
-              </Pressable>
+                        <Text numberOfLines={2} style={styles.description}>
+                          {summary.manifest.description}
+                        </Text>
 
-              <View style={styles.actionColumn}>{primaryAction(summary)}</View>
-            </GlassView>
-          );
-        })}
+                        <Text numberOfLines={1} style={styles.meta}>
+                          v{summary.manifest.version} · {TRUST_LABEL[summary.trustLevel]} ·{' '}
+                          {summary.source}
+                          {core ? ' · Core' : ''}
+                        </Text>
+
+                        {summary.missingPermissions.length > 0 &&
+                        INSTALLED_STATUSES.has(summary.status) ? (
+                          <View style={styles.permissionHint}>
+                            <Ionicons
+                              name="lock-closed-outline"
+                              size={13}
+                              color={colors.warning}
+                            />
+                            <Text style={styles.permissionHintText}>
+                              Needs {summary.missingPermissions
+                                .map(
+                                  (permission) =>
+                                    PLUGIN_PERMISSION_META[permission].label
+                                )
+                                .join(', ')}
+                            </Text>
+                          </View>
+                        ) : null}
+
+                        {summary.error ? (
+                          <Text numberOfLines={2} style={styles.errorText}>
+                            {summary.error}
+                          </Text>
+                        ) : null}
+                      </View>
+                    </Pressable>
+
+                    <View style={styles.actionColumn}>{primaryAction(summary)}</View>
+                  </GlassView>
+                );
+              })}
+            </View>
+          )}
+        </SettingsSection>
 
         <View style={styles.footerLinks}>
           <Pressable
@@ -456,7 +477,7 @@ function Stat({ label, value }: { label: string; value: number }) {
   );
 }
 
-const makeStyles = ({ colors, glass }: AppTheme) =>
+const makeStyles = ({ colors }: AppTheme) =>
   StyleSheet.create({
     root: {
       flex: 1,
@@ -474,7 +495,8 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
     stats: {
       flexDirection: 'row',
       borderRadius: radius.lg,
-      padding: spacing.md,
+      paddingVertical: spacing.sm + 2,
+      paddingHorizontal: spacing.md,
       gap: spacing.sm,
     },
     stat: {
@@ -484,12 +506,12 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
     },
     statValue: {
       color: colors.text,
-      fontSize: 22,
+      ...typography.section,
       fontWeight: '700',
     },
     statLabel: {
       color: colors.textMuted,
-      fontSize: 10,
+      ...typography.caption,
       fontWeight: '600',
     },
     banner: {
@@ -497,14 +519,14 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
       alignItems: 'center',
       gap: spacing.sm,
       borderRadius: radius.md,
-      borderWidth: 1,
-      borderColor: glass.border,
-      backgroundColor: glass.fillSoft,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
+      backgroundColor: colors.surfaceAlt,
       padding: spacing.sm,
     },
     bannerText: {
       color: colors.textMuted,
-      fontSize: 12,
+      ...typography.bodySmall,
     },
     bannerError: {
       borderColor: colors.danger,
@@ -513,8 +535,7 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
     bannerErrorText: {
       flex: 1,
       color: colors.danger,
-      fontSize: 12,
-      lineHeight: 17,
+      ...typography.bodySmall,
     },
     bannerNotice: {
       borderColor: colors.success,
@@ -523,8 +544,11 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
     bannerNoticeText: {
       flex: 1,
       color: colors.success,
-      fontSize: 12,
-      lineHeight: 17,
+      ...typography.bodySmall,
+    },
+    count: {
+      color: colors.textFaint,
+      ...typography.caption,
     },
     filters: {
       flexDirection: 'row',
@@ -532,12 +556,13 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
       gap: spacing.xs,
     },
     filter: {
+      minHeight: 36,
+      justifyContent: 'center',
       borderRadius: radius.pill,
-      borderWidth: 1,
-      borderColor: glass.border,
-      backgroundColor: glass.fillSoft,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
+      backgroundColor: colors.surfaceAlt,
       paddingHorizontal: spacing.md,
-      paddingVertical: 7,
     },
     filterSelected: {
       borderColor: colors.accent,
@@ -545,28 +570,14 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
     },
     filterText: {
       color: colors.textMuted,
-      fontSize: 12,
+      ...typography.bodySmall,
       fontWeight: '600',
     },
     filterTextSelected: {
       color: colors.accent,
     },
-    empty: {
-      alignItems: 'center',
-      gap: spacing.xs,
-      borderRadius: radius.lg,
-      padding: spacing.xl,
-    },
-    emptyTitle: {
-      color: colors.text,
-      fontSize: 16,
-      fontWeight: '600',
-    },
-    emptyBody: {
-      color: colors.textMuted,
-      fontSize: 12,
-      lineHeight: 17,
-      textAlign: 'center',
+    list: {
+      gap: spacing.sm,
     },
     card: {
       flexDirection: 'row',
@@ -581,10 +592,10 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
       alignItems: 'flex-start',
       gap: spacing.sm,
     },
-    iconBubble: {
-      width: 44,
-      height: 44,
-      borderRadius: 14,
+    iconWrap: {
+      width: 40,
+      height: 40,
+      borderRadius: 12,
       backgroundColor: colors.accentSoft,
       alignItems: 'center',
       justifyContent: 'center',
@@ -593,7 +604,7 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
       flex: 1,
       gap: 3,
     },
-    nameRow: {
+    titleRow: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: spacing.xs,
@@ -601,102 +612,53 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
     name: {
       flexShrink: 1,
       color: colors.text,
-      fontSize: 15,
+      ...typography.body,
       fontWeight: '600',
     },
-    versionPill: {
-      borderRadius: radius.pill,
-      backgroundColor: glass.fillSoft,
-      paddingHorizontal: 6,
-      paddingVertical: 2,
-    },
-    versionText: {
-      color: colors.textMuted,
-      fontSize: 9,
-      fontWeight: '600',
-    },
-    corePill: {
-      borderRadius: radius.pill,
-      backgroundColor: colors.accentSoft,
-      paddingHorizontal: 6,
-      paddingVertical: 2,
-    },
-    coreText: {
-      color: colors.accent,
-      fontSize: 8,
-      fontWeight: '800',
-      letterSpacing: 0.8,
+    statusPill: {
+      maxWidth: 120,
     },
     description: {
       color: colors.textMuted,
-      fontSize: 11,
-      lineHeight: 16,
+      ...typography.caption,
     },
-    metaRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      flexWrap: 'wrap',
-      gap: spacing.xs,
-    },
-    status: {
-      fontSize: 10,
-      fontWeight: '700',
-    },
-    trust: {
+    meta: {
       color: colors.textFaint,
-      fontSize: 10,
+      ...typography.caption,
     },
     permissionHint: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 4,
+      gap: 5,
     },
     permissionHintText: {
       flex: 1,
       color: colors.warning,
-      fontSize: 10,
-      lineHeight: 14,
+      ...typography.caption,
     },
     errorText: {
       color: colors.danger,
-      fontSize: 10,
-      lineHeight: 14,
+      ...typography.caption,
     },
     actionColumn: {
-      minWidth: 76,
+      minWidth: 88,
       alignItems: 'flex-end',
     },
-    action: {
-      flexDirection: 'row',
+    actionButton: {
+      minHeight: layout.touchTarget - 4,
+      paddingHorizontal: spacing.md,
+    },
+    busyAction: {
+      width: 88,
+      minHeight: layout.touchTarget - 4,
       alignItems: 'center',
       justifyContent: 'center',
-      gap: 4,
-      borderRadius: radius.pill,
-      borderWidth: 1,
-      borderColor: glass.border,
-      backgroundColor: glass.fillSoft,
-      paddingHorizontal: spacing.sm,
-      paddingVertical: 7,
-    },
-    actionAccent: {
-      borderColor: colors.accent,
-      backgroundColor: colors.accent,
-    },
-    actionText: {
-      color: colors.accent,
-      fontSize: 11,
-      fontWeight: '700',
-    },
-    actionTextOnAccent: {
-      color: colors.onInverse,
-      fontSize: 11,
-      fontWeight: '700',
     },
     footerLinks: {
       flexDirection: 'row',
       flexWrap: 'wrap',
       gap: spacing.md,
-      paddingVertical: spacing.sm,
+      paddingVertical: spacing.xs,
     },
     linkButton: {
       flexDirection: 'row',
@@ -705,13 +667,12 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
     },
     linkText: {
       color: colors.accent,
-      fontSize: 12,
+      ...typography.bodySmall,
       fontWeight: '600',
     },
     footnote: {
       color: colors.textFaint,
-      fontSize: 10,
-      lineHeight: 15,
+      ...typography.caption,
       textAlign: 'center',
     },
     pressed: {

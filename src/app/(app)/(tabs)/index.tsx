@@ -226,7 +226,7 @@ export default function HomeScreen() {
                   style={[styles.statusDot, { backgroundColor: aiReady ? colors.success : colors.warning }]}
                 />
                 <Text style={styles.statusText}>
-                  {aiReady ? 'Online · Personal AI' : 'Local mode · basic commands'}
+                  {aiReady ? 'AI configured · Personal Agent' : 'Local mode · basic commands'}
                 </Text>
               </View>
             </View>

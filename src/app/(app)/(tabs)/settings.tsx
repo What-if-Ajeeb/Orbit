@@ -19,11 +19,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Button } from '@/components/Button';
 import { FormError } from '@/components/FormError';
-import { GlassBackdrop } from '@/components/GlassBackdrop';
 import { GlassView } from '@/components/GlassView';
 import { McpServersCard } from '@/components/McpServersCard';
 import { ScreenHeader } from '@/components/ScreenHeader';
+import { SettingsNavRow } from '@/components/SettingsNavRow';
+import { SettingsSection } from '@/components/SettingsSection';
 import { SidebarButton } from '@/components/SidebarButton';
+import { StatusPill, type StatusTone } from '@/components/StatusPill';
 import { TextField } from '@/components/TextField';
 import { useSession } from '@/context/auth';
 import { usePluginSnapshot } from '@/context/plugins';
@@ -55,7 +57,7 @@ import {
   sendTestReminder,
   type NotificationPermissionState,
 } from '@/lib/notifications';
-import { radius, spacing } from '@/theme';
+import { fonts, layout, radius, spacing, typography } from '@/theme';
 
 
 const THEME_OPTIONS: { id: ThemeMode; label: string }[] = [
@@ -66,6 +68,31 @@ const THEME_OPTIONS: { id: ThemeMode; label: string }[] = [
 
 type DiscoveryStatus = 'idle' | 'loading' | 'success' | 'error';
 type DiscoveryResult = { models: OllamaModel[]; selectedModel: string };
+type ConnectionHealth =
+  | 'unknown'
+  | 'connecting'
+  | 'connected'
+  | 'disconnected'
+  | 'unreachable'
+  | 'error';
+
+const CONNECTION_LABELS: Record<ConnectionHealth, string> = {
+  unknown: 'Not checked',
+  connecting: 'Connecting',
+  connected: 'Connected',
+  disconnected: 'Disconnected',
+  unreachable: 'Unreachable',
+  error: 'Error',
+};
+
+const CONNECTION_TONES: Record<ConnectionHealth, StatusTone> = {
+  unknown: 'neutral',
+  connecting: 'info',
+  connected: 'success',
+  disconnected: 'warning',
+  unreachable: 'danger',
+  error: 'danger',
+};
 
 export default function SettingsScreen() {
   const { colors, mode, setMode } = useAppTheme();
@@ -84,7 +111,16 @@ export default function SettingsScreen() {
   const [ollamaModels, setOllamaModels] = useState<OllamaModel[]>([]);
   const [discoveryStatus, setDiscoveryStatus] = useState<DiscoveryStatus>('idle');
   const [discoveryError, setDiscoveryError] = useState<string | null>(null);
+  const [connectionHealth, setConnectionHealth] = useState<ConnectionHealth>('unknown');
+  const [connectionDetail, setConnectionDetail] = useState<string | null>(
+    'Configuration saved. Run a connection test to verify live access.'
+  );
   const discoveryRef = useRef<AbortController | null>(null);
+
+  function markConnectionUnchecked() {
+    setConnectionHealth('unknown');
+    setConnectionDetail('Configuration changed. Test the connection to verify it.');
+  }
 
   const discoverOllamaModels = useCallback(
     async (target: AiSettings, autoSelect = false): Promise<DiscoveryResult | null> => {
@@ -93,6 +129,8 @@ export default function SettingsScreen() {
       discoveryRef.current = controller;
       setDiscoveryStatus('loading');
       setDiscoveryError(null);
+      setConnectionHealth('connecting');
+      setConnectionDetail('Checking the Ollama server on this device…');
 
       try {
         const models = await listOllamaModels(target.baseUrl, {
@@ -105,6 +143,12 @@ export default function SettingsScreen() {
 
         setOllamaModels(models);
         setDiscoveryStatus('success');
+        setConnectionHealth(models.length > 0 ? 'connected' : 'error');
+        setConnectionDetail(
+          models.length > 0
+            ? `Ollama reachable with ${models.length} installed model${models.length === 1 ? '' : 's'}.`
+            : 'Ollama is reachable, but no models are installed. Pull a model and retry.'
+        );
 
         if (autoSelect && selectedModel && selectedModel !== target.model) {
           const saved = await saveAiSettings({
@@ -124,11 +168,13 @@ export default function SettingsScreen() {
 
         setOllamaModels([]);
         setDiscoveryStatus('error');
-        setDiscoveryError(
+        const message =
           discoverError instanceof Error
             ? discoverError.message
-            : 'Could not reach Ollama. Check that the app is running on this device.'
-        );
+            : 'Could not reach Ollama. Check that the app is running on this device.';
+        setDiscoveryError(message);
+        setConnectionHealth('unreachable');
+        setConnectionDetail(message);
         return null;
       } finally {
         if (discoveryRef.current === controller) {
@@ -160,6 +206,16 @@ export default function SettingsScreen() {
             setOllamaModels([]);
             setDiscoveryStatus('idle');
             setDiscoveryError(null);
+
+            if (isAiConfigured(nextSettings)) {
+              setConnectionHealth('unknown');
+              setConnectionDetail(
+                'Configuration saved. Run a connection test to verify live access.'
+              );
+            } else {
+              setConnectionHealth('disconnected');
+              setConnectionDetail('Add provider details before testing the connection.');
+            }
           }
         }
       })();
@@ -194,7 +250,7 @@ export default function SettingsScreen() {
     discoveryStatus === 'loading'
       ? 'Discovering Ollama models…'
       : discoveryStatus === 'success'
-        ? `Ollama online · ${ollamaModels.length} model${ollamaModels.length === 1 ? '' : 's'}`
+        ? `Ollama reachable · ${ollamaModels.length} model${ollamaModels.length === 1 ? '' : 's'}`
         : discoveryStatus === 'error'
           ? 'Ollama unreachable'
           : 'Ollama not checked yet';
@@ -210,6 +266,7 @@ export default function SettingsScreen() {
   function update(patch: Partial<AiSettings>) {
     setNotice(null);
     setError(null);
+    markConnectionUnchecked();
 
     if (patch.baseUrl !== undefined) {
       discoveryRef.current?.abort();
@@ -224,6 +281,7 @@ export default function SettingsScreen() {
   function selectProvider(provider: AiProvider) {
     setNotice(null);
     setError(null);
+    markConnectionUnchecked();
     setOllamaModels([]);
     setDiscoveryStatus('idle');
     setDiscoveryError(null);
@@ -233,6 +291,7 @@ export default function SettingsScreen() {
   function selectMode(mode: AiConnectionMode) {
     setNotice(null);
     setError(null);
+    markConnectionUnchecked();
     setOllamaModels([]);
     setDiscoveryStatus('idle');
     setDiscoveryError(null);
@@ -269,6 +328,8 @@ export default function SettingsScreen() {
             ? 'Local AI server saved. The agent will use it for chat.'
             : 'AI settings saved. The agent now runs in full AI mode.'
         );
+        setConnectionHealth('unknown');
+        setConnectionDetail('Settings saved. Test the connection to verify live access.');
       }
 
       return saved;
@@ -309,26 +370,36 @@ export default function SettingsScreen() {
       const saved = await persist(false);
 
       if (!saved) {
+        setConnectionHealth('error');
+        setConnectionDetail('Fix the highlighted settings, then try again.');
         return;
       }
 
       if (!isAiConfigured(saved)) {
-        setError(
+        const message =
           saved.mode === 'local'
             ? 'Add a valid local server URL and model to run the test.'
-            : 'Add an API key to run the test.'
-        );
+            : 'Add an API key to run the test.';
+        setError(message);
+        setConnectionHealth('disconnected');
+        setConnectionDetail(message);
         return;
       }
 
+      setConnectionHealth('connecting');
+      setConnectionDetail('Testing the provider connection…');
       const reply = await pingAi(saved);
-      setNotice(`Connection successful. Provider replied: "${reply.slice(0, 40)}"`);
+      setConnectionHealth('connected');
+      setConnectionDetail(`Provider replied: ${reply.slice(0, 80)}`);
+      setNotice('Connection successful. The provider responded to a live test request.');
     } catch (testError) {
-      setError(
+      const message =
         testError instanceof Error
           ? testError.message
-          : 'Connection test failed. Check your settings.'
-      );
+          : 'Connection test failed. Check your settings.';
+      setError(message);
+      setConnectionHealth('unreachable');
+      setConnectionDetail(message);
     } finally {
       setIsTesting(false);
     }
@@ -357,6 +428,8 @@ export default function SettingsScreen() {
         setError(
           'Ollama is reachable but no models are installed. Pull a model in Ollama, then tap Retry.'
         );
+        setConnectionHealth('error');
+        setConnectionDetail('Server reachable; no installed models are available to chat.');
         return;
       }
 
@@ -379,7 +452,7 @@ export default function SettingsScreen() {
             try {
               const saved = await saveAiSettings({ ...currentSettings, apiKey: '' });
               setSettings(saved);
-              setNotice('API key remove kar di gayi.');
+              setNotice('API key removed. The agent switched to local mode.');
             } catch {
               setError('Could not remove the key.');
             }
@@ -395,7 +468,7 @@ export default function SettingsScreen() {
     setPermission(nextPermission);
 
     if (granted) {
-      setNotice('Notifications enabled. Ab reminders time par aayenge.');
+      setNotice('Notifications enabled. You will be reminded 15 minutes before a task is due.');
     } else {
       setError('Notifications are not allowed. Enable them in system settings.');
     }
@@ -406,7 +479,7 @@ export default function SettingsScreen() {
     setPermission(await getNotificationPermission());
 
     if (sent) {
-      setNotice('Test reminder 3 seconds me aayega.');
+      setNotice('Test reminder scheduled. It should arrive in about 3 seconds.');
     } else {
       setError('Could not send a test reminder. Check notification permission.');
     }
@@ -445,20 +518,21 @@ export default function SettingsScreen() {
 
   return (
     <View style={styles.root}>
-      <GlassBackdrop />
-
       <ScrollView
         contentContainerStyle={[
           styles.content,
-          { paddingTop: insets.top + spacing.md, paddingBottom: spacing.xl },
+          {
+            paddingTop: insets.top + spacing.md,
+            paddingBottom: insets.bottom + spacing.lg * 2,
+          },
         ]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
         <ScreenHeader
           eyebrow="SETTINGS"
-          title="Setup"
-          subtitle="AI brain, reminders and your account."
+          title="Settings"
+          subtitle="Appearance, AI access, integrations, security and account."
           left={<SidebarButton onPress={openSidebar} />}
         />
 
@@ -470,13 +544,15 @@ export default function SettingsScreen() {
 
         {notice ? (
           <View style={styles.notice}>
-            <Ionicons name="checkmark-circle" size={15} color={colors.success} />
+            <Ionicons name="checkmark-circle" size={16} color={colors.success} />
             <Text style={styles.noticeText}>{notice}</Text>
           </View>
         ) : null}
 
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>Appearance</Text>
+        <SettingsSection
+          title="Appearance"
+          description="Choose how ORBIT looks on this device."
+        >
           <GlassView style={styles.card}>
             <View style={styles.settingRow}>
               <View style={styles.settingIconWrap}>
@@ -484,10 +560,11 @@ export default function SettingsScreen() {
               </View>
               <View style={styles.settingText}>
                 <Text style={styles.settingTitle}>Color mode</Text>
-                <Text style={styles.settingDescription}>Pick a look, or follow your device setting.</Text>
+                <Text style={styles.settingDescription}>
+                  Use light, dark, or follow your device setting.
+                </Text>
               </View>
             </View>
-
             <SegmentedButtons
               value={mode}
               onValueChange={(value) => setMode(value as ThemeMode)}
@@ -504,31 +581,52 @@ export default function SettingsScreen() {
               }))}
             />
           </GlassView>
-        </View>
+        </SettingsSection>
 
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionLabel}>AI Connection</Text>
-            <View style={[styles.badge, aiReady ? styles.badgeOn : styles.badgeOff]}>
-              <Text style={[styles.badgeText, { color: aiReady ? colors.success : colors.textMuted }]}>
-                {aiReady ? 'Ready' : 'Not set'}
+        <SettingsSection
+          title="AI Connection"
+          description="Saved provider details and live connection health are shown separately."
+          action={
+            <StatusPill
+              label={aiReady ? 'Configured' : 'Not configured'}
+              tone={aiReady ? 'success' : 'neutral'}
+              showDot
+            />
+          }
+        >
+          <GlassView style={styles.card}>
+            <View style={styles.statusRow}>
+              <StatusPill
+                label={`Live: ${CONNECTION_LABELS[connectionHealth]}`}
+                tone={CONNECTION_TONES[connectionHealth]}
+                showDot
+              />
+              <Text style={styles.statusDetail}>
+                {connectionDetail ??
+                  (aiReady
+                    ? 'Run a connection test to verify live access.'
+                    : 'Add provider details before testing the connection.')}
               </Text>
             </View>
-          </View>
 
-          <GlassView style={styles.card}>
             <View style={styles.settingRow}>
               <View style={[styles.settingIconWrap, { backgroundColor: colors.accentSoft }]}>
-                <Ionicons name={isLocalAi ? 'server-outline' : 'cloud-outline'} size={18} color={colors.accent} />
+                <Ionicons
+                  name={isLocalAi ? 'server-outline' : 'cloud-outline'}
+                  size={18}
+                  color={colors.accent}
+                />
               </View>
               <View style={styles.settingText}>
-                <Text style={styles.settingTitle}>{isLocalAi ? 'Local server' : 'Cloud provider'}</Text>
+                <Text style={styles.settingTitle}>
+                  {isLocalAi ? 'Local server' : 'Cloud provider'}
+                </Text>
                 <Text style={styles.settingDescription}>
                   {isOllamaLocal
-                    ? 'Discover installed models from Ollama running on this device. No API key required.'
+                    ? 'Discover installed models from Ollama running on this device.'
                     : isLocalAi
-                      ? 'Connect to an OpenAI-compatible server on your network. No API key required.'
-                      : 'Bring your own API key. Orbit does not run a shared server.'}
+                      ? 'Connect to an OpenAI-compatible server on your network.'
+                      : 'Bring your own API key. ORBIT does not run a shared server.'}
                 </Text>
               </View>
             </View>
@@ -548,7 +646,7 @@ export default function SettingsScreen() {
             <Text style={styles.fieldLabel}>Provider</Text>
             <View style={styles.providerRow}>
               {providerOrder.map((provider) => {
-                const active = settings.provider === provider;
+                const active = currentSettings.provider === provider;
                 return (
                   <Pressable
                     key={provider}
@@ -574,10 +672,14 @@ export default function SettingsScreen() {
             {preset.docsUrl ? (
               <Pressable
                 accessibilityRole="link"
-                onPress={() => { void Linking.openURL(preset.docsUrl); }}
+                onPress={() => {
+                  void Linking.openURL(preset.docsUrl);
+                }}
                 style={styles.docsLink}
               >
-                <Text style={styles.docsLinkText}>{isLocalAi ? 'Ollama setup guide' : 'Get an API key'}</Text>
+                <Text style={styles.docsLinkText}>
+                  {isLocalAi ? 'Ollama setup guide' : 'Get an API key'}
+                </Text>
                 <Ionicons name="open-outline" size={14} color={colors.accent} />
               </Pressable>
             ) : null}
@@ -586,36 +688,37 @@ export default function SettingsScreen() {
               <View style={[styles.infoBox, styles.infoBoxAccent]}>
                 <Ionicons name="wifi-outline" size={16} color={colors.accent} />
                 <Text style={styles.infoBoxText}>
-                  Native API base URL: <Text style={styles.infoCode}>http://127.0.0.1:11434</Text> — no <Text style={styles.infoCode}>/v1</Text>. Plain HTTP is allowed only for this loopback address in the Android build. Do not expose Ollama on your LAN or the public internet.
+                  Native API base URL:{' '}
+                  <Text style={styles.infoCode}>http://127.0.0.1:11434</Text> — no{' '}
+                  <Text style={styles.infoCode}>/v1</Text>. Plain HTTP is allowed only for this
+                  loopback address. Do not expose Ollama on your LAN or the public internet.
                 </Text>
               </View>
             ) : null}
 
             {isOllamaLocal ? (
               <View style={styles.discoveryBox}>
-                <View style={styles.settingIconWrap}>
-                  {discoveryStatus === 'loading' ? (
-                    <ActivityIndicator size="small" color={colors.accent} />
-                  ) : (
-                    <Ionicons
-                      name={
-                        discoveryStatus === 'success'
-                          ? 'checkmark-circle'
-                          : discoveryStatus === 'error'
-                            ? 'alert-circle'
-                            : 'radio-outline'
-                      }
-                      size={18}
-                      color={
-                        discoveryStatus === 'success'
-                          ? colors.success
-                          : discoveryStatus === 'error'
-                            ? colors.danger
-                            : colors.textMuted
-                      }
-                    />
-                  )}
-                </View>
+                {discoveryStatus === 'loading' ? (
+                  <ActivityIndicator size="small" color={colors.accent} />
+                ) : (
+                  <Ionicons
+                    name={
+                      discoveryStatus === 'success'
+                        ? 'checkmark-circle'
+                        : discoveryStatus === 'error'
+                          ? 'alert-circle'
+                          : 'radio-outline'
+                    }
+                    size={18}
+                    color={
+                      discoveryStatus === 'success'
+                        ? colors.success
+                        : discoveryStatus === 'error'
+                          ? colors.danger
+                          : colors.textMuted
+                    }
+                  />
+                )}
                 <View style={styles.discoveryText}>
                   <Text style={styles.discoveryTitle}>{discoveryTitle}</Text>
                   {discoveryDetail ? (
@@ -626,7 +729,9 @@ export default function SettingsScreen() {
                   accessibilityRole="button"
                   accessibilityLabel="Retry Ollama model discovery"
                   disabled={discoveryStatus === 'loading'}
-                  onPress={() => { void discoverOllamaModels(currentSettings); }}
+                  onPress={() => {
+                    void discoverOllamaModels(currentSettings);
+                  }}
                   style={({ pressed }) => [styles.retryButton, pressed && styles.pressed]}
                 >
                   <Ionicons name="refresh-outline" size={18} color={colors.accent} />
@@ -640,7 +745,6 @@ export default function SettingsScreen() {
                 <View style={styles.providerRow}>
                   {ollamaModels.map((model) => {
                     const active = currentSettings.model === model.name;
-
                     return (
                       <Pressable
                         key={model.name}
@@ -663,7 +767,9 @@ export default function SettingsScreen() {
             <Button
               label="Connect on-device Ollama"
               variant="secondary"
-              onPress={() => { void connectOnDeviceOllama(); }}
+              onPress={() => {
+                void connectOnDeviceOllama();
+              }}
               loading={isSaving}
               disabled={isTesting || discoveryStatus === 'loading'}
             />
@@ -671,7 +777,7 @@ export default function SettingsScreen() {
             <View style={styles.fields}>
               <TextField
                 label={isLocalAi ? 'Server URL' : 'Base URL'}
-                value={settings.baseUrl}
+                value={currentSettings.baseUrl}
                 onChangeText={(value) => update({ baseUrl: value })}
                 placeholder={
                   isOllamaLocal
@@ -693,9 +799,11 @@ export default function SettingsScreen() {
               />
               <TextField
                 label="Model"
-                value={settings.model}
+                value={currentSettings.model}
                 onChangeText={(value) => update({ model: value })}
-                placeholder={isOllamaLocal ? 'Select a discovered model' : preset.model || 'model-name'}
+                placeholder={
+                  isOllamaLocal ? 'Select a discovered model' : preset.model || 'model-name'
+                }
                 autoCapitalize="none"
                 autoCorrect={false}
                 hint={
@@ -707,13 +815,13 @@ export default function SettingsScreen() {
               {!isLocalAi ? (
                 <TextField
                   label="API key"
-                  value={settings.apiKey}
+                  value={currentSettings.apiKey}
                   onChangeText={(value) => update({ apiKey: value })}
                   placeholder={preset.keyHint}
                   autoCapitalize="none"
                   autoCorrect={false}
                   secureTextEntry
-                  hint="Stored in encrypted SecureStore on this device."
+                  hint="Stored encrypted on this device."
                 />
               ) : null}
             </View>
@@ -722,22 +830,30 @@ export default function SettingsScreen() {
               <Button
                 label="Test connection"
                 variant="secondary"
-                onPress={() => { void testConnection(); }}
+                onPress={() => {
+                  void testConnection();
+                }}
                 loading={isTesting}
                 disabled={isSaving}
                 style={styles.flexButton}
               />
               <Button
                 label="Save changes"
-                onPress={() => { void persist(true); }}
+                onPress={() => {
+                  void persist(true);
+                }}
                 loading={isSaving}
                 disabled={isTesting}
                 style={styles.flexButton}
               />
             </View>
 
-            {!isLocalAi && settings.apiKey ? (
-              <Pressable accessibilityRole="button" onPress={confirmRemoveKey} style={styles.removeKey}>
+            {!isLocalAi && currentSettings.apiKey ? (
+              <Pressable
+                accessibilityRole="button"
+                onPress={confirmRemoveKey}
+                style={styles.removeKey}
+              >
                 <Ionicons name="trash-outline" size={14} color={colors.danger} />
                 <Text style={styles.removeKeyText}>Remove API key</Text>
               </Pressable>
@@ -747,89 +863,70 @@ export default function SettingsScreen() {
               <Ionicons name="shield-checkmark-outline" size={14} color={colors.textFaint} />
               <Text style={styles.securityNote}>
                 {isLocalAi
-                  ? 'Chat messages go to your local server. Nothing is sent to a cloud provider.'
+                  ? 'Chat messages go to your local server. Tasks, account data, and keys stay on this device.'
                   : 'Chat messages go to your selected provider. Tasks, account data, and keys stay on this device.'}
               </Text>
             </View>
           </GlassView>
-        </View>
+        </SettingsSection>
 
-        <Text style={styles.sectionLabel}>MCP TOOLS</Text>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>Integrations</Text>
+        <SettingsSection
+          title="MCP integrations"
+          description="Connect external tools. Server results are treated as untrusted data."
+        >
           <McpServersCard onNotice={setNotice} onError={setError} />
-        </View>
+        </SettingsSection>
 
-        <Text style={styles.sectionLabel}>PLUGINS</Text>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>Plugin Manager</Text>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Open plugin manager"
+        <SettingsSection
+          title="Plugins"
+          description="Installed plugins, contributed settings and permission reviews."
+        >
+          <SettingsNavRow
+            icon="extension-puzzle-outline"
+            title="Plugin Manager"
+            description="Install, enable and review plugin permissions."
+            badge={`${snapshot.stats.installed} installed`}
             onPress={() => router.push('/plugins' as Href)}
-            style={({ pressed }) => [pressed && styles.pressed]}
-          >
-            <GlassView style={styles.navCard}>
-              <View style={styles.settingIconWrap}>
-                <Ionicons name="extension-puzzle-outline" size={18} color={colors.accent} />
-              </View>
-              <View style={styles.settingText}>
-                <Text style={styles.settingTitle}>Plugins</Text>
-                <Text style={styles.settingDescription}>Install, enable, and review plugin permissions.</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color={colors.textFaint} />
-            </GlassView>
-          </Pressable>
-
+          />
           {snapshot.settingsSections.map((section) => (
-            <Pressable
+            <SettingsNavRow
               key={`${section.pluginId}:${section.id}`}
-              accessibilityRole="button"
-              accessibilityLabel={`Open ${section.title}`}
+              icon="options-outline"
+              title={section.title}
+              description={section.description ?? `Contributed by ${section.pluginName}.`}
               onPress={() => router.push(section.path as Href)}
-              style={({ pressed }) => [pressed && styles.pressed]}
-            >
-              <GlassView style={styles.navCard}>
-                <View style={styles.settingIconWrap}>
-                  <Ionicons name="options-outline" size={18} color={colors.accent} />
-                </View>
-                <View style={styles.settingText}>
-                  <Text style={styles.settingTitle}>{section.title}</Text>
-                  <Text style={styles.settingDescription}>
-                    {section.description ?? `Contributed by ${section.pluginName}.`}
-                  </Text>
-                </View>
-                <Ionicons name="chevron-forward" size={18} color={colors.textFaint} />
-              </GlassView>
-            </Pressable>
+            />
           ))}
-        </View>
+        </SettingsSection>
 
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>Security</Text>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Open agent permissions"
+        <SettingsSection
+          title="Security"
+          description="Approvals, saved grants and paired computers are managed here."
+        >
+          <SettingsNavRow
+            icon="shield-checkmark-outline"
+            title="Agent permissions"
+            description="Active grants, pending approvals, activity and emergency stop."
             onPress={() => router.push('/permissions' as Href)}
-            style={({ pressed }) => [pressed && styles.pressed]}
-          >
-            <GlassView style={styles.navCard}>
-              <View style={styles.settingIconWrap}>
-                <Ionicons name="shield-checkmark-outline" size={18} color={colors.accent} />
-              </View>
-              <View style={styles.settingText}>
-                <Text style={styles.settingTitle}>Agent permissions</Text>
-                <Text style={styles.settingDescription}>Approvals, saved grants, paired computers, and audit history.</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color={colors.textFaint} />
-            </GlassView>
-          </Pressable>
-        </View>
+          />
+          <SettingsNavRow
+            icon="checkmark-done-outline"
+            title="Approval history"
+            description="Review past agent permission decisions and denials."
+            onPress={() => router.push('/approvals' as Href)}
+          />
+          <SettingsNavRow
+            icon="key-outline"
+            title="Saved permission grants"
+            description="Review tool allowlists and revoke saved choices."
+            onPress={() => router.push('/tool-permissions' as Href)}
+          />
+        </SettingsSection>
 
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>Reminders</Text>
+        <SettingsSection
+          title="Reminders"
+          description="Control notification access and test reminder delivery."
+        >
           <GlassView style={styles.card}>
             <View style={styles.settingRow}>
               <View style={styles.settingIconWrap}>
@@ -837,7 +934,9 @@ export default function SettingsScreen() {
               </View>
               <View style={styles.settingText}>
                 <Text style={styles.settingTitle}>Notifications</Text>
-                <Text style={styles.settingDescription}>Get alerted 15 minutes before a task is due.</Text>
+                <Text style={styles.settingDescription}>
+                  Get alerted 15 minutes before a task is due.
+                </Text>
               </View>
             </View>
             <View style={styles.switchRow}>
@@ -848,7 +947,7 @@ export default function SettingsScreen() {
                 <Text style={styles.settingDescription}>
                   {permission === 'denied'
                     ? 'Permission denied in system settings.'
-                    : 'Allow Orbit to send reminder notifications.'}
+                    : 'Allow ORBIT to send reminder notifications.'}
                 </Text>
               </View>
               <Switch
@@ -860,13 +959,18 @@ export default function SettingsScreen() {
               />
             </View>
             {permission === 'granted' ? (
-              <Button label="Send test reminder" variant="secondary" onPress={() => { void testReminder(); }} />
+              <Button
+                label="Send test reminder"
+                variant="secondary"
+                onPress={() => {
+                  void testReminder();
+                }}
+              />
             ) : null}
           </GlassView>
-        </View>
+        </SettingsSection>
 
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>Account</Text>
+        <SettingsSection title="Account" description="Signed-in identity for this device.">
           <GlassView style={styles.card}>
             <View style={styles.settingRow}>
               <View style={styles.profileAvatar}>
@@ -879,10 +983,12 @@ export default function SettingsScreen() {
             </View>
             <Button label="Sign out" variant="danger" onPress={confirmSignOut} />
           </GlassView>
-        </View>
+        </SettingsSection>
 
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>Data</Text>
+        <SettingsSection
+          title="Data"
+          description="Local chat history can be cleared without touching tasks."
+        >
           <GlassView style={styles.card}>
             <View style={styles.settingRow}>
               <View style={styles.settingIconWrap}>
@@ -890,22 +996,28 @@ export default function SettingsScreen() {
               </View>
               <View style={styles.settingText}>
                 <Text style={styles.settingTitle}>Chat history</Text>
-                <Text style={styles.settingDescription}>Clear agent conversations. Tasks and reminders are not affected.</Text>
+                <Text style={styles.settingDescription}>
+                  Clear agent conversations. Tasks and reminders are not affected.
+                </Text>
               </View>
             </View>
-            <Button label="Clear chat history" variant="secondary" onPress={confirmClearChat} />
+            <Button
+              label="Clear chat history"
+              variant="secondary"
+              onPress={confirmClearChat}
+            />
           </GlassView>
-        </View>
+        </SettingsSection>
 
         <Text style={styles.footer}>
-          Orbit v{Constants.expoConfig?.version ?? '1.6.0'} · local-first · Android
+          Orbit v{Constants.expoConfig?.version ?? '1.10.6'} · local-first · Android
         </Text>
       </ScrollView>
     </View>
   );
 }
 
-const makeStyles = ({ colors, glass }: AppTheme) =>
+const makeStyles = ({ colors }: AppTheme) =>
   StyleSheet.create({
     root: {
       flex: 1,
@@ -919,7 +1031,10 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
     },
     content: {
       flexGrow: 1,
-      paddingHorizontal: spacing.lg,
+      maxWidth: layout.contentMaxWidth,
+      width: '100%',
+      alignSelf: 'center',
+      paddingHorizontal: layout.gutter,
       gap: spacing.lg,
     },
     bannerWrap: {
@@ -939,32 +1054,10 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
     noticeText: {
       flex: 1,
       color: colors.success,
-      fontSize: 13,
-      lineHeight: 19,
-    },
-    section: {
-      gap: spacing.sm,
-    },
-    sectionHeader: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      gap: spacing.sm,
-    },
-    sectionLabel: {
-      color: colors.textMuted,
-      fontSize: 13,
-      fontWeight: '600',
-      letterSpacing: 0.2,
+      ...typography.bodySmall,
     },
     card: {
       padding: spacing.md,
-      gap: spacing.md,
-    },
-    navCard: {
-      padding: spacing.md,
-      flexDirection: 'row',
-      alignItems: 'center',
       gap: spacing.md,
     },
     settingRow: {
@@ -975,7 +1068,7 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
     settingIconWrap: {
       width: 40,
       height: 40,
-      borderRadius: 12,
+      borderRadius: radius.sm,
       backgroundColor: colors.surfaceAlt,
       alignItems: 'center',
       justifyContent: 'center',
@@ -986,63 +1079,22 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
     },
     settingTitle: {
       color: colors.text,
-      fontSize: 15,
+      ...typography.body,
       fontWeight: '600',
     },
     settingDescription: {
       color: colors.textMuted,
-      fontSize: 13,
-      lineHeight: 18,
+      ...typography.bodySmall,
     },
-    badge: {
-      borderRadius: radius.pill,
-      paddingHorizontal: spacing.sm,
-      paddingVertical: 4,
-      borderWidth: 1,
-    },
-    badgeOn: {
-      backgroundColor: colors.successSoft,
-      borderColor: `${colors.success}33`,
-    },
-    badgeOff: {
-      backgroundColor: colors.surfaceAlt,
-      borderColor: colors.border,
-    },
-    badgeText: {
-      fontSize: 11,
-      fontWeight: '600',
-    },
-    segmentedRow: {
+    statusRow: {
       flexDirection: 'row',
-      gap: spacing.xs,
-      padding: 4,
-      borderRadius: radius.md,
-      backgroundColor: colors.surfaceAlt,
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
-    segment: {
-      flex: 1,
-      minHeight: 44,
-      borderRadius: radius.sm,
       alignItems: 'center',
-      justifyContent: 'center',
-      flexDirection: 'row',
-      gap: 6,
-      paddingHorizontal: spacing.sm,
+      gap: spacing.sm,
     },
-    segmentActive: {
-      backgroundColor: colors.surface,
-      borderWidth: 1,
-      borderColor: colors.borderFocus,
-    },
-    segmentText: {
+    statusDetail: {
+      flex: 1,
       color: colors.textMuted,
-      fontSize: 13,
-      fontWeight: '600',
-    },
-    segmentTextActive: {
-      color: colors.accent,
+      ...typography.caption,
     },
     divider: {
       height: 1,
@@ -1050,7 +1102,7 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
     },
     fieldLabel: {
       color: colors.text,
-      fontSize: 13,
+      ...typography.bodySmall,
       fontWeight: '600',
     },
     providerRow: {
@@ -1059,7 +1111,7 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
       gap: spacing.xs,
     },
     providerChip: {
-      minHeight: 44,
+      minHeight: layout.touchTarget,
       justifyContent: 'center',
       borderRadius: radius.pill,
       borderWidth: 1,
@@ -1074,8 +1126,7 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
     },
     providerText: {
       color: colors.textMuted,
-      fontSize: 13,
-      fontWeight: '500',
+      ...typography.bodySmall,
     },
     providerTextActive: {
       color: colors.accent,
@@ -1095,11 +1146,23 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
     infoBoxText: {
       flex: 1,
       color: colors.textMuted,
-      fontSize: 13,
-      lineHeight: 18,
+      ...typography.bodySmall,
     },
     infoCode: {
       color: colors.text,
+      fontFamily: fonts.mono,
+      ...typography.code,
+    },
+    docsLink: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      alignSelf: 'flex-start',
+      paddingVertical: 4,
+    },
+    docsLinkText: {
+      color: colors.accent,
+      ...typography.bodySmall,
       fontWeight: '600',
     },
     discoveryBox: {
@@ -1118,24 +1181,23 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
     },
     discoveryTitle: {
       color: colors.text,
-      fontSize: 13,
+      ...typography.bodySmall,
       fontWeight: '600',
     },
     discoveryDetail: {
       color: colors.textMuted,
-      fontSize: 12,
-      lineHeight: 17,
+      ...typography.caption,
     },
     retryButton: {
-      width: 40,
-      height: 40,
+      width: layout.iconButton,
+      height: layout.iconButton,
       borderRadius: radius.pill,
       alignItems: 'center',
       justifyContent: 'center',
       backgroundColor: colors.surface,
     },
     modelChip: {
-      minHeight: 40,
+      minHeight: layout.iconButton,
       justifyContent: 'center',
       borderRadius: radius.md,
       borderWidth: 1,
@@ -1143,18 +1205,6 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
       backgroundColor: colors.surface,
       paddingHorizontal: spacing.md,
       paddingVertical: 6,
-    },
-    docsLink: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 6,
-      alignSelf: 'flex-start',
-      paddingVertical: 4,
-    },
-    docsLinkText: {
-      color: colors.accent,
-      fontSize: 13,
-      fontWeight: '600',
     },
     fields: {
       gap: spacing.md,
@@ -1171,11 +1221,11 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
       alignItems: 'center',
       justifyContent: 'center',
       gap: 6,
-      minHeight: 44,
+      minHeight: layout.touchTarget,
     },
     removeKeyText: {
       color: colors.danger,
-      fontSize: 13,
+      ...typography.bodySmall,
       fontWeight: '600',
     },
     securityRow: {
@@ -1189,23 +1239,7 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
     securityNote: {
       flex: 1,
       color: colors.textFaint,
-      fontSize: 12,
-      lineHeight: 17,
-    },
-    statusPill: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: spacing.sm,
-      alignSelf: 'flex-start',
-      paddingHorizontal: spacing.sm + 2,
-      paddingVertical: 6,
-      borderRadius: radius.pill,
-      backgroundColor: colors.surfaceAlt,
-    },
-    statusDot: {
-      width: 8,
-      height: 8,
-      borderRadius: 4,
+      ...typography.caption,
     },
     switchRow: {
       flexDirection: 'row',
@@ -1222,7 +1256,7 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
     },
     footer: {
       color: colors.textFaint,
-      fontSize: 12,
+      ...typography.caption,
       textAlign: 'center',
       marginTop: spacing.sm,
       marginBottom: spacing.sm,

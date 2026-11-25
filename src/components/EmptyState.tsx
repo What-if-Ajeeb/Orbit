@@ -3,7 +3,7 @@ import { StyleSheet, Text, View } from 'react-native';
 
 import { Button } from '@/components/Button';
 import { useAppTheme, useStyles, type AppTheme } from '@/context/theme';
-import { fonts, spacing } from '@/theme';
+import { fonts, layout, spacing, typography } from '@/theme';
 
 type EmptyStateProps = {
   icon: keyof typeof Ionicons.glyphMap;
@@ -39,14 +39,14 @@ const makeStyles = ({ colors }: AppTheme) =>
     wrap: {
       alignItems: 'center',
       justifyContent: 'center',
-      paddingVertical: spacing.xl * 1.5,
+      paddingVertical: spacing.xl * 1.25,
       paddingHorizontal: spacing.lg,
       gap: spacing.sm,
     },
     iconWrap: {
-      width: 68,
-      height: 68,
-      borderRadius: 34,
+      width: 60,
+      height: 60,
+      borderRadius: 30,
       alignItems: 'center',
       justifyContent: 'center',
       backgroundColor: colors.accentSoft,
@@ -55,20 +55,18 @@ const makeStyles = ({ colors }: AppTheme) =>
     title: {
       color: colors.text,
       fontFamily: fonts.serif,
-      fontSize: 22,
-      fontWeight: '600',
+      ...typography.section,
       textAlign: 'center',
     },
     message: {
       color: colors.textMuted,
-      fontSize: 14,
-      lineHeight: 21,
+      ...typography.bodySmall,
       textAlign: 'center',
       maxWidth: 290,
     },
     action: {
       marginTop: spacing.md,
-      minHeight: 48,
+      minHeight: layout.touchTarget,
       paddingHorizontal: spacing.xl,
     },
   });

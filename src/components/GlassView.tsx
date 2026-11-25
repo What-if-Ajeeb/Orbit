@@ -2,7 +2,7 @@ import type { PropsWithChildren } from 'react';
 import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 
 import { useStyles, type AppTheme } from '@/context/theme';
-import { radius } from '@/theme';
+import { elevation, radius } from '@/theme';
 
 type GlassVariant = 'card' | 'panel' | 'pill' | 'bar';
 
@@ -61,10 +61,12 @@ const makeStyles = ({ colors }: AppTheme) =>
     card: {
       borderRadius: radius.lg,
       backgroundColor: colors.surface,
+      ...elevation.card,
     },
     panel: {
       borderRadius: radius.xl,
       backgroundColor: colors.surface,
+      ...elevation.raised,
     },
     pill: {
       borderRadius: radius.pill,

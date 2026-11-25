@@ -368,8 +368,8 @@ export default function HarnessScreen() {
             <View style={styles.heroText}>
               <Text style={styles.heroTitle}>Everything is a plugin.</Text>
               <Text style={styles.heroSubtitle}>
-                MCP is just another source. Har capability same lifecycle follow
-                karti hai.
+                MCP is just another source. Every capability follows the same
+                lifecycle.
               </Text>
             </View>
           </View>
@@ -387,7 +387,7 @@ export default function HarnessScreen() {
                   { color: snapshot?.aiReady ? colors.success : colors.textMuted },
                 ]}
               >
-                {snapshot?.aiReady ? 'AI READY' : 'LOCAL MODE'}
+                {snapshot?.aiReady ? 'AI CONFIGURED' : 'LOCAL MODE'}
               </Text>
             </View>
 
@@ -395,7 +395,7 @@ export default function HarnessScreen() {
               {snapshot
                 ? snapshot.aiReady
                   ? `${snapshot.activeProvider} · ${snapshot.activeAdapter}`
-                  : 'Koi cloud provider configured nahi'
+                  : 'No cloud provider configured'
                 : 'Loading…'}
             </Text>
           </View>

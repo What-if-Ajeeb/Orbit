@@ -9,7 +9,7 @@ import {
   type TextInputProps,
 } from 'react-native';
 
-import { radius, spacing } from '@/theme';
+import { layout, radius, spacing, typography } from '@/theme';
 
 
 type TextFieldProps = Omit<TextInputProps, 'style'> & {
@@ -66,7 +66,7 @@ const makeStyles = ({ colors }: AppTheme) =>
   },
   label: {
     color: colors.textMuted,
-    fontSize: 14,
+    ...typography.bodySmall,
     fontWeight: '600',
   },
   inputWrap: {
@@ -78,7 +78,7 @@ const makeStyles = ({ colors }: AppTheme) =>
     borderColor: 'transparent',
     borderRadius: radius.md,
     paddingHorizontal: spacing.md,
-    minHeight: 54,
+    minHeight: layout.touchTarget + 6,
   },
   inputWrapFocused: {
     borderColor: colors.borderFocus,
@@ -86,7 +86,7 @@ const makeStyles = ({ colors }: AppTheme) =>
   input: {
     flex: 1,
     color: colors.text,
-    fontSize: 16,
+    fontSize: typography.body.fontSize,
     paddingVertical: spacing.sm + 4,
   },
   toggle: {

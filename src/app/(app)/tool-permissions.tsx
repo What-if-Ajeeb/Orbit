@@ -19,7 +19,10 @@ import { FormError } from '@/components/FormError';
 import { GlassBackdrop } from '@/components/GlassBackdrop';
 import { GlassView } from '@/components/GlassView';
 import { ScreenHeader } from '@/components/ScreenHeader';
+import { SettingsNavRow } from '@/components/SettingsNavRow';
+import { SettingsSection } from '@/components/SettingsSection';
 import { SidebarButton } from '@/components/SidebarButton';
+import { StatusPill, type StatusTone } from '@/components/StatusPill';
 import { usePluginActions } from '@/components/plugins/usePluginActions';
 import { useSession } from '@/context/auth';
 import { usePluginSnapshot } from '@/context/plugins';
@@ -28,14 +31,14 @@ import { useAppTheme, useStyles, type AppTheme } from '@/context/theme';
 import { listAgentConfigs } from '@/lib/agent-settings';
 import { connectionLabel, connectionScopes, listGoogleConnectionStates } from '@/lib/connections/google';
 import { GOOGLE_CONNECTION_IDS, type GoogleConnectionId } from '@/lib/connections/types';
-import { permissionManager } from '@/lib/permissions';
+import { RISK_META, permissionManager } from '@/lib/permissions';
 import type {
   PermissionDenialRecord,
   PermissionGrantRecord,
   PermissionPreferenceRecord,
 } from '@/lib/permissions';
 import { policyEngine, waitForPolicyHydration } from '@/lib/policy';
-import { radius, spacing } from '@/theme';
+import { radius, spacing, typography } from '@/theme';
 
 function preferenceKey(
   preference: Pick<
@@ -49,6 +52,34 @@ function preferenceKey(
     preference.scopeKey,
     preference.resourceKey,
   ].join('|');
+}
+
+function riskTone(risk: PermissionGrantRecord['risk']): StatusTone {
+  return RISK_META[risk].colorToken;
+}
+
+function grantStatusTone(status: PermissionGrantRecord['status']): StatusTone {
+  if (status === 'active') {
+    return 'success';
+  }
+
+  if (status === 'revoked') {
+    return 'danger';
+  }
+
+  return 'neutral';
+}
+
+function decisionTone(decision: 'allow' | 'deny' | 'ask'): StatusTone {
+  if (decision === 'allow') {
+    return 'success';
+  }
+
+  if (decision === 'deny') {
+    return 'danger';
+  }
+
+  return 'warning';
 }
 
 export default function ToolPermissionsScreen() {
@@ -143,7 +174,7 @@ export default function ToolPermissionsScreen() {
 
     try {
       const removed = await permissionManager.revokeDenial(activeUser.id, denial.id);
-      setNotice(removed ? 'Never Allow was revoked. The exact action can be requested again.' : 'This choice was already revoked.');
+      setNotice(removed ? 'Never allow was revoked. The exact action can be requested again.' : 'This choice was already revoked.');
       await load();
     } catch (revokeError) {
       setError(revokeError instanceof Error ? revokeError.message : 'Could not revoke that choice.');
@@ -159,7 +190,7 @@ export default function ToolPermissionsScreen() {
 
     try {
       const removed = await permissionManager.revokePreference(activeUser.id, preference);
-      setNotice(removed ? 'Ask Every Time was revoked.' : 'This choice was already revoked.');
+      setNotice(removed ? 'Ask every time was revoked.' : 'This choice was already revoked.');
       await load();
     } catch (revokeError) {
       setError(revokeError instanceof Error ? revokeError.message : 'Could not revoke that choice.');
@@ -185,7 +216,7 @@ export default function ToolPermissionsScreen() {
         showsVerticalScrollIndicator={false}
       >
         <ScreenHeader
-          eyebrow="Least privilege"
+          eyebrow="LEAST PRIVILEGE"
           title="Tool permissions"
           subtitle="Review what agents may use, revoke saved grants, and check which accounts are authorized."
           left={<SidebarButton onPress={openSidebar} />}
@@ -205,28 +236,41 @@ export default function ToolPermissionsScreen() {
           </View>
         ) : (
           <>
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Connected account access</Text>
-              {GOOGLE_CONNECTION_IDS.map((id) => {
-                const active = connections.includes(id);
+            <SettingsSection
+              title="Connected account access"
+              description="Only accounts explicitly connected here can be used by agents. Each connection is scoped to this app."
+            >
+              <GlassView style={styles.card}>
+                {GOOGLE_CONNECTION_IDS.map((id, index) => {
+                  const active = connections.includes(id);
 
-                return (
-                  <GlassView key={id} style={styles.row}>
-                    <View style={styles.rowCopy}>
-                      <Text style={styles.rowTitle}>{connectionLabel(id)}</Text>
-                      <Text style={styles.rowText}>
-                        {active ? 'Connected · scopes granted to this app' : 'Not connected'}
-                      </Text>
-                      <Text style={styles.scopes}>{connectionScopes(id).join('\n')}</Text>
+                  return (
+                    <View key={id} style={index > 0 ? styles.divider : undefined}>
+                      <View style={styles.row}>
+                        <View style={styles.iconWrap}>
+                          <Ionicons
+                            name="cloud-outline"
+                            size={18}
+                            color={active ? colors.success : colors.textFaint}
+                          />
+                        </View>
+                        <View style={styles.rowCopy}>
+                          <Text style={styles.rowTitle}>{connectionLabel(id)}</Text>
+                          <Text style={styles.rowText}>
+                            {active ? 'Connected · scopes granted to this app' : 'Not connected'}
+                          </Text>
+                          <Text style={styles.scopes}>{connectionScopes(id).join('\n')}</Text>
+                        </View>
+                        <StatusPill
+                          label={active ? 'Connected' : 'Not connected'}
+                          tone={active ? 'success' : 'neutral'}
+                          showDot={active}
+                        />
+                      </View>
                     </View>
-                    <Ionicons
-                      name={active ? 'checkmark-circle-outline' : 'remove-circle-outline'}
-                      size={20}
-                      color={active ? colors.success : colors.textFaint}
-                    />
-                  </GlassView>
-                );
-              })}
+                  );
+                })}
+              </GlassView>
               <Pressable
                 accessibilityRole="button"
                 onPress={() => router.push('/connections' as Href)}
@@ -235,35 +279,39 @@ export default function ToolPermissionsScreen() {
                 <Text style={styles.linkText}>Manage connections</Text>
                 <Ionicons name="chevron-forward" size={16} color={colors.accent} />
               </Pressable>
-            </View>
+            </SettingsSection>
 
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Agent tool allowlists</Text>
+            <SettingsSection
+              title="Agent tool allowlists"
+              description="Each agent starts with a small safe tool list. Open an agent to review or change its allowlist."
+            >
               {agents.length === 0 ? (
-                <Text style={styles.emptyText}>
-                  No saved customization yet. Agents start with a small safe tool list.
-                </Text>
+                <EmptyState
+                  icon="options-outline"
+                  title="No customization yet"
+                  message="Agents start with a small safe tool list."
+                />
               ) : (
-                agents.map((agent) => (
-                  <GlassView
-                    key={agent.id}
-                    onPress={() =>
-                      router.push(`/agents/${encodeURIComponent(agent.id)}/tools` as Href)
-                    }
-                    style={styles.row}
-                    accessibilityLabel={`Open tools for ${agent.name}`}
-                  >
-                    <View style={styles.rowCopy}>
-                      <Text style={styles.rowTitle}>{agent.name}</Text>
-                      <Text style={styles.rowText}>
-                        {agent.tools < 0
-                          ? 'All registered tools allowed'
-                          : `${agent.tools} allowed tool pattern${agent.tools === 1 ? '' : 's'}`}
-                      </Text>
+                <GlassView style={styles.card}>
+                  {agents.map((agent, index) => (
+                    <View key={agent.id} style={index > 0 ? styles.divider : undefined}>
+                      <SettingsNavRow
+                        icon="hardware-chip-outline"
+                        title={agent.name}
+                        description={
+                          agent.tools < 0
+                            ? 'All registered tools allowed'
+                            : `${agent.tools} allowed tool pattern${agent.tools === 1 ? '' : 's'}`
+                        }
+                        badge={agent.tools < 0 ? 'All tools' : `${agent.tools}`}
+                        accessibilityLabel={`Open tools for ${agent.name}`}
+                        onPress={() =>
+                          router.push(`/agents/${encodeURIComponent(agent.id)}/tools` as Href)
+                        }
+                      />
                     </View>
-                    <Ionicons name="chevron-forward" size={17} color={colors.textFaint} />
-                  </GlassView>
-                ))
+                  ))}
+                </GlassView>
               )}
               <Pressable
                 accessibilityRole="button"
@@ -273,10 +321,12 @@ export default function ToolPermissionsScreen() {
                 <Text style={styles.linkText}>Open agent list</Text>
                 <Ionicons name="chevron-forward" size={16} color={colors.accent} />
               </Pressable>
-            </View>
+            </SettingsSection>
 
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Saved tool grants</Text>
+            <SettingsSection
+              title="Saved tool grants"
+              description="One-time approvals expire automatically. Sensitive actions always ask again."
+            >
               <FormError message={pluginActions.error} onDismiss={pluginActions.clear} />
               {grants.length === 0 ? (
                 <EmptyState
@@ -285,136 +335,213 @@ export default function ToolPermissionsScreen() {
                   message="One-time approvals expire automatically. Sensitive actions always ask again."
                 />
               ) : (
-                grants.map((grant) => (
-                  <GlassView key={grant.id} style={styles.row}>
-                    <View style={styles.rowCopy}>
-                      <Text style={styles.rowTitle}>{grant.toolName}</Text>
-                      <Text style={styles.rowText}>
-                        {grant.agentName} · {grant.scopeKey}
-                      </Text>
-                      <Text style={styles.cardMeta}>
-                        {grant.risk} risk · used {grant.useCount} time{grant.useCount === 1 ? '' : 's'}
-                      </Text>
-                    </View>
-                    <Button
-                      label="Revoke"
-                      variant="danger"
-                      onPress={() => void revokeGrant(grant)}
-                      disabled={busyGrant === grant.id}
-                      loading={busyGrant === grant.id}
-                    />
-                  </GlassView>
-                ))
-              )}
-            </View>
-
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Saved choices</Text>
-              <Text style={styles.hint}>
-                Never Allow and Ask Every Time apply to one exact agent, tool, action, and resource.
-                Revoking a choice does not execute anything.
-              </Text>
-              {activeDenials.length === 0 && activePreferences.length === 0 ? (
-                <Text style={styles.emptyText}>No saved choices.</Text>
-              ) : (
-                <>
-                  {activeDenials.map((denial) => (
-                    <GlassView key={denial.id} style={styles.row}>
-                      <View style={styles.rowCopy}>
-                        <Text style={styles.rowTitle}>Never allow</Text>
-                        <Text style={styles.rowText}>
-                          {denial.agentId} · {denial.toolName}
-                        </Text>
-                        <Text style={styles.cardMeta}>Resource: {denial.resourceKey}</Text>
+                <GlassView style={styles.card}>
+                  {grants.map((grant, index) => (
+                    <View key={grant.id} style={index > 0 ? styles.divider : undefined}>
+                      <View style={styles.row}>
+                        <View style={styles.rowCopy}>
+                          <Text style={styles.rowTitle}>{grant.toolName}</Text>
+                          <Text style={styles.rowText}>
+                            {grant.agentName} · {grant.scopeKey}
+                          </Text>
+                          <Text style={styles.rowText}>Resource: {grant.resourceKey}</Text>
+                          <Text style={styles.cardMeta}>
+                            {RISK_META[grant.risk].shortLabel} risk · used {grant.useCount} time
+                            {grant.useCount === 1 ? '' : 's'}
+                          </Text>
+                        </View>
+                        <View style={styles.actionColumn}>
+                          <StatusPill
+                            label={grant.status.charAt(0).toUpperCase() + grant.status.slice(1)}
+                            tone={grantStatusTone(grant.status)}
+                            showDot
+                          />
+                          <StatusPill label={RISK_META[grant.risk].label} tone={riskTone(grant.risk)} />
+                          <Button
+                            label="Revoke"
+                            variant="danger"
+                            onPress={() => void revokeGrant(grant)}
+                            disabled={busyGrant === grant.id}
+                            loading={busyGrant === grant.id}
+                          />
+                        </View>
                       </View>
-                      <Button
-                        label="Revoke"
-                        variant="danger"
-                        onPress={() => void revokeDenial(denial)}
-                        disabled={busyGrant === denial.id}
-                        loading={busyGrant === denial.id}
-                      />
-                    </GlassView>
-                  ))}
-                  {activePreferences.map((preference) => (
-                    <GlassView key={preferenceKey(preference)} style={styles.row}>
-                      <View style={styles.rowCopy}>
-                        <Text style={styles.rowTitle}>Ask every time</Text>
-                        <Text style={styles.rowText}>
-                          {preference.agentId} · {preference.toolName}
-                        </Text>
-                        <Text style={styles.cardMeta}>Resource: {preference.resourceKey}</Text>
-                      </View>
-                      <Button
-                        label="Revoke"
-                        variant="danger"
-                        onPress={() => void revokePreference(preference)}
-                        disabled={busyGrant === preferenceKey(preference)}
-                        loading={busyGrant === preferenceKey(preference)}
-                      />
-                    </GlassView>
-                  ))}
-                </>
-              )}
-            </View>
-
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Plugin permissions</Text>
-              {installedPlugins.length === 0 ? (
-                <Text style={styles.emptyText}>No installed plugins.</Text>
-              ) : (
-                installedPlugins.map((summary) => (
-                  <GlassView key={summary.manifest.pluginId} style={styles.row}>
-                    <View style={styles.rowCopy}>
-                      <Text style={styles.rowTitle}>{summary.manifest.name}</Text>
-                      <Text style={styles.rowText}>
-                        {summary.grantedPermissions.length} granted ·{' '}
-                        {summary.missingPermissions.length} missing
-                      </Text>
                     </View>
-                    <Pressable
-                      accessibilityRole="button"
-                      onPress={() =>
-                        router.push(
-                          `/plugins/${encodeURIComponent(summary.manifest.pluginId)}` as Href
-                        )
-                      }
-                      style={styles.iconLink}
-                    >
-                      <Ionicons name="settings-outline" size={19} color={colors.accent} />
-                    </Pressable>
-                  </GlassView>
-                ))
-              )}
-            </View>
-
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Tool policy rules</Text>
-              <Text style={styles.hint}>
-                Allow means the call can proceed. Ask always opens the approval dialog. Deny blocks
-                the call before execution.
-              </Text>
-              {rules.map((rule) => (
-                <GlassView key={rule.id} style={styles.row}>
-                  <View style={styles.rowCopy}>
-                    <Text style={styles.rowTitle}>{rule.name}</Text>
-                    <Text style={styles.rowText}>
-                      {rule.pattern} · {rule.decision}
-                    </Text>
-                  </View>
-                  <Switch
-                    accessibilityLabel={`Enable ${rule.name}`}
-                    value={rule.enabled}
-                    onValueChange={(next) => {
-                      policyEngine.setRuleEnabled(rule.id, next);
-                      setRules(policyEngine.listRules());
-                    }}
-                    trackColor={{ false: colors.surfaceAlt, true: colors.accentSoft }}
-                    thumbColor={rule.enabled ? colors.accent : colors.textFaint}
-                  />
+                  ))}
                 </GlassView>
-              ))}
-            </View>
+              )}
+            </SettingsSection>
+
+            <SettingsSection
+              title="Saved choices"
+              description="Never allow and Ask every time apply to one exact agent, tool, action, and resource. Revoking a choice does not execute anything."
+            >
+              {activeDenials.length === 0 && activePreferences.length === 0 ? (
+                <EmptyState
+                  icon="options-outline"
+                  title="No saved choices"
+                  message="Every protected action will be asked about until you choose one."
+                />
+              ) : (
+                <GlassView style={styles.card}>
+                  {activeDenials.map((denial, index) => (
+                    <View key={denial.id} style={index > 0 ? styles.divider : undefined}>
+                      <View style={styles.row}>
+                        <View style={styles.rowCopy}>
+                          <Text style={styles.rowTitle}>Never allow</Text>
+                          <Text style={styles.rowText}>
+                            Agent: {denial.agentId} · Tool: {denial.toolName}
+                          </Text>
+                          <Text style={styles.cardMeta}>Scope: {denial.scopeKey}</Text>
+                          <Text style={styles.cardMeta}>Resource: {denial.resourceKey}</Text>
+                        </View>
+                        <View style={styles.actionColumn}>
+                          <StatusPill label="Saved choice" tone="danger" icon="ban-outline" />
+                          <Button
+                            label="Revoke"
+                            variant="danger"
+                            onPress={() => void revokeDenial(denial)}
+                            disabled={busyGrant === denial.id}
+                            loading={busyGrant === denial.id}
+                          />
+                        </View>
+                      </View>
+                    </View>
+                  ))}
+                  {activePreferences.map((preference, index) => (
+                    <View
+                      key={preferenceKey(preference)}
+                      style={index > 0 || activeDenials.length > 0 ? styles.divider : undefined}
+                    >
+                      <View style={styles.row}>
+                        <View style={styles.rowCopy}>
+                          <Text style={styles.rowTitle}>Ask every time</Text>
+                          <Text style={styles.rowText}>
+                            Agent: {preference.agentId} · Tool: {preference.toolName}
+                          </Text>
+                          <Text style={styles.cardMeta}>Scope: {preference.scopeKey}</Text>
+                          <Text style={styles.cardMeta}>Resource: {preference.resourceKey}</Text>
+                        </View>
+                        <View style={styles.actionColumn}>
+                          <StatusPill
+                            label="Saved choice"
+                            tone="warning"
+                            icon="help-circle-outline"
+                          />
+                          <Button
+                            label="Revoke"
+                            variant="danger"
+                            onPress={() => void revokePreference(preference)}
+                            disabled={busyGrant === preferenceKey(preference)}
+                            loading={busyGrant === preferenceKey(preference)}
+                          />
+                        </View>
+                      </View>
+                    </View>
+                  ))}
+                </GlassView>
+              )}
+            </SettingsSection>
+
+            <SettingsSection
+              title="Plugin permissions"
+              description="Installed plugins only receive the permissions you approved. Open a plugin to review them."
+            >
+              {installedPlugins.length === 0 ? (
+                <EmptyState
+                  icon="extension-puzzle-outline"
+                  title="No installed plugins"
+                  message="Plugins you install will appear here with their granted permissions."
+                />
+              ) : (
+                <GlassView style={styles.card}>
+                  {installedPlugins.map((summary, index) => {
+                    const missing = summary.missingPermissions.length;
+
+                    return (
+                      <View
+                        key={summary.manifest.pluginId}
+                        style={index > 0 ? styles.divider : undefined}
+                      >
+                        <View style={styles.row}>
+                          <View style={styles.iconWrap}>
+                            <Ionicons
+                              name="extension-puzzle-outline"
+                              size={18}
+                              color={colors.accent}
+                            />
+                          </View>
+                          <View style={styles.rowCopy}>
+                            <Text style={styles.rowTitle}>{summary.manifest.name}</Text>
+                            <Text style={styles.rowText}>
+                              {summary.grantedPermissions.length} granted · {missing} missing
+                            </Text>
+                          </View>
+                          <StatusPill
+                            label={missing === 0 ? 'Ready' : `${missing} missing`}
+                            tone={missing === 0 ? 'success' : 'warning'}
+                            showDot
+                          />
+                          <Pressable
+                            accessibilityRole="button"
+                            accessibilityLabel={`Open ${summary.manifest.name}`}
+                            onPress={() =>
+                              router.push(
+                                `/plugins/${encodeURIComponent(summary.manifest.pluginId)}` as Href
+                              )
+                            }
+                            style={styles.iconLink}
+                          >
+                            <Ionicons name="settings-outline" size={19} color={colors.accent} />
+                          </Pressable>
+                        </View>
+                      </View>
+                    );
+                  })}
+                </GlassView>
+              )}
+            </SettingsSection>
+
+            <SettingsSection
+              title="Tool policy rules"
+              description="Allow means the call can proceed. Ask always opens the approval dialog. Deny blocks the call before execution."
+            >
+              <GlassView style={styles.card}>
+                {rules.map((rule, index) => (
+                  <View key={rule.id} style={index > 0 ? styles.divider : undefined}>
+                    <View style={styles.row}>
+                      <View style={styles.rowCopy}>
+                        <Text style={styles.rowTitle}>{rule.name}</Text>
+                        <Text style={styles.cardMeta}>{rule.pattern}</Text>
+                      </View>
+                      <View style={styles.actionColumn}>
+                        <StatusPill
+                          label={rule.decision.charAt(0).toUpperCase() + rule.decision.slice(1)}
+                          tone={decisionTone(rule.decision)}
+                          icon={
+                            rule.decision === 'allow'
+                              ? 'checkmark-circle-outline'
+                              : rule.decision === 'deny'
+                                ? 'ban-outline'
+                                : 'help-circle-outline'
+                          }
+                        />
+                        <Switch
+                          accessibilityLabel={`Enable ${rule.name}`}
+                          value={rule.enabled}
+                          onValueChange={(next) => {
+                            policyEngine.setRuleEnabled(rule.id, next);
+                            setRules(policyEngine.listRules());
+                          }}
+                          trackColor={{ false: colors.surfaceAlt, true: colors.accentSoft }}
+                          thumbColor={rule.enabled ? colors.accent : colors.textFaint}
+                        />
+                      </View>
+                    </View>
+                  </View>
+                ))}
+              </GlassView>
+            </SettingsSection>
           </>
         )}
       </ScrollView>
@@ -448,26 +575,32 @@ const makeStyles = ({ colors }: AppTheme) =>
     successText: {
       flex: 1,
       color: colors.success,
-      fontSize: 13,
+      ...typography.bodySmall,
     },
-    section: {
-      gap: spacing.sm,
+    card: {
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
+      borderRadius: radius.lg,
+      backgroundColor: colors.surface,
+      overflow: 'hidden',
     },
-    sectionTitle: {
-      color: colors.text,
-      fontSize: 19,
-      fontWeight: '700',
-    },
-    hint: {
-      color: colors.textMuted,
-      fontSize: 13,
-      lineHeight: 19,
+    divider: {
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
     },
     row: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: spacing.md,
+      gap: spacing.sm + 2,
       padding: spacing.md,
+    },
+    iconWrap: {
+      width: 38,
+      height: 38,
+      borderRadius: radius.sm,
+      backgroundColor: colors.surfaceAlt,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
     rowCopy: {
       flex: 1,
@@ -475,8 +608,8 @@ const makeStyles = ({ colors }: AppTheme) =>
     },
     rowTitle: {
       color: colors.text,
-      fontSize: 14,
-      fontWeight: '700',
+      ...typography.body,
+      fontWeight: '600',
     },
     rowText: {
       color: colors.textMuted,
@@ -485,12 +618,18 @@ const makeStyles = ({ colors }: AppTheme) =>
     },
     scopes: {
       color: colors.textFaint,
-      fontSize: 10,
-      lineHeight: 14,
+      fontSize: 11,
+      lineHeight: 15,
     },
     cardMeta: {
       color: colors.textFaint,
       fontSize: 11,
+      lineHeight: 16,
+    },
+    actionColumn: {
+      alignItems: 'flex-end',
+      gap: spacing.xs,
+      maxWidth: 128,
     },
     link: {
       flexDirection: 'row',
@@ -507,14 +646,9 @@ const makeStyles = ({ colors }: AppTheme) =>
     iconLink: {
       width: 40,
       height: 40,
-      borderRadius: 20,
+      borderRadius: radius.md,
       backgroundColor: colors.surfaceAlt,
       alignItems: 'center',
       justifyContent: 'center',
-    },
-    emptyText: {
-      color: colors.textFaint,
-      fontSize: 13,
-      lineHeight: 19,
     },
   });

@@ -2,7 +2,7 @@ import { useStyles, type AppTheme } from '@/context/theme';
 import type { ReactNode } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { fonts, spacing } from '@/theme';
+import { fonts, spacing, typography } from '@/theme';
 
 
 type ScreenHeaderProps = {
@@ -13,18 +13,19 @@ type ScreenHeaderProps = {
   right?: ReactNode;
 };
 
-export function ScreenHeader({ title, subtitle, left, right }: ScreenHeaderProps) {
+export function ScreenHeader({ eyebrow, title, subtitle, left, right }: ScreenHeaderProps) {
   const styles = useStyles(makeStyles);
   return (
     <View style={styles.row}>
       {left ? <View style={styles.left}>{left}</View> : null}
       <View style={styles.textBlock}>
+        {eyebrow ? <Text style={styles.eyebrow}>{eyebrow}</Text> : null}
         <Text accessibilityRole="header" style={styles.title}>
           {title}
         </Text>
         {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
       </View>
-      {right ? <View>{right}</View> : null}
+      {right ? <View style={styles.right}>{right}</View> : null}
     </View>
   );
 }
@@ -36,29 +37,27 @@ const makeStyles = ({ colors }: AppTheme) =>
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: spacing.md,
+    minHeight: 52,
   },
   left: {},
+  right: {
+    flexShrink: 0,
+  },
   textBlock: {
     flex: 1,
+    gap: 4,
   },
   eyebrow: {
     color: colors.accent,
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 1.6,
-    marginBottom: 6,
+    ...typography.overline,
   },
   title: {
     color: colors.text,
     fontFamily: fonts.serif,
-    fontSize: 30,
-    fontWeight: '600',
-    letterSpacing: -0.3,
+    ...typography.title,
   },
   subtitle: {
     color: colors.textMuted,
-    fontSize: 14,
-    lineHeight: 20,
-    marginTop: 4,
+    ...typography.bodySmall,
   },
   });

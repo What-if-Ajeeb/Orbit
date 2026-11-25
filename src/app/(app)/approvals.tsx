@@ -11,17 +11,20 @@ import { GlassBackdrop } from '@/components/GlassBackdrop';
 import { GlassView } from '@/components/GlassView';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { SidebarButton } from '@/components/SidebarButton';
+import { StatusPill, type StatusTone } from '@/components/StatusPill';
 import { useSession } from '@/context/auth';
 import { useSidebar } from '@/context/sidebar';
 import { useAppTheme, useStyles, type AppTheme } from '@/context/theme';
 import {
+  CATEGORY_META,
+  RISK_META,
   permissionManager,
   type PermissionDecisionOption,
   type PermissionRequestRecord,
 } from '@/lib/permissions';
 import { pluginApprovalService, type PluginApprovalRequest } from '@/lib/plugins/approvals';
 import { PLUGIN_PERMISSION_META } from '@/lib/plugins/permissions';
-import { radius, spacing } from '@/theme';
+import { fonts, radius, spacing, typography } from '@/theme';
 
 const subscribePermissions = (listener: () => void) => permissionManager.subscribe(listener);
 const getPermissionSnapshot = () => permissionManager.getState();
@@ -48,6 +51,39 @@ function canSaveChoice(request: PermissionRequestRecord): boolean {
 function consequencesFor(request: PermissionRequestRecord): string[] {
   const value = request.metadata.consequences;
   return typeof value === 'string' ? value.split(' | ').filter(Boolean) : [];
+}
+
+function riskTone(risk: PermissionRequestRecord['risk']): StatusTone {
+  return RISK_META[risk].colorToken;
+}
+
+function Detail({
+  label,
+  value,
+  mono = false,
+  warning = false,
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+  warning?: boolean;
+}) {
+  const styles = useStyles(makeStyles);
+
+  return (
+    <View style={styles.detailRow}>
+      <Text style={styles.detailLabel}>{label}</Text>
+      <Text
+        style={[
+          styles.detailValue,
+          mono && styles.monoValue,
+          warning && styles.warningText,
+        ]}
+      >
+        {value}
+      </Text>
+    </View>
+  );
 }
 
 export default function ApprovalsScreen() {
@@ -152,7 +188,7 @@ export default function ApprovalsScreen() {
         showsVerticalScrollIndicator={false}
       >
         <ScreenHeader
-          eyebrow="Consent queue"
+          eyebrow="CONSENT QUEUE"
           title="Tool approvals"
           subtitle="Sensitive calls wait here. Denying or ignoring a request never grants access."
           left={<SidebarButton onPress={openSidebar} />}
@@ -168,115 +204,162 @@ export default function ApprovalsScreen() {
           />
         ) : (
           <View style={styles.list}>
-            {pending.map((request) => (
-              <GlassView key={request.id} style={styles.card}>
-                <View style={styles.cardHeader}>
-                  <View style={styles.iconWrap}>
-                    <Ionicons name="shield-outline" size={21} color={colors.warning} />
-                  </View>
-                  <View style={styles.cardCopy}>
-                    <Text style={styles.cardTitle}>{request.title}</Text>
-                    <Text style={styles.meta}>
-                      {request.agentName} · {request.toolName} · {request.risk} risk
-                    </Text>
-                  </View>
-                  <Text style={styles.timer}>{timeLeft(request.expiresAt)}</Text>
-                </View>
+            {pending.map((request) => {
+              const consequences = consequencesFor(request);
+              const busy = busyId === request.id;
+              const expiry = timeLeft(request.expiresAt);
 
-                <Text style={styles.summary}>{request.summary}</Text>
-                {request.actions.length > 0 ? (
-                  <View style={styles.actionsList}>
-                    {request.actions.map((action, index) => (
-                      <Text key={`${action}-${index}`} style={styles.actionItem}>
-                        · {action}
+              return (
+                <GlassView key={request.id} style={styles.card}>
+                  <View style={styles.cardHeader}>
+                    <View style={styles.iconWrap}>
+                      <Ionicons name="shield-outline" size={21} color={colors.warning} />
+                    </View>
+                    <View style={styles.cardCopy}>
+                      <Text style={styles.cardTitle}>{request.title}</Text>
+                      <Text style={styles.meta}>
+                        {request.agentName} · {request.toolName}
                       </Text>
+                    </View>
+                    <StatusPill
+                      label={expiry}
+                      tone={expiry === 'Expired' ? 'danger' : 'warning'}
+                      icon="time-outline"
+                    />
+                  </View>
+
+                  <View style={styles.pillRow}>
+                    <StatusPill
+                      label={RISK_META[request.risk].label}
+                      tone={riskTone(request.risk)}
+                      icon="shield-outline"
+                    />
+                    <StatusPill label="Approval required" tone="accent" icon="help-circle-outline" />
+                    <StatusPill
+                      label={request.reversible ? 'Reversible' : request.external ? 'External' : 'Not reversible'}
+                      tone={request.reversible ? 'success' : request.external ? 'warning' : 'neutral'}
+                    />
+                    {request.freshConfirmation ? (
+                      <StatusPill label="Fresh confirmation" tone="warning" />
+                    ) : null}
+                  </View>
+
+                  <Text style={styles.summary}>{request.summary}</Text>
+
+                  <View style={styles.details}>
+                    <Detail label="Agent" value={`${request.agentName} · ${request.agentRole}`} />
+                    <Detail label="Capability" value={CATEGORY_META[request.category].label} />
+                    <Detail label="Reason" value={request.reason} />
+                    <View style={styles.detailRow}>
+                      <Text style={styles.detailLabel}>Action</Text>
+                      <View style={styles.detailValue}>
+                        {request.actions.map((action, index) => (
+                          <Text key={`${action}-${index}`} style={styles.actionItem}>
+                            · {action}
+                          </Text>
+                        ))}
+                      </View>
+                    </View>
+                    {request.target.label ? (
+                      <Detail label="Target" value={request.target.label} />
+                    ) : null}
+                    {request.target.detail ? (
+                      <Detail label="Target detail" value={request.target.detail} />
+                    ) : null}
+                    {request.commandPreview ? (
+                      <Detail label="Command" value={request.commandPreview} mono />
+                    ) : null}
+                    <Detail label="Scope" value={request.scopeKey} mono />
+                    <Detail label="Resource" value={request.resourceKey} mono />
+                    {consequences.map((consequence, index) => (
+                      <Detail
+                        key={`${consequence}-${index}`}
+                        label={index === 0 ? 'Consequences' : ''}
+                        value={consequence}
+                        warning
+                      />
                     ))}
                   </View>
-                ) : null}
-                {request.target.label ? (
-                  <Text style={styles.meta}>Target: {request.target.label}</Text>
-                ) : null}
-                {request.target.detail ? (
-                  <Text style={styles.meta}>Where: {request.target.detail}</Text>
-                ) : null}
-                {request.commandPreview ? (
-                  <Text style={styles.meta}>Command: {request.commandPreview}</Text>
-                ) : null}
-                <Text style={styles.meta}>
-                  Scope: {request.scopeKey} · Resource: {request.resourceKey}
-                </Text>
-                {consequencesFor(request).map((consequence, index) => (
-                  <Text key={`${consequence}-${index}`} style={styles.warningText}>
-                    Consequences: {consequence}
-                  </Text>
-                ))}
-                <Text style={styles.meta}>
-                  {request.reversible
-                    ? 'Reversible from Agent activity.'
-                    : request.external
-                      ? 'External service: ORBIT cannot guarantee this can be undone.'
-                      : 'ORBIT cannot undo this action.'}
-                </Text>
-                {request.freshConfirmation || request.risk === 'high' || request.risk === 'critical' ? (
-                  <Text style={styles.dangerText}>
-                    {request.risk === 'critical'
-                      ? 'Critical action: payments, external sending, permanent deletion, and security changes always need fresh confirmation.'
-                      : 'High-risk actions ask every time. A saved grant can never skip this prompt.'}
-                  </Text>
-                ) : null}
 
-                <View style={styles.buttons}>
-                  <Button
-                    label="Allow once"
-                    onPress={() => void resolve(request, 'allow_once')}
-                    disabled={busyId === request.id}
-                    loading={busyId === request.id && busyOption === 'allow_once'}
-                  />
-                  <Button
-                    label="Allow for session"
-                    variant="secondary"
-                    onPress={() => void resolve(request, 'allow_session')}
-                    disabled={busyId === request.id || !canSaveChoice(request)}
-                    loading={busyId === request.id && busyOption === 'allow_session'}
-                  />
-                  <Button
-                    label="Always allow"
-                    variant="secondary"
-                    onPress={() => void resolve(request, 'always_allow')}
-                    disabled={busyId === request.id || !canSaveChoice(request)}
-                    loading={busyId === request.id && busyOption === 'always_allow'}
-                  />
-                  <Button
-                    label="Ask every time"
-                    variant="secondary"
-                    onPress={() => void resolve(request, 'ask_every_time')}
-                    disabled={busyId === request.id}
-                    loading={busyId === request.id && busyOption === 'ask_every_time'}
-                  />
-                  <Button
-                    label="Never allow"
-                    variant="danger"
-                    onPress={() => void resolve(request, 'never_allow')}
-                    disabled={busyId === request.id}
-                    loading={busyId === request.id && busyOption === 'never_allow'}
-                  />
-                  <Button
-                    label="Deny"
-                    variant="danger"
-                    onPress={() => void resolve(request, 'deny')}
-                    disabled={busyId === request.id}
-                    loading={busyId === request.id && busyOption === 'deny'}
-                  />
-                </View>
-                <Pressable
-                  accessibilityRole="button"
-                  onPress={() => void cancel(request)}
-                  style={styles.cancelLink}
-                >
-                  <Text style={styles.cancelText}>Cancel request</Text>
-                </Pressable>
-              </GlassView>
-            ))}
+                  <View style={styles.noteBlock}>
+                    <Ionicons
+                      name={request.reversible ? 'refresh-outline' : 'information-circle-outline'}
+                      size={15}
+                      color={request.reversible ? colors.success : colors.textMuted}
+                    />
+                    <Text style={styles.noteText}>
+                      {request.reversible
+                        ? 'Reversible from Agent activity.'
+                        : request.external
+                          ? 'External service: ORBIT cannot guarantee this can be undone.'
+                          : 'ORBIT cannot undo this action.'}
+                    </Text>
+                  </View>
+
+                  {request.freshConfirmation || request.risk === 'high' || request.risk === 'critical' ? (
+                    <View style={styles.noteBlock}>
+                      <Ionicons name="alert-circle-outline" size={15} color={colors.danger} />
+                      <Text style={styles.dangerText}>
+                        {request.risk === 'critical'
+                          ? 'Critical action: payments, external sending, permanent deletion, and security changes always need fresh confirmation.'
+                          : 'High-risk actions ask every time. A saved grant can never skip this prompt.'}
+                      </Text>
+                    </View>
+                  ) : null}
+
+                  <View style={styles.buttons}>
+                    <Button
+                      label="Allow once"
+                      onPress={() => void resolve(request, 'allow_once')}
+                      disabled={busy}
+                      loading={busy && busyOption === 'allow_once'}
+                    />
+                    <Button
+                      label="Allow for session"
+                      variant="secondary"
+                      onPress={() => void resolve(request, 'allow_session')}
+                      disabled={busy || !canSaveChoice(request)}
+                      loading={busy && busyOption === 'allow_session'}
+                    />
+                    <Button
+                      label="Always allow"
+                      variant="secondary"
+                      onPress={() => void resolve(request, 'always_allow')}
+                      disabled={busy || !canSaveChoice(request)}
+                      loading={busy && busyOption === 'always_allow'}
+                    />
+                    <Button
+                      label="Ask every time"
+                      variant="secondary"
+                      onPress={() => void resolve(request, 'ask_every_time')}
+                      disabled={busy}
+                      loading={busy && busyOption === 'ask_every_time'}
+                    />
+                    <Button
+                      label="Never allow"
+                      variant="danger"
+                      onPress={() => void resolve(request, 'never_allow')}
+                      disabled={busy}
+                      loading={busy && busyOption === 'never_allow'}
+                    />
+                    <Button
+                      label="Deny"
+                      variant="danger"
+                      onPress={() => void resolve(request, 'deny')}
+                      disabled={busy}
+                      loading={busy && busyOption === 'deny'}
+                    />
+                  </View>
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={() => void cancel(request)}
+                    style={styles.cancelLink}
+                  >
+                    <Text style={styles.cancelText}>Cancel request</Text>
+                  </Pressable>
+                </GlassView>
+              );
+            })}
 
             {pluginRequest ? (
               <GlassView style={styles.card}>
@@ -294,44 +377,75 @@ export default function ApprovalsScreen() {
                           : 'Permission request'}
                     </Text>
                   </View>
-                  <Text style={styles.timer}>{timeLeft(pluginRequest.expiresAt)}</Text>
+                  <StatusPill
+                    label={timeLeft(pluginRequest.expiresAt)}
+                    tone={timeLeft(pluginRequest.expiresAt) === 'Expired' ? 'danger' : 'warning'}
+                    icon="time-outline"
+                  />
                 </View>
+
+                <View style={styles.pillRow}>
+                  <StatusPill label="Plugin approval" tone="accent" icon="extension-puzzle-outline" />
+                  {pluginInstall?.sensitivePermissions.length ? (
+                    <StatusPill label="Sensitive access" tone="warning" icon="shield-outline" />
+                  ) : null}
+                  {pluginQueued > 0 ? (
+                    <StatusPill
+                      label={`${pluginQueued} more queued`}
+                      tone="neutral"
+                      icon="list-outline"
+                    />
+                  ) : null}
+                </View>
+
                 <Text style={styles.summary}>{pluginRequest.reason}</Text>
+
                 {pluginInstall ? (
-                  <View style={styles.actionsList}>
-                    <Text style={styles.meta}>
-                      Needed for: {pluginInstall.capabilityLabel}
-                    </Text>
-                    {pluginInstall.steps.map((step, index) => (
-                      <Text key={`${step}-${index}`} style={styles.actionItem}>
-                        · {step}
-                      </Text>
-                    ))}
+                  <View style={styles.details}>
+                    <Detail label="Needed for" value={pluginInstall.capabilityLabel} />
+                    <View style={styles.detailRow}>
+                      <Text style={styles.detailLabel}>Steps</Text>
+                      <View style={styles.detailValue}>
+                        {pluginInstall.steps.map((step, index) => (
+                          <Text key={`${step}-${index}`} style={styles.actionItem}>
+                            · {step}
+                          </Text>
+                        ))}
+                      </View>
+                    </View>
                     {pluginInstall.dependencies.length > 0 ? (
-                      <Text style={styles.meta}>
-                        Dependencies:{' '}
-                        {pluginInstall.dependencies
+                      <Detail
+                        label="Dependencies"
+                        value={pluginInstall.dependencies
                           .map((dependency) => `${dependency.name} ${dependency.version}`)
                           .join(', ')}
-                      </Text>
-                    ) : null}
-                    {pluginInstall.sensitivePermissions.length > 0 ? (
-                      <Text style={styles.warningText}>
-                        Sensitive access is granted only if you approve.
-                      </Text>
+                      />
                     ) : null}
                   </View>
                 ) : null}
-                <View style={styles.permissionList}>
-                  {pluginRequest.permissions.map((permission) => (
-                    <Text key={permission} style={styles.actionItem}>
-                      · {PLUGIN_PERMISSION_META[permission]?.label ?? permission}
-                    </Text>
-                  ))}
+
+                <View style={styles.details}>
+                  <View style={styles.detailRow}>
+                    <Text style={styles.detailLabel}>Permissions</Text>
+                    <View style={styles.detailValue}>
+                      {pluginRequest.permissions.map((permission) => (
+                        <Text key={permission} style={styles.actionItem}>
+                          · {PLUGIN_PERMISSION_META[permission]?.label ?? permission}
+                        </Text>
+                      ))}
+                    </View>
+                  </View>
                 </View>
-                {pluginQueued > 0 ? (
-                  <Text style={styles.meta}>{pluginQueued} more request(s) queued</Text>
+
+                {pluginInstall?.sensitivePermissions.length ? (
+                  <View style={styles.noteBlock}>
+                    <Ionicons name="alert-circle-outline" size={15} color={colors.warning} />
+                    <Text style={styles.warningText}>
+                      Sensitive access is granted only if you approve.
+                    </Text>
+                  </View>
                 ) : null}
+
                 <View style={styles.buttons}>
                   <Button
                     label={
@@ -389,13 +503,13 @@ const makeStyles = ({ colors }: AppTheme) =>
     cardHeader: {
       flexDirection: 'row',
       alignItems: 'flex-start',
-      gap: spacing.md,
+      gap: spacing.sm + 2,
     },
     iconWrap: {
       width: 42,
       height: 42,
       borderRadius: radius.md,
-      backgroundColor: colors.warningSoft ?? colors.accentSoft,
+      backgroundColor: colors.warningSoft,
       alignItems: 'center',
       justifyContent: 'center',
     },
@@ -405,7 +519,7 @@ const makeStyles = ({ colors }: AppTheme) =>
     },
     cardTitle: {
       color: colors.text,
-      fontSize: 15,
+      ...typography.body,
       fontWeight: '700',
     },
     meta: {
@@ -413,18 +527,43 @@ const makeStyles = ({ colors }: AppTheme) =>
       fontSize: 11,
       lineHeight: 16,
     },
-    timer: {
-      color: colors.warning,
-      fontSize: 11,
-      fontWeight: '700',
+    pillRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      alignItems: 'center',
+      gap: spacing.xs,
     },
     summary: {
       color: colors.textMuted,
-      fontSize: 13,
+      ...typography.bodySmall,
       lineHeight: 19,
     },
-    actionsList: {
-      gap: 2,
+    details: {
+      gap: 6,
+      paddingVertical: spacing.xs,
+    },
+    detailRow: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: spacing.sm,
+    },
+    detailLabel: {
+      width: 94,
+      color: colors.textFaint,
+      fontSize: 11,
+      lineHeight: 17,
+      fontWeight: '600',
+    },
+    detailValue: {
+      flex: 1,
+      color: colors.textMuted,
+      fontSize: 12,
+      lineHeight: 17,
+    },
+    monoValue: {
+      color: colors.text,
+      fontFamily: fonts.mono,
+      ...typography.code,
     },
     actionItem: {
       color: colors.textMuted,
@@ -437,17 +576,28 @@ const makeStyles = ({ colors }: AppTheme) =>
       lineHeight: 16,
     },
     dangerText: {
+      flex: 1,
       color: colors.danger,
       fontSize: 11,
       lineHeight: 16,
     },
-    permissionList: {
-      gap: 2,
+    noteBlock: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: spacing.xs,
+      paddingVertical: 2,
+    },
+    noteText: {
+      flex: 1,
+      color: colors.textMuted,
+      fontSize: 11,
+      lineHeight: 16,
     },
     buttons: {
       flexDirection: 'row',
       flexWrap: 'wrap',
       gap: spacing.sm,
+      marginTop: spacing.xs,
     },
     cancelLink: {
       alignSelf: 'flex-start',
