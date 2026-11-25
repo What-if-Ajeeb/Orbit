@@ -1,5 +1,10 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { router, useFocusEffect, type Href } from 'expo-router';
+import {
+  router,
+  useFocusEffect,
+  useLocalSearchParams,
+  type Href,
+} from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useState } from 'react';
 import {
@@ -51,6 +56,10 @@ import { layout, radius, spacing, typography } from '@/theme';
 type IconName = keyof typeof Ionicons.glyphMap;
 type Tone = 'accent' | 'success' | 'warning' | 'danger' | 'muted';
 type Tab = 'overview' | 'activity' | 'grants' | 'audit';
+
+function isTab(value: unknown): value is Tab {
+  return value === 'overview' || value === 'activity' || value === 'grants' || value === 'audit';
+}
 
 const REQUEST_META: Record<
   PermissionRequestStatus,
@@ -799,6 +808,7 @@ export default function PermissionsScreen() {
   const insets = useSafeAreaInsets();
   const { user } = useSession();
   const { open: openSidebar } = useSidebar();
+  const params = useLocalSearchParams<{ tab?: string }>();
   const [data, setData] = useState<PermissionDashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -806,7 +816,11 @@ export default function PermissionsScreen() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [pairingOpen, setPairingOpen] = useState(false);
-  const [tab, setTab] = useState<Tab>('overview');
+  const tab: Tab = isTab(params.tab) ? params.tab : 'overview';
+
+  function selectTab(next: Tab) {
+    router.setParams({ tab: next });
+  }
 
   const load = useCallback(
     async (spinner: boolean) => {
@@ -1303,7 +1317,7 @@ export default function PermissionsScreen() {
                 key={option.key}
                 accessibilityRole="tab"
                 accessibilityState={{ selected: active }}
-                onPress={() => setTab(option.key)}
+                onPress={() => selectTab(option.key)}
                 style={[styles.segment, active && styles.segmentActive]}
               >
                 <Text style={[styles.segmentText, active && styles.segmentTextActive]}>
@@ -1412,7 +1426,7 @@ export default function PermissionsScreen() {
                   title="Activity & decisions"
                   description="Recent decisions and timestamped agent activity."
                   badge={`${activity.length}`}
-                  onPress={() => setTab('activity')}
+                  onPress={() => selectTab('activity')}
                 />
                 <View style={styles.divider} />
                 <SettingsNavRow
@@ -1420,14 +1434,14 @@ export default function PermissionsScreen() {
                   title="Grants & saved choices"
                   description="Active, temporary, and past grants with revoke controls."
                   badge={`${activeGrants.length}`}
-                  onPress={() => setTab('grants')}
+                  onPress={() => selectTab('grants')}
                 />
                 <View style={styles.divider} />
                 <SettingsNavRow
                   icon="document-text-outline"
                   title="Audit history"
                   description="Consent and execution events."
-                  onPress={() => setTab('audit')}
+                  onPress={() => selectTab('audit')}
                 />
               </GlassView>
             </SettingsSection>
