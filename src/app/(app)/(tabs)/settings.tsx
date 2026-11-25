@@ -420,6 +420,7 @@ export default function SettingsScreen() {
       <SettingsHeader
         title="Settings"
         fallback={'/' as Href}
+        menu
         right={
           <Pressable
             accessibilityRole="button"

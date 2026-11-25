@@ -312,6 +312,7 @@ export function AppSidebar() {
   });
   const panelTranslateX = Animated.add(translateX, dragX);
   const visibleAccounts = accounts.length > 0 ? accounts : [user];
+  const canSwitchAccount = visibleAccounts.length > 1;
 
   function renderNavRow(item: NavItem, compact = false) {
     const active = isNavActive(pathname, item.href);
@@ -396,6 +397,8 @@ export function AppSidebar() {
 
       <Animated.View
         pointerEvents={isOpen ? 'auto' : 'none'}
+        accessibilityElementsHidden={!isOpen}
+        importantForAccessibility={isOpen ? 'auto' : 'no-hide-descendants'}
         style={[
           styles.panel,
           {
@@ -548,9 +551,17 @@ export function AppSidebar() {
         <View style={styles.bottomBar}>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Switch account"
-            accessibilityState={{ expanded: accountMenuOpen }}
-            onPress={() => setAccountMenuOpen((value) => !value)}
+            accessibilityLabel={canSwitchAccount ? 'Switch account' : 'Account settings'}
+            accessibilityState={canSwitchAccount ? { expanded: accountMenuOpen } : undefined}
+            onPress={() => {
+              if (!canSwitchAccount) {
+                close();
+                router.navigate('/settings/account' as Href);
+                return;
+              }
+
+              setAccountMenuOpen((value) => !value);
+            }}
             style={({ pressed }) => [styles.bottomUser, pressed && styles.pressed]}
           >
             <View style={styles.avatar}>
@@ -561,11 +572,17 @@ export function AppSidebar() {
                 {user.name}
               </Text>
               <Text numberOfLines={1} style={styles.bottomUserHint}>
-                {visibleAccounts.length > 1 ? 'Switch account' : 'Account settings'}
+                {canSwitchAccount ? 'Switch account' : 'Account settings'}
               </Text>
             </View>
             <Ionicons
-              name={accountMenuOpen ? 'chevron-up' : 'chevron-down'}
+              name={
+                canSwitchAccount
+                  ? accountMenuOpen
+                    ? 'chevron-up'
+                    : 'chevron-down'
+                  : 'chevron-forward'
+              }
               size={16}
               color={colors.textMuted}
             />
