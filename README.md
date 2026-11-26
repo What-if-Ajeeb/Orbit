@@ -340,9 +340,9 @@ What is implemented today:
 - Ten native plugins (`orbit.builtin.*`) provide Agent, Memory, Files, Browser,
   Code, Tasks, Projects, Buddy, MCP and Sandbox tools through the same runtime.
   They reuse existing app services and stores; sensitive actions require fresh
-  approval. Browser has no page fetcher or arbitrary-URL WebView, Code has no
-  execution tool, MCP adds no second transport, and Sandbox is Android-only and
-  data-only.
+  approval. Browser has no page fetcher or arbitrary-URL WebView, Code is an
+  education-only DSA/code tutor with no editor or execution tool, MCP adds no
+  second transport, and Sandbox is Android-only and data-only.
 - Legacy hook code is disabled: stored hook rows are never compiled or
   evaluated, and failed executions are recorded and ignored by the agent.
 

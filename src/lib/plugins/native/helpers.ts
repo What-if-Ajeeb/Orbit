@@ -158,6 +158,49 @@ export function readNumber(
   return value;
 }
 
+export function readBoolean(
+  args: Record<string, unknown>,
+  key: string,
+  options: { required?: boolean; defaultValue?: boolean } = {}
+): boolean | undefined {
+  const value = args[key];
+
+  if (value === undefined) {
+    if (options.required) {
+      throw new Error(`Missing required argument: ${key}.`);
+    }
+    return options.defaultValue;
+  }
+
+  if (typeof value !== 'boolean') {
+    throw new Error(`${key} must be a boolean.`);
+  }
+
+  return value;
+}
+
+export function readEnum<T extends string>(
+  args: Record<string, unknown>,
+  key: string,
+  allowed: readonly T[],
+  options: { required?: boolean; defaultValue?: T } = {}
+): T | undefined {
+  const value = args[key];
+
+  if (value === undefined) {
+    if (options.required) {
+      throw new Error(`Missing required argument: ${key}.`);
+    }
+    return options.defaultValue;
+  }
+
+  if (typeof value !== 'string' || !allowed.includes(value as T)) {
+    throw new Error(`${key} must be one of: ${allowed.join(', ')}.`);
+  }
+
+  return value as T;
+}
+
 export function objectSchema(
   properties: Record<string, unknown>,
   required: string[] = []

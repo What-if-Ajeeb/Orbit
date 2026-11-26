@@ -91,7 +91,7 @@ export const NATIVE_PLUGIN_READMES: Record<string, string> = {
   [BROWSER_PLUGIN_ID]:
     'Confirms and hands http(s) or mailto links to the operating system. It has no page fetcher, no browser automation and no arbitrary-URL WebView.',
   [CODE_PLUGIN_ID]:
-    'Stores and reads code as versioned artifacts and lists paired Desktop Companions. Arbitrary code execution is intentionally unsupported; use an approved computer action for remote commands.',
+    'Education-only programming tutor for DSA problems, code explanation, debugging, complexity and guided learning. Uses the existing AI provider; it has no editor, file editing, execution tool or sandbox coding surface.',
   [TASKS_PLUGIN_ID]:
     'Lists, creates, updates, completes and deletes tasks through the existing task store. Reminder sync and buddy rewards are not reimplemented; mutations require explicit approval.',
   [PROJECTS_PLUGIN_ID]:

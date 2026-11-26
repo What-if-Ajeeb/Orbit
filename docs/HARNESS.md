@@ -106,12 +106,19 @@ unsupported capabilities unimplemented:
 | `orbit.builtin.memory` | `memory_read`, `memory_write` | Existing `agent_configs` memory; writes approved and refuse secret-looking values. |
 | `orbit.builtin.files` | `files_list`, `files_read`, `files_create`, `files_write`, `files_restore_version`, `files_remove`, `files_trash_list` | User-scoped artifacts and trash metadata; no raw filesystem paths. Mutations approved. |
 | `orbit.builtin.browser` | `browser_open_link` | Approved `http`, `https` or `mailto` OS handoff; no fetcher, automation or arbitrary-URL WebView. |
-| `orbit.builtin.code` | `code_artifact_save`, `code_artifact_read`, `code_paired_devices` | Code artifacts and read-only companion metadata; no `code_execute` or local shell. |
+| `orbit.builtin.code` | `code_solve_dsa`, `code_explain_code`, `code_teach_concept`, `code_debug_code`, `code_analyze_complexity`, `code_learning_mode` | Education-only tutor using the existing AI provider; DSA, explanation, debugging, complexity and guided learning. No editor, file editing, execution, terminal or sandbox coding. |
 | `orbit.builtin.tasks` | `tasks_list`, `tasks_stats`, `tasks_create`, `tasks_update`, `tasks_complete`, `tasks_delete` | Wraps `src/lib/tasks.ts`; reminder sync and buddy rewards stay owned there. Mutations approved. |
 | `orbit.builtin.projects` | `projects_workspace_summary`, `projects_scopes`, `projects_workflow_runs` | Read-only aggregation over chats, tasks, artifacts and workflows; no separate projects table. |
 | `orbit.builtin.buddy` | `buddy_list`, `buddy_activities`, `buddy_inventory`, `buddy_evolution_options`, `buddy_set_active`, `buddy_evolve` | Existing buddy store and rules; reads avoid creating a starter buddy. Mutations approved. |
 | `orbit.builtin.mcp` | `mcp_status`, `mcp_servers`, `mcp_sync` | Existing mirror introspection and approved re-sync; no second transport or gate. |
 | `orbit.builtin.sandbox` | `sandbox_policy`, `sandbox_compute` | Android-only data-only programs in the existing isolated process; no JS, file, network or device access. |
+
+ORBIT Code is a tutor, not a mobile IDE. It accepts pasted code or an image payload
+through the existing agent attachment flow, calls the configured AI provider via
+`requestCompletion`, and returns structured explanations. DSA answers start in
+hints mode; complete solutions, quizzes and answers are revealed only when the
+caller asks for them. No screen, editor, file operation or execution tool was
+added.
 
 Current limitations: third-party plugins are declarative only (no downloaded
 code execution), no remote marketplace or unknown-manifest fetch, `notifications`/`credentials` SDK adapters

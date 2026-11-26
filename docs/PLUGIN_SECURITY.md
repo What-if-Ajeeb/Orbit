@@ -214,8 +214,10 @@ approval host:
   returns raw filesystem paths.
 - Browser hands approved `http`, `https` and `mailto` links to the OS; it has no
   fetcher, automation API, or arbitrary-URL WebView.
-- Code stores and reads code artifacts and lists paired-companion metadata; it has
-  no execution tool and no local shell fallback.
+- Code is an education-only tutor that sends explanations to the configured AI
+  provider through the existing adapter registry. It has only `ai.invoke`, reads
+  no files, and has no editor, execution, shell, scaffolding or sandbox-coding
+  tool. Code snippets are illustrative text, not programs run by ORBIT.
 - Tasks, Projects and Buddy reuse their existing app stores. Tasks does not
   duplicate reminder sync or buddy rewards, Projects has no separate CRUD store,
   and Buddy reads do not create a starter buddy.
