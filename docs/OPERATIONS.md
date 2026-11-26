@@ -109,12 +109,13 @@ Implemented behavior to preserve when editing:
 - MCP servers are mirrored into synthetic `mcp.server.<slug>` plugins. The gate
   is installed in the constructor, so tools are denied until records are synced;
   it requires `mcp.connect` plus `ai.invoke`, and revocations are sticky.
-- A reviewed plugin tool may declare a data-only `program`; `buildPluginAgentTool`
-  then routes only that tool body through `MobileSandboxManager` and the existing
-  approval queue. No `sandbox` entry kind, second runtime or code loader is added.
-  The `orbit.builtin.sandbox` plugin uses the same bridge with fixed programs and
-  accepts no raw instructions. MCP tool transport stays host-side because the
-  isolated core has no network API.
+- The Android sandbox never executes guest code. `MobileSandboxManager` validates
+  manifests, permissions, approvals, paths, URLs and request envelopes through a
+  data-only Rust core in an isolated Android process. Kotlin in the app process
+  performs a bounded app-private file read only after Rust allows it. The
+  `orbit.builtin.sandbox` plugin exposes only read-only security tools through the
+  existing registry; program-backed tool definitions are rejected. MCP tool
+  transport stays host-side because the isolated core has no network API.
 - Demand-based installation (`src/lib/plugins/demand.ts` and `demand-runtime.ts`)
   is a planning layer over the same registry. It searches only the bundled
   trusted catalog and user-configured MCP servers, validates manifest/trust/

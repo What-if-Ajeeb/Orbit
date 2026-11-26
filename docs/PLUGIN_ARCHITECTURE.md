@@ -218,14 +218,15 @@ JSON Schema subset, optionally asks for tool confirmation when the tool sets
 `requiresApproval`, enforces a timeout clamped to 1–60 seconds (default 15 s),
 observes cancellation, and rejects results over 200,000 characters.
 
-A tool definition may provide a data-only `program` instead of a host `execute`
-function. `createSandboxToolExecutor()` is the single bridge from that wrapper to
-`MobileSandboxManager`; the program body runs in the Android isolated process,
-while ownership, grants, validation, timeout and result checks stay in the
-plugin layer. The diagnostics plugin's `sandbox_echo` tool is the small reference;
-`orbit.builtin.sandbox` builds fixed programs for its `sandbox_compute` tool and
-never accepts raw instructions. There is no `sandbox` manifest entry kind and no
-second runtime.
+`PluginRegistry.registerTool()` refuses program-backed definitions. A tool must
+either have a reviewed host `execute` implementation from an `official` built-in
+plugin or be inert declarative metadata from the builder. The Android sandbox
+never executes guest code: `MobileSandboxManager` validates manifests,
+permissions, approvals, paths, URLs and request envelopes, and mediates a bounded
+file read performed by Kotlin in the app process only after Rust returns `allow`.
+The reviewed `orbit.builtin.sandbox` plugin exposes those read-only security
+checks through the same registry. There is no `sandbox` manifest entry kind and
+no second runtime.
 
 MCP servers remain owned by `src/lib/mcp/registry.ts`. Each configured server
 is mirrored as a synthetic `mcp.server.<slug>` plugin with `mcp.connect` and

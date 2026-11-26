@@ -80,16 +80,18 @@ enable. Declaring a permission does not grant it.
 | Reserved file declarations | `files.read`, `files.write` |
 | Device/OS | `notifications.send`, `camera.access`, `microphone.access`, `location.access`, `contacts.read`, `calendar.read`, `calendar.write`, `clipboard.read`, `clipboard.write`, `background.execute` |
 | AI/MCP | `ai.invoke`, `ai.context.read`, `mcp.connect` |
-| Sandbox | `sandbox.execute` |
+| Sandbox | `sandbox.inspect` |
 | Credentials | `credentials.request` |
 | UI | `ui.contribute` |
 
-`files.read` and `files.write` are accepted but produce a validation warning:
-the SDK has no file API. `camera.access`, `microphone.access`, `location.access`,
-contacts, calendar, clipboard and background execution are valid declarations
-with no corresponding SDK implementation in this tree. `sandbox.execute` is used
-by the host-owned Android mobile sandbox approval path; see
-[`MOBILE_SANDBOX.md`](MOBILE_SANDBOX.md). Declaring it does not grant it.
+`files.read` and `files.write` are reserved declarations for reviewed host
+plugins; the SDK has no general file API. `camera.access`, `microphone.access`,
+`location.access`, contacts, calendar, clipboard and background execution are
+valid declarations with no corresponding SDK implementation in this tree.
+`sandbox.inspect` allows read-only security-policy checks through the reviewed
+Android sandbox plugin; see [`MOBILE_SANDBOX.md`](MOBILE_SANDBOX.md). Declaring
+any permission does not grant it. The retired `sandbox.execute` permission is
+stripped from legacy manifests; execution is not a sandbox capability.
 
 ## Capabilities
 

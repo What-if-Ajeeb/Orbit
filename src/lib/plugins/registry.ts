@@ -28,7 +28,6 @@ import {
   namespacedPluginToolName,
   pluginToolNamespace,
   type PluginToolHost,
-  type SandboxToolExecutor,
 } from './tools';
 import {
   PLUGIN_PERMISSIONS,
@@ -194,8 +193,6 @@ export type PluginRegistryOptions = {
     pluginName: string;
     toolName: string;
   }) => Promise<boolean>;
-  /** Required only for tools that declare a data-only sandbox program. */
-  sandboxExecutor?: SandboxToolExecutor;
   logger?: (message: string, detail?: unknown) => void;
 };
 
@@ -741,13 +738,53 @@ export class PluginRegistry {
     return record;
   }
 
+  /**
+   * Removes the retired execution permission and execution-shaped fields from
+   * persisted manifests. New manifests are still rejected by validation; this
+   * path only keeps an existing install loadable while disabling it.
+   */
+  private normalizeLegacySandboxManifest(raw: unknown): {
+    manifest: unknown;
+    changed: boolean;
+  } {
+    if (!isRecord(raw)) {
+      return { manifest: raw, changed: false };
+    }
+
+    const next: Record<string, unknown> = { ...raw };
+    let changed = false;
+
+    if (Array.isArray(next.permissions)) {
+      const filtered = next.permissions.filter(
+        (permission) => permission !== 'sandbox.execute'
+      );
+
+      if (filtered.length !== next.permissions.length) {
+        next.permissions = filtered;
+        changed = true;
+      }
+    }
+
+    for (const key of ['program', 'instructions', 'handler']) {
+      if (key in next) {
+        delete next[key];
+        changed = true;
+      }
+    }
+
+    return { manifest: next, changed };
+  }
+
   async restore(
     records: Awaited<ReturnType<PluginPersistence['loadPlugins']>>
   ): Promise<string[]> {
     const resumable: string[] = [];
 
     for (const saved of records) {
-      const result = validateManifest(saved.manifest ?? saved.manifestJson);
+      const legacy = this.normalizeLegacySandboxManifest(
+        saved.manifest ?? saved.manifestJson
+      );
+      const result = validateManifest(legacy.manifest);
 
       if (!result.ok) {
         await this.history({
@@ -765,7 +802,8 @@ export class PluginRegistry {
         saved.status
       );
       const wasActive = ACTIVE_STATUSES.includes(saved.status);
-      const status: PluginStatus = interrupted || wasActive ? 'disabled' : saved.status;
+      const status: PluginStatus =
+        interrupted || wasActive || legacy.changed ? 'disabled' : saved.status;
 
       if (saved.enabled && wasActive) {
         resumable.push(manifest.pluginId);
@@ -796,6 +834,19 @@ export class PluginRegistry {
       };
       this.attachImplementation(entry);
       this.entries.set(manifest.pluginId, entry);
+
+      if (legacy.changed) {
+        await this.history({
+          pluginId: manifest.pluginId,
+          action: 'migrated',
+          fromVersion: saved.manifest?.version ?? null,
+          toVersion: manifest.version,
+          status: 'succeeded',
+          detail:
+            'Removed the retired sandbox.execute permission or execution-shaped fields. The plugin is disabled until it is reviewed and enabled again.',
+        });
+        await this.persist(entry);
+      }
 
       if (interrupted) {
         await this.history({
@@ -1789,15 +1840,15 @@ export class PluginRegistry {
       throw new PluginRegistryError('No tool host is available for plugin tools.');
     }
 
-    if (!definition.program && !definition.execute) {
+    if ('program' in definition || 'instructions' in definition) {
       throw new PluginRegistryError(
-        `Tool "${definition.name}" needs either an implementation or a sandbox program.`
+        `Tool "${definition.name}" cannot declare a sandbox program; guest code execution is not supported.`
       );
     }
 
-    if (definition.program && !this.options.sandboxExecutor) {
+    if (typeof definition.execute !== 'function') {
       throw new PluginRegistryError(
-        'Sandbox-backed plugin tools require a sandbox executor in the platform.'
+        `Tool "${definition.name}" needs a reviewed host implementation.`
       );
     }
 
@@ -1871,7 +1922,6 @@ export class PluginRegistry {
         });
       },
       log: (message, detail) => this.log(message, detail),
-      sandbox: this.options.sandboxExecutor,
     });
 
     this.options.toolHost.register(tool);

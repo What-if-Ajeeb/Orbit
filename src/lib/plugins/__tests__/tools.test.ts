@@ -259,7 +259,7 @@ describe('plugin tool execution wrapper', () => {
   });
 });
 
-describe('sandbox-backed plugin tools', () => {
+describe('program-backed plugin tools are rejected', () => {
   const program = {
     pluginId: 'test.plugin',
     version: '1.0.0',
@@ -273,12 +273,7 @@ describe('sandbox-backed plugin tools', () => {
     },
   };
 
-  it('runs the program through the injected sandbox executor', async () => {
-    const sandbox = vi.fn(async (_manifest: unknown, input: Record<string, unknown>) => ({
-      content: `echo:${String(input.value)}`,
-      trace: 'sandbox',
-    }));
-    const assertPermission = vi.fn();
+  it('fails closed when a program-only tool is executed', async () => {
     const { tool } = makeTool({
       definition: {
         name: 'sandbox_echo',
@@ -290,50 +285,18 @@ describe('sandbox-backed plugin tools', () => {
           additionalProperties: false,
         },
         program,
-      },
+      } as never,
       grantedPermissions: () => ['ai.invoke'],
-      assertPermission,
+      assertPermission: vi.fn(),
       requiresApproval: async () => true,
-      sandbox,
     });
 
     const result = await tool.execute(context, { value: 'orbit' });
-
-    expect(result).toEqual({ content: 'echo:orbit', trace: 'sandbox' });
-    expect(sandbox).toHaveBeenCalledWith(program, { value: 'orbit' }, expect.anything());
-    expect(assertPermission).toHaveBeenCalledWith('ai.invoke');
-    expect(assertPermission).not.toHaveBeenCalledWith('sandbox.execute');
-    expect(tool.meta?.permissions).not.toContain('sandbox.execute');
+    expect(result.content).toMatch(/no reviewed host implementation/i);
+    expect(result.trace).toMatch(/failed/i);
   });
 
-  it('registers a sandbox tool only when the platform supplies an executor', async () => {
-    const sandbox = vi.fn(async () => ({ content: '{"ok":true}', trace: 'sandbox' }));
-    const { registry, toolHost } = createHarness({ sandboxExecutor: sandbox });
-    registry.discover(
-      builtinWithTools({ permissions: ['ai.invoke'] }),
-      { trustLevel: 'official', source: 'builtin' }
-    );
-    await registry.install('builtin.plugin');
-    await registry.enable('builtin.plugin', {
-      approvePermissions: ['ai.invoke'],
-    });
-
-    const definition = {
-      name: 'sandbox_echo',
-      description: 'Echo.',
-      parameters: { type: 'object' as const, properties: {} },
-      program,
-    };
-
-    await registry.registerTool('builtin.plugin', definition);
-    const result = await toolHost.tools
-      .get('plugin__builtin_plugin__sandbox_echo')!
-      .execute(context, {});
-    expect(result.content).toBe('{"ok":true}');
-    expect(sandbox).toHaveBeenCalledTimes(1);
-  });
-
-  it('rejects a sandbox tool when no executor is configured', async () => {
+  it('refuses to register a program-only tool even with an executor configured', async () => {
     const { registry } = createHarness();
     registry.discover(
       builtinWithTools({ permissions: ['ai.invoke'] }),
@@ -350,8 +313,8 @@ describe('sandbox-backed plugin tools', () => {
         description: 'Echo.',
         parameters: { type: 'object' as const, properties: {} },
         program,
-      })
-    ).rejects.toThrow(/sandbox executor/);
+      } as never)
+    ).rejects.toThrow(/guest code|sandbox program|reviewed host implementation/i);
   });
 });
 

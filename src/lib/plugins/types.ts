@@ -68,7 +68,7 @@ export const PLUGIN_PERMISSIONS = [
   'credentials.request',
   'background.execute',
   'ui.contribute',
-  'sandbox.execute',
+  'sandbox.inspect',
 ] as const;
 
 export type PluginPermission = (typeof PLUGIN_PERMISSIONS)[number];
@@ -350,7 +350,8 @@ export type PermissionAuditEvent =
   | 'permissions_revoked_all'
   | 'permissions_changed_on_update'
   | 'permission_denied_at_runtime'
-  | 'mcp_consent_created';
+  | 'mcp_consent_created'
+  | 'sandbox_operation';
 
 export type PermissionAuditRecord = {
   id: number;
@@ -502,13 +503,10 @@ export type PluginToolDefinition = {
   requiresApproval?: boolean;
   timeoutMs?: number;
   /**
-   * Data-only program interpreted by the isolated Android sandbox. When set,
-   * the tool body runs inside the sandbox instead of in the React Native host.
-   * It is never JavaScript or downloaded code.
+   * Reviewed host implementation. The sandbox has no guest-code tool body:
+   * `program`, `instructions` and `sandbox.execute` are rejected.
    */
-  program?: import('@/lib/sandbox/types').SandboxProgramManifest;
-  /** Host implementation. Omitted only for sandbox-backed tools. */
-  execute?: (
+  execute: (
     args: Record<string, unknown>,
     context: PluginSdkToolContext
   ) => Promise<PluginSdkToolResult>;

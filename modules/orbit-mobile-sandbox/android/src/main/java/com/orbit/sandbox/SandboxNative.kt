@@ -3,9 +3,9 @@ package com.orbit.sandbox
 import org.json.JSONObject
 
 /**
- * Thin JNI boundary. Kotlin does not implement any policy; all validation and
- * execution decisions are made by Rust. If the native library is unavailable,
- * requests fail closed with a structured response.
+ * Thin JNI boundary. Kotlin does not implement any policy; every validation and
+ * authorization decision is made by the data-only Rust core. If the native
+ * library is unavailable, requests fail closed with a structured response.
  */
 object SandboxNative {
   private val loadError: String? = try {

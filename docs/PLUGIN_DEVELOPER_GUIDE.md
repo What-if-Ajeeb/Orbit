@@ -99,8 +99,8 @@ stops an active plugin.
 ## Plugin Builder
 
 **ORBIT → Plugins → Create Plugin** opens an in-app builder under the Plugins
-screen; it is not a separate top-level destination. The guided flow has five
-steps: **Basic Info**, **Configuration**, **Actions & Tools**, **Testing** and
+screen; it is not a separate top-level destination. The guided flow has four
+steps: **Basic Info**, **Configuration**, **Actions & Tools** and
 **Save & Install**. **My Plugins** lists drafts and locally installed plugins.
 
 Builder drafts are editor documents, not a second plugin format. They are
@@ -111,22 +111,22 @@ ready for review. There is no automatic publishing.
 
 Builder-authored plugins are strictly declarative and data-only:
 
-- every action compiles to a fixed `SandboxProgramManifest` preset (`echo`,
-  `sum`, `concat` or `constant`) interpreted by the isolated Android sandbox;
+- every action becomes inert MCP tool metadata in the canonical manifest;
 - no `PluginImplementation`, `PluginToolDefinition.execute`, `eval`,
-  `new Function`, dynamic import, hook or host JavaScript is ever generated;
-- editor-only fields (tags, presets, validation rules, error handling,
-  environment references) never appear in the installed manifest and are never
-  executed;
+  `new Function`, dynamic import, hook, code string, program, instructions or
+  host JavaScript is ever generated;
+- editor-only fields (tags, validation rules, error handling, environment
+  references) never appear in the installed manifest and are never executed;
 - environment entries are references only — secret values live in
   `expo-secure-store`, never in the draft, manifest or logs.
 
 Installation asks for explicit approval and never auto-grants permissions.
-Enabling uses the same approval host. Each Testing Playground run asks for fresh
-approval and executes only through `createSandboxToolExecutor()`; on non-Android
-platforms the sandbox fails closed. To install updated builder changes, increase
-the draft version first. Revoke a permission or uninstall from **My Plugins** or
-the plugin detail screen; drafts are retained after uninstall.
+Enabling uses the same approval host. There is no Testing Playground and no way
+to execute a draft action from the builder. The Android sandbox never executes
+guest code; it validates policy and mediates approved, bounded app-private file
+reads. To install updated builder changes, increase the draft version first.
+Revoke a permission or uninstall from **My Plugins** or the plugin detail screen;
+drafts are retained after uninstall.
 
 Implementation references: `src/lib/plugins/builder.ts`,
 `src/lib/plugins/builder-store.ts`, `src/lib/plugins/builder-service.ts`,

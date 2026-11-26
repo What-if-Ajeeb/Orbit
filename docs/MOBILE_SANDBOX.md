@@ -1,110 +1,150 @@
 # ORBIT Android mobile sandbox
 
-ORBIT's mobile sandbox is an **Android-only subsystem inside the main ORBIT app**.
-There is no second APK, no second app to install, and no separate server. The React
-Native app remains the management surface; Android-native privilege separation and
-Rust policy enforcement run behind an Expo Module.
+ORBIT's mobile sandbox is an **Android-only security boundary inside the main
+ORBIT app**. It does not execute guest code and it is not a general plugin
+runtime. It validates manifests and requests, enforces permissions and approvals,
+and mediates a small set of privileged operations. There is no second APK, no
+second app to install, and no separate server.
 
-> This is a process boundary plus a deterministic policy interpreter. It is not a
-> claim of complete isolation from the Android kernel, Binder, or the host app.
+> This is a policy boundary plus an Android isolated-process boundary. It is not
+> a claim of complete isolation from the Android kernel, Binder, or the host app.
 
 ## Architecture
 
 ```text
-React Native (TypeScript)                 Android app process
-┌──────────────────────────────┐          ┌──────────────────────────────┐
-│ Sandbox screen               │          │ OrbitMobileSandboxModule     │
-│ MobileSandboxManager         │──Expo───▶│ (Kotlin, Expo Modules API)   │
-│ ORBIT approval host          │  Module  │ bind / correlate / timeout   │
-└──────────────────────────────┘          └───────────────┬──────────────┘
-                                                          │ Messenger/Binder
-                                                          ▼
-                                          ┌──────────────────────────────┐
-                                          │ OrbitSandboxService          │
-                                          │ android:isolatedProcess=true │
-                                          │ ┌──────────────────────────┐ │
-                                          │ │ Rust sandbox core (JNI)  │ │
-                                          │ │ validate + policy + VM   │ │
-                                          │ └──────────────────────────┘ │
-                                          └──────────────────────────────┘
+React Native (TypeScript)                  Android app process
+┌───────────────────────────────┐          ┌───────────────────────────────────┐
+│ Plugin Registry               │          │ OrbitMobileSandboxModule          │
+│ MobileSandboxManager          │──Expo───▶│ (Kotlin, Expo Modules API)        │
+│ ORBIT approval host           │  Module  │ bind / correlate / timeout        │
+│ Plugin permission audit       │          │ bounded file read + path checks   │
+└───────────────────────────────┘          └────────────────┬──────────────────┘
+                                                            │ Messenger/Binder
+                                                            ▼
+                                           ┌───────────────────────────────────┐
+                                           │ OrbitSandboxService               │
+                                           │ android:isolatedProcess=true     │
+                                           │ ┌───────────────────────────────┐ │
+                                           │ │ Rust sandbox core (JNI)       │ │
+                                           │ │ validate / policy / audit     │ │
+                                           │ │ no files, network or executor  │ │
+                                           │ └───────────────────────────────┘ │
+                                           └───────────────────────────────────┘
 ```
 
-- **TypeScript** owns lifecycle, manifests, user approval, session history, and UI.
-- **Kotlin** only binds the service, serializes messages, correlates replies, and
-  enforces a 15-second call timeout. It does not evaluate plugin policy.
-- **Rust** validates manifests, enforces the fixed policy, and interprets a small
-  deterministic instruction set. It has no filesystem, network, permission, or
-  JavaScript APIs.
+- **TypeScript** owns lifecycle, request validation, fresh approval evidence,
+  session history, and audit persistence through the existing plugin audit
+  table. It never reads arbitrary files from the sandbox bridge.
+- **Kotlin in the app process** only binds the service, serializes messages,
+  correlates replies, enforces a 15-second call timeout, and performs the
+  bounded file read. It makes no policy decisions.
+- **Kotlin in the isolated service** is a policy-only messenger: it forwards
+  envelopes to Rust and returns structured responses. It has no file access and
+  no network access.
+- **Rust** makes every security decision. It has no filesystem, network,
+  permission, approval, JavaScript, or execution APIs.
 - The service is declared `exported="false"` and `isolatedProcess="true"` in the
   autolinked module manifest. It has no Android permissions of its own.
 
-## What can run
+## What the sandbox can do
 
-A sandbox "program" is JSON data, not code:
+Policy version 2 exposes these security capabilities:
 
-```json
-{
-  "pluginId": "orbit.example.sandbox",
-  "version": "1.0.0",
-  "program": {
-    "version": 1,
-    "instructions": [
-      { "op": "push", "value": "hello " },
-      { "op": "load", "key": "input", "field": "name" },
-      { "op": "concat" },
-      { "op": "emit", "key": "greeting" },
-      { "op": "return" }
-    ]
-  }
-}
-```
+- plugin manifest validation, including rejection of execution-shaped fields;
+- permission checks against declared and granted permissions;
+- fresh approval-evidence verification with a bounded TTL;
+- relative path validation for traversal, absolute paths, encoded separators,
+  and length;
+- HTTPS/network-URL validation that rejects credentials, private, and loopback
+  hosts without making a request;
+- request-envelope validation with a method allowlist and field-size limits;
+- structured allow/deny decisions with hash-only resource identifiers and audit
+  records.
 
-Supported operations: `push`, `load`, `add`, `sub`, `mul`, `concat`, `emit`,
-`return`. `load` may read only the host-supplied `input` object. Unknown fields and
-unknown operations are rejected before execution.
+The only operation names accepted by `authorizeOperation` are `file.read`,
+`file.stat`, and `network.request`. These names describe policy decisions, not a
+general execution API. There is no `program`, `instructions`, `push`, `emit`,
+`evaluate`, `runCode`, JavaScript loader, or deterministic guest interpreter.
+Any request containing execution-shaped fields is rejected.
 
-Fixed policy (version 1): at most 256 instructions, 64 stack items, 8 KB per
-value, 16 KB total output, and a 64 KB request envelope. Callers cannot supply or
-override the policy. Arithmetic overflow, oversized values, and stack underflow are
-controlled errors.
+Fixed policy limits (callers cannot override them):
 
-There is no JavaScript loader. The existing plugin platform still rejects
-downloaded executable code and legacy hook scripts; `runHookCode()` remains
-disabled.
+| Limit | Value |
+| --- | ---: |
+| Request envelope | 64 KiB |
+| Bounded file read | 256 KiB |
+| Relative path | 1 KiB |
+| Network URL | 2 KiB |
+| Request fields | 32 |
+| Approval evidence TTL | 300 seconds |
 
-## Plugin tools
+Malformed envelopes, unknown methods, oversized values, unavailable native
+libraries, bind failures, timeouts, and panics fail closed with structured
+errors.
 
-A reviewed built-in plugin can declare a tool with a data-only `program` instead
-of a host `execute` function. `PluginRegistry` keeps ownership, namespacing,
-schema validation, timeouts and permission checks; `buildPluginAgentTool` routes
-only that tool body through the existing `MobileSandboxManager`. The built-in
-diagnostics plugin uses this path for `plugin__orbit_builtin_diagnostics__sandbox_echo`,
-and `orbit.builtin.sandbox` uses the same bridge with fixed, reviewed programs
-for `sandbox_compute`; raw instructions are never accepted from callers.
+## Canonical file-read flow
 
-This is not a second runtime and not a new entry-point kind. The tool still uses
-the same registry, SDK, approval queue and agent tool registry. On non-Android
-platforms the native transport is unavailable, so the tool fails closed with a
-clear error. MCP servers remain plugin integrations with a host-side network
-bridge; the isolated core has no network API, so their transport is not moved
-into the sandbox.
+A reviewed plugin may request a mediated read. The flow is:
+
+1. The plugin supplies a manifest, a relative path, its granted permissions,
+   and short-lived approval evidence obtained through the existing
+   `PluginApprovalHost`.
+2. Kotlin in the app process forwards the request to the isolated service.
+   Rust verifies the manifest, permission, approval freshness, and normalized
+   path, then returns an `allow` or structured `deny`.
+3. Only after Rust returns `allow`, Kotlin in the app process re-checks the
+   path inside the app-private `filesDir`, rejects symlinks, canonicalizes the
+   target, requires a regular file, enforces the byte limit, and performs a
+   bounded UTF-8 read. The isolated service itself never reads the file.
+4. The result and a hash-only audit record return through TypeScript, where the
+   decision is persisted with `plugin_permission_audit` as a
+   `sandbox_operation` event.
+
+There is no generic agent-facing raw file-read tool. The existing Files plugin
+continues to work through `ArtifactStore`; raw-file mediation is reserved for
+reviewed host plugins.
+
+## Plugin surface
+
+Security capabilities are exposed only through the existing Plugin Registry and
+the reviewed `orbit.builtin.sandbox` plugin. `MobileSandboxManager` is the single
+transport owner; the registry remains responsible for ownership, namespacing,
+schema validation, permission checks, timeouts, and tool registration. The
+sandbox plugin registers read-only tools such as `sandbox_policy`,
+`sandbox_validate_manifest`, `sandbox_check_permission`, `sandbox_validate_path`,
+`sandbox_validate_network`, `sandbox_validate_request`, and
+`sandbox_authorize_operation`.
+
+Builder-authored actions and `mcpTools` entries remain inert metadata. They do
+not carry host code, guest programs, presets, or handlers. The builder no longer
+has a Testing playground, and no tool named `run_code`, `run_tests`,
+`bench_solution`, `sandbox_compute`, or `sandbox_echo` is registered. Legacy
+manifests containing execution-shaped fields or the retired `sandbox.execute`
+permission are normalized and disabled until reviewed and explicitly enabled.
+
+MCP servers remain plugin integrations with host-side transports. The isolated
+core has no network API, so their transport is not moved into the sandbox. The
+separate `computer_execute` tool targets a paired ORBIT Desktop Companion; it is
+not part of the mobile sandbox.
 
 ## Permission and approval
 
-Before every execution, `MobileSandboxManager` asks the existing
-`PluginApprovalHost` for the `sandbox.execute` permission. The request uses
-`trustLevel: 'untrusted'` and a high-risk label. Denial, timeout, or a missing
-approval host means the Rust core is never called. There is no persistent blanket
-grant for this path.
+Read-only validation and inspection require `sandbox.inspect`. Sensitive
+operations require `files.read`, `files.write`, or `network.access` as appropriate.
+A saved permission grant is never sufficient for a sensitive operation:
+`MobileSandboxManager.requestOperationApproval()` asks the existing approval
+host for fresh evidence, and Rust verifies the permission, TTL, and request ID
+before allowing the operation. Denial, timeout, or a missing approval host
+means the privileged bridge call is never performed.
 
 ## User-facing surface
 
 The mobile sandbox is backend-only. It has no screen, sidebar item, settings
-entry, or ORBIT branding. Users see only the normal permission/approval flow:
-when a reviewed plugin requests sandbox execution, `PluginApprovalHost` shows the
-action and risk, and the Rust core runs only after explicit approval. On web,
-iOS, and Expo Go the native module is never loaded, so the code path is never
-available.
+entry, or separate ORBIT branding. Users see only the normal permission and
+approval flow. When a reviewed plugin requests mediated sandbox access,
+`PluginApprovalHost` explains that Rust checks every operation and the Android
+boundary enforces it. On web, iOS, and Expo Go the native module is unavailable,
+so the code path fails closed.
 
 ## Building
 
@@ -134,9 +174,9 @@ npx expo run:android
 does not help `cargo-ndk` find the crate.
 
 Generated `.so` files and Rust build output are gitignored. CI
-(`.github/workflows/android.yml`) performs the same steps, verifies the library is
-inside the APK/AAB, and fails the build if it is missing. Over-the-air JS updates
-cannot add or change the native core; a new native build is required.
+(`.github/workflows/android.yml`) performs the same steps, verifies the library
+is inside the APK/AAB, and fails the build if it is missing. Over-the-air JS
+updates cannot add or change the native core; a new native build is required.
 
 ## Verification
 
@@ -150,30 +190,39 @@ npm run test:rn
 npx expo export --platform android --no-bytecode --output-dir /tmp/opencode/orbit-export
 ```
 
-Android compilation and device behavior are verified in CI because this repository
-does not commit generated `android/` sources.
+Android compilation and device behavior are verified in CI because this
+repository does not commit generated `android/` sources.
 
 ## Security properties and limits
 
 Provided:
 
-- untrusted plugin data is interpreted in a separate Android process with no
-  Android permissions;
-- all policy decisions happen in Rust, not in React Native or Kotlin;
-- only a fixed, bounded, pure instruction set is available;
-- files, network, device permissions, arbitrary native code, and JavaScript are
-  not reachable from a sandbox program;
-- malformed envelopes, unavailable native libraries, bind failures, timeouts, and
-  panics fail closed with structured errors.
+- every policy decision happens in the data-only Rust core, not in React Native
+  or Kotlin;
+- the isolated service has no Android permissions, file access, or network
+  access;
+- sensitive operations require fresh approval evidence and a declared, granted
+  permission;
+- the only file read is a bounded, UTF-8, app-private read performed in the app
+  process after an explicit Rust `allow`;
+- paths are checked for traversal, symlinks, canonical containment, and file
+  type before reading;
+- resources are represented in audit records by hash and byte count, not raw
+  contents;
+- malformed envelopes, unavailable native libraries, bind failures, timeouts,
+  and panics fail closed with structured errors.
 
 Not provided:
 
+- execution of arbitrary code, deterministic guest instructions, or a general
+  plugin runtime;
 - complete isolation from the Android kernel, Binder driver, or a compromised
   device;
-- a general-purpose plugin runtime or arbitrary third-party code execution;
+- network requests from inside the isolated core;
+- general agent access to raw files or external storage;
 - hardware-backed attestation, formal verification, or a security audit;
 - protection against a malicious app that already holds the Android app-signing
   key and can replace the whole APK.
 
-Do not describe this subsystem as a "complete sandbox" for arbitrary code. It is a
-bounded, data-only execution boundary owned by ORBIT.
+Do not describe this subsystem as a "complete sandbox" for arbitrary code. It is
+a bounded, security-only policy and mediation boundary owned by ORBIT.

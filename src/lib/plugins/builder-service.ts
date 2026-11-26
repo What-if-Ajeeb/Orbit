@@ -1,25 +1,18 @@
 /**
- * Installation, lifecycle and test seams for locally authored plugins.
+ * Installation and lifecycle seams for locally authored plugins.
  *
  * This module never creates a second registry, store or runtime. It compiles a
  * builder draft into a canonical v1 manifest, asks the existing approval host,
- * drives the canonical registry, and registers program-only tools through the
- * canonical tool host. No builder-authored JavaScript is ever supplied.
+ * and drives the canonical registry. Actions are inert MCP tool metadata; no
+ * builder-authored code is supplied and no guest program is registered.
  */
-import { agentToolRegistry } from '@/lib/ai/tool-registry';
 import { satisfiesRange } from '@/lib/plugins/semver';
 
-import { appendBuilderLog, loadBuilderDrafts } from './builder-store';
+import { appendBuilderLog } from './builder-store';
 import {
   buildManifest,
-  buildToolDefinitions,
-  requiredActionPermissions,
-  runBuilderAction,
   validateAndBuild,
   type BuilderDraft,
-  type BuilderRunResult,
-  type BuilderValidation,
-  type SandboxToolExecutor,
 } from './builder';
 import {
   pluginApprovalService,
@@ -29,7 +22,6 @@ import { manifestPlatformSupported } from './manifest';
 import { isSensitivePermission, PLUGIN_PERMISSION_META } from './permissions';
 import type { PluginPersistence } from './persistence';
 import type { PluginPlatformRuntime } from './platform';
-import { createSandboxToolExecutor, namespacedPluginToolName } from './tools';
 import type {
   PluginManifest,
   PluginPermission,
@@ -126,7 +118,9 @@ function inspectionFor(
   }
 
   if (manifest.mcpTools.length > 0) {
-    inspectionWarnings.push('Each sandbox run still needs its own approval.');
+    inspectionWarnings.push(
+      'Declared actions are metadata only. The sandbox never executes guest code.'
+    );
   }
 
   return {
@@ -144,7 +138,9 @@ function inspectionFor(
     entryPointKind: manifest.entryPoint.kind,
     dependencies,
     sensitivePermissions,
-    requiresSandbox: manifest.mcpTools.length > 0,
+    requiresSandbox:
+      manifest.permissions.includes('files.read') ||
+      manifest.permissions.includes('network.access'),
     warnings: unique(inspectionWarnings).slice(0, 8),
   };
 }
@@ -169,60 +165,6 @@ export function prepareBuilderDraftForPublish(draft: BuilderDraft): BuilderDraft
   }
 
   return { ...draft, preparedForPublish: true, updatedAt: Date.now() };
-}
-
-/**
- * Registers all draft tools as data-only sandbox programs. Existing host-side
- * implementations are skipped, so builder data can never become executable
- * code in the React Native process.
- */
-export async function registerBuilderTools(
-  platform: PluginPlatformRuntime
-): Promise<BuilderValidation> {
-  const warnings: string[] = [];
-  const errors: string[] = [];
-
-  for (const draft of await loadBuilderDrafts(platform.persistence)) {
-    const record = platform.registry.getRecord(draft.pluginId);
-
-    if (!record || record.status !== 'running') {
-      continue;
-    }
-
-    for (const definition of buildToolDefinitions(draft)) {
-      if (definition.execute) {
-        errors.push(`Builder tool "${definition.name}" unexpectedly contains host code.`);
-        continue;
-      }
-
-      const exposedName = namespacedPluginToolName(draft.pluginId, definition.name);
-
-      if (agentToolRegistry.get(exposedName)) {
-        continue;
-      }
-
-      try {
-        await platform.registry.registerTool(draft.pluginId, definition);
-      } catch (error) {
-        warnings.push(
-          `Could not register ${definition.name}: ${
-            error instanceof Error ? error.message : 'unknown error'
-          }`
-        );
-      }
-    }
-  }
-
-  return { ok: errors.length === 0, errors, warnings };
-}
-
-/** Reattaches local sandbox tools after platform restart. */
-export async function restoreBuilderTools(platform: PluginPlatformRuntime): Promise<void> {
-  const result = await registerBuilderTools(platform);
-
-  for (const warning of result.warnings) {
-    log(platform.persistence, 'plugin-builder', null, 'error', warning);
-  }
 }
 
 /**
@@ -283,9 +225,9 @@ export async function installBuilderDraft(
     pluginVersion: manifest.version,
     trustLevel: 'local',
     capability: manifest.entryPoint.kind,
-    capabilityLabel: 'Declarative sandbox plugin',
+    capabilityLabel: 'Declarative plugin',
     reason:
-      'Install this locally built plugin? Permissions stay default-deny, and every sandbox action asks again before it runs.',
+      'Install this locally built plugin? Permissions stay default-deny. Actions are metadata only; the sandbox never executes code.',
     permissions: manifest.permissions,
     sensitivePermissions: manifest.permissions.filter(isSensitivePermission),
     dependencies: inspection.dependencies.map((dependency) => ({
@@ -344,10 +286,6 @@ export async function installBuilderDraft(
       'info',
       `${requiresUpdate ? 'Updated' : 'Installed'} local plugin ${manifest.pluginId}@${manifest.version}.`
     );
-
-    if (nextRecord.status === 'running') {
-      await registerBuilderTools(platform);
-    }
 
     return { ok: true, errors: [], warnings: validation.warnings, record: nextRecord };
   } catch (error) {
@@ -414,10 +352,6 @@ export async function enableBuilderPlugin(
       approvePermissions: approvedPermissions,
     });
 
-    if (nextRecord.status === 'running') {
-      await registerBuilderTools(platform);
-    }
-
     log(persistence, pluginId, null, 'info', `Enabled local plugin ${pluginId}.`);
     return { ok: true, errors: [], warnings: [], record: nextRecord };
   } catch (error) {
@@ -479,73 +413,6 @@ export async function uninstallBuilderPlugin(
       warnings: [],
     };
   }
-}
-
-export type BuilderTestOptions = {
-  approvals?: BuilderApprovals;
-  executor?: SandboxToolExecutor;
-  persistence?: PluginPersistence;
-};
-
-/** Runs a draft action only after fresh approval and only in the isolated sandbox. */
-export async function testBuilderAction(
-  draft: BuilderDraft,
-  actionId: string,
-  input: Record<string, unknown>,
-  options: BuilderTestOptions = {}
-): Promise<BuilderRunResult> {
-  const action = draft.actions.find((entry) => entry.id === actionId);
-  const validation = validateAndBuild(draft);
-
-  if (!validation.ok || !action) {
-    const message = validation.errors.join(' ') || 'Action was not found.';
-    return {
-      ok: false,
-      output: undefined,
-      errors: [message],
-      logs: [],
-      trace: 'Builder · validation failed',
-      durationMs: 0,
-      retryable: false,
-    };
-  }
-
-  const approvals = options.approvals ?? pluginApprovalService;
-  const permissions = requiredActionPermissions(action);
-  const approved = await approvals.requestPermissions({
-    pluginId: draft.pluginId,
-    pluginName: draft.name || draft.pluginId,
-    trustLevel: 'local',
-    permissions,
-    reason: `Test "${action.name}"? It runs a fixed data-only program in the isolated sandbox. No approval is saved.`,
-  });
-
-  if (!approved) {
-    return {
-      ok: false,
-      output: undefined,
-      errors: ['Test cancelled. No action was run.'],
-      logs: [],
-      trace: 'Builder · approval denied',
-      durationMs: 0,
-      retryable: false,
-    };
-  }
-
-  const result = await runBuilderAction(draft, actionId, input, {
-    executor: options.executor ?? createSandboxToolExecutor(),
-    hasPermission: () => true,
-  });
-
-  const persistence = options.persistence;
-
-  if (persistence) {
-    for (const line of result.logs) {
-      log(persistence, draft.pluginId, actionId, result.ok ? 'info' : 'error', line);
-    }
-  }
-
-  return result;
 }
 
 /** Builds a manifest without installing it, used by the live review preview. */

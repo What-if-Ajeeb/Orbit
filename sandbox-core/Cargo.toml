@@ -2,7 +2,7 @@
 name = "orbit-sandbox-core"
 version = "0.1.0"
 edition = "2021"
-description = "Security-sensitive validation, policy enforcement and deterministic execution for the ORBIT Android mobile sandbox"
+description = "Security-sensitive manifest, permission, policy, path, network and audit validation for the ORBIT Android mobile sandbox"
 license = "MIT"
 
 [lib]

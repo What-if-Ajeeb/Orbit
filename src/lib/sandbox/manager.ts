@@ -5,16 +5,30 @@ import nativeTransport from './native';
 import {
   SandboxApprovalDeniedError,
   SandboxBridgeError,
-  type SandboxExecutionResult,
+  SandboxOperationDeniedError,
+  type SandboxApprovalEvidence,
+  type SandboxAuditRecord,
+  type SandboxAuthorizeRequest,
+  type SandboxFileReadRequest,
+  type SandboxFileReadResult,
+  type SandboxManifest,
+  type SandboxNetworkReport,
+  type SandboxOperationDecision,
+  type SandboxPathReport,
+  type SandboxPermission,
+  type SandboxPermissionCheck,
+  type SandboxPermissionRequest,
   type SandboxPolicyDescription,
-  type SandboxProgramManifest,
-  type SandboxSnapshot,
+  type SandboxRequestReport,
+  type SandboxRequestValidation,
   type SandboxSession,
+  type SandboxSnapshot,
   type SandboxTransport,
   type SandboxValidationReport,
 } from './types';
 
-const MAX_SESSIONS = 12;
+const MAX_SESSIONS = 20;
+const DEFAULT_APPROVAL_TTL_SECONDS = 300;
 
 type ApprovalRequester = (input: {
   pluginId: string;
@@ -72,9 +86,11 @@ function displayName(pluginId: string): string {
 }
 
 /**
- * Host-side owner of the Android sandbox. It validates every program before
- * execution, asks the existing ORBIT approval host for `sandbox.execute`, keeps
- * a bounded session history, and never exposes plugin code to the RN runtime.
+ * Host-side owner of the Android sandbox.
+ *
+ * It orchestrates validation and mediation calls, creates short-lived approval
+ * evidence through the existing approval host, keeps a bounded session history,
+ * and emits audit records. It never executes plugin code or guest instructions.
  */
 export class MobileSandboxManager {
   private readonly transport: SandboxTransport;
@@ -87,6 +103,7 @@ export class MobileSandboxManager {
   private busy = 0;
   private snapshot: SandboxSnapshot | null = null;
   private readonly listeners = new Set<() => void>();
+  private readonly auditListeners = new Set<(record: SandboxAuditRecord) => void>();
 
   constructor(options: MobileSandboxOptions = {}) {
     this.transport = options.transport ?? nativeTransport;
@@ -110,6 +127,14 @@ export class MobileSandboxManager {
     };
   };
 
+  /** Registers a sink for allow and deny audit records. */
+  onAudit(listener: (record: SandboxAuditRecord) => void): () => void {
+    this.auditListeners.add(listener);
+    return () => {
+      this.auditListeners.delete(listener);
+    };
+  }
+
   getSnapshot = (): SandboxSnapshot => {
     if (!this.snapshot) {
       this.snapshot = {
@@ -130,6 +155,18 @@ export class MobileSandboxManager {
         listener();
       } catch {
         // A broken listener must not block sandbox state updates.
+      }
+    }
+  }
+
+  private emitAudit(record: SandboxAuditRecord | undefined): void {
+    if (!record) return;
+
+    for (const listener of Array.from(this.auditListeners)) {
+      try {
+        listener(record);
+      } catch {
+        // Audit delivery is best effort; the decision already happened.
       }
     }
   }
@@ -164,71 +201,162 @@ export class MobileSandboxManager {
     return description;
   }
 
-  async validate(manifest: SandboxProgramManifest): Promise<SandboxValidationReport> {
-    return this.run(async () =>
+  async validateManifest(manifest: SandboxManifest): Promise<SandboxValidationReport> {
+    const report = await this.run(async () =>
       parseResponse<SandboxValidationReport>(
         await this.transport.validateManifest(JSON.stringify(manifest))
       )
     );
+    this.emitAudit(report.audit);
+    return report;
   }
 
-  async execute(
-    manifest: SandboxProgramManifest,
-    input: Record<string, unknown> = {}
-  ): Promise<SandboxExecutionResult> {
-    const validation = await this.validate(manifest);
+  async checkPermission(
+    request: SandboxPermissionRequest
+  ): Promise<SandboxPermissionCheck> {
+    const result = await this.run(async () =>
+      parseResponse<SandboxPermissionCheck>(
+        await this.transport.checkPermission(JSON.stringify(request))
+      )
+    );
+    this.emitAudit(result.audit);
+    return result;
+  }
 
-    if (!validation.ok) {
-      throw new SandboxBridgeError(
-        'manifest_invalid',
-        validation.errors.join(' ') || 'Sandbox manifest was rejected.'
+  async validatePath(path: string): Promise<SandboxPathReport> {
+    const report = await this.run(async () =>
+      parseResponse<SandboxPathReport>(
+        await this.transport.validatePath(JSON.stringify({ path }))
+      )
+    );
+    this.emitAudit(report.audit);
+    return report;
+  }
+
+  async validateNetwork(url: string): Promise<SandboxNetworkReport> {
+    const report = await this.run(async () =>
+      parseResponse<SandboxNetworkReport>(
+        await this.transport.validateNetwork(JSON.stringify({ url }))
+      )
+    );
+    this.emitAudit(report.audit);
+    return report;
+  }
+
+  async validateRequest(
+    request: SandboxRequestValidation
+  ): Promise<SandboxRequestReport> {
+    const report = await this.run(async () =>
+      parseResponse<SandboxRequestReport>(
+        await this.transport.validateRequest(JSON.stringify(request))
+      )
+    );
+    this.emitAudit(report.audit);
+    return report;
+  }
+
+  async authorizeOperation(
+    request: SandboxAuthorizeRequest
+  ): Promise<SandboxOperationDecision> {
+    const session = this.startSession(
+      request.manifest.pluginId,
+      request.operation
+    );
+
+    try {
+      const decision = await this.run(async () =>
+        parseResponse<SandboxOperationDecision>(
+          await this.transport.authorizeOperation(JSON.stringify(request))
+        )
       );
+      this.finishSession(
+        session.id,
+        decision.decision === 'allow' ? 'allowed' : 'denied',
+        decision.reasonCode,
+        decision.audit
+      );
+      this.emitAudit(decision.audit);
+      return decision;
+    } catch (error) {
+      this.finishSession(session.id, 'failed', 'bridge_failure');
+      throw error;
     }
+  }
 
+  /**
+   * Asks the existing ORBIT approval host for a short-lived decision. The
+   * returned evidence is what Rust verifies; a grant alone is never enough for
+   * a sensitive file or network operation.
+   */
+  async requestOperationApproval(input: {
+    pluginId: string;
+    pluginName?: string;
+    trustLevel: PluginTrustLevel;
+    permission: SandboxPermission;
+    reason: string;
+    ttlSeconds?: number;
+  }): Promise<SandboxApprovalEvidence> {
     const approved = await this.requestApproval({
-      pluginId: manifest.pluginId,
-      pluginName: displayName(manifest.pluginId),
-      trustLevel: 'untrusted',
-      permissions: ['sandbox.execute'],
-      reason: `Run sandbox program ${manifest.pluginId}@${manifest.version}? It has no file, network or device-permission access.`,
+      pluginId: input.pluginId,
+      pluginName: input.pluginName ?? displayName(input.pluginId),
+      trustLevel: input.trustLevel,
+      permissions: [input.permission as PluginPermission],
+      reason: input.reason,
     });
 
     if (!approved) {
       throw new SandboxApprovalDeniedError();
     }
 
-    const session: SandboxSession = {
-      id: `sandbox-${this.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      pluginId: manifest.pluginId,
-      version: manifest.version,
-      status: 'running',
-      startedAt: this.now(),
+    const description = this.description;
+    const policyTtl = description?.limits.approvalTtlSeconds ?? DEFAULT_APPROVAL_TTL_SECONDS;
+    const ttlSeconds = Math.max(1, Math.min(input.ttlSeconds ?? policyTtl, policyTtl));
+    const grantedAt = this.now();
+
+    return {
+      permission: input.permission,
+      grantedAt,
+      expiresAt: grantedAt + ttlSeconds * 1_000,
+      requestId: `sandbox-approval-${grantedAt}`,
     };
-    this.sessions = [session, ...this.sessions].slice(0, MAX_SESSIONS);
-    this.emitChange();
+  }
+
+  /**
+   * Mediates a bounded file read. Rust decides; Kotlin performs the read only
+   * after an allow and re-checks canonical containment, symlinks and size.
+   */
+  async readFile(request: SandboxFileReadRequest): Promise<SandboxFileReadResult> {
+    const session = this.startSession(request.pluginId, 'file.read');
 
     try {
       const result = await this.run(async () =>
-        parseResponse<SandboxExecutionResult>(
-          await this.transport.execute(JSON.stringify({ manifest, input }))
+        parseResponse<SandboxFileReadResult>(
+          await this.transport.readFile(JSON.stringify(request))
         )
       );
+      this.finishSession(
+        session.id,
+        result.decision === 'allow' ? 'allowed' : 'denied',
+        result.reasonCode,
+        result.audit
+      );
+      this.emitAudit(result.audit);
 
-      this.patchSession(session.id, {
-        status: result.ok ? 'completed' : 'rejected',
-        finishedAt: this.now(),
-        instructionsExecuted: result.instructionsExecuted,
-        outputs: result.outputs,
-        errors: result.errors,
-      });
+      if (result.decision !== 'allow') {
+        throw new SandboxOperationDeniedError(
+          result.reasonCode,
+          result.reason || 'Sandbox denied the file read.',
+          result.audit
+        );
+      }
 
       return result;
     } catch (error) {
-      this.patchSession(session.id, {
-        status: 'failed',
-        finishedAt: this.now(),
-        errors: [errorMessage(error)],
-      });
+      if (error instanceof SandboxOperationDeniedError) {
+        throw error;
+      }
+
+      this.finishSession(session.id, 'failed', 'bridge_failure');
       throw error;
     }
   }
@@ -253,9 +381,35 @@ export class MobileSandboxManager {
     this.emitChange();
   }
 
-  private patchSession(id: string, patch: Partial<SandboxSession>): void {
+  private startSession(pluginId: string, operation: string): SandboxSession {
+    const session: SandboxSession = {
+      id: `sandbox-${this.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      pluginId,
+      operation,
+      status: 'running',
+      startedAt: this.now(),
+    };
+    this.sessions = [session, ...this.sessions].slice(0, MAX_SESSIONS);
+    this.emitChange();
+    return session;
+  }
+
+  private finishSession(
+    id: string,
+    status: SandboxSession['status'],
+    reasonCode?: string,
+    audit?: SandboxAuditRecord
+  ): void {
     this.sessions = this.sessions.map((session) =>
-      session.id === id ? { ...session, ...patch } : session
+      session.id === id
+        ? {
+            ...session,
+            status,
+            finishedAt: this.now(),
+            reasonCode,
+            audit,
+          }
+        : session
     );
     this.emitChange();
   }

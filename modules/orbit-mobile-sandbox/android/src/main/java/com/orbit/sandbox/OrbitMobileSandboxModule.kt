@@ -12,20 +12,41 @@ import android.os.Messenger
 import expo.modules.kotlin.Promise
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
+import org.json.JSONArray
 import org.json.JSONObject
+import java.io.ByteArrayOutputStream
+import java.io.File
+import java.io.FileInputStream
+import java.nio.ByteBuffer
+import java.nio.charset.CodingErrorAction
+import java.nio.file.Files
+import java.security.MessageDigest
 import java.util.ArrayDeque
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 
 private const val CALL_TIMEOUT_MS = 15_000L
+private const val DEFAULT_MAX_FILE_BYTES = 256L * 1024L
 
 /**
- * Expo Modules API bridge. Kotlin only manages binding, message correlation,
- * and lifecycle. Validation, policy, storage semantics, and program execution
- * live in Rust inside the isolated service process.
+ * Expo Modules API bridge and Android platform boundary.
+ *
+ * Rust inside [OrbitSandboxService] makes every policy, manifest, permission,
+ * approval, path and network decision. Kotlin performs no policy evaluation and
+ * no code execution. It only forwards validation calls and, after an explicit
+ * Rust `allow` for `file.read`, performs a bounded read from the app-private
+ * files directory with canonical-path, symlink, regular-file and size checks.
  */
 class OrbitMobileSandboxModule : Module() {
-  private val pendingCalls = ConcurrentHashMap<String, Promise>()
+  private sealed interface PendingCall {
+    class Expo(val promise: Promise) : PendingCall
+    class Callback(
+      val onResponse: (String) -> Unit,
+      val onError: (String, String) -> Unit,
+    ) : PendingCall
+  }
+
+  private val pendingCalls = ConcurrentHashMap<String, PendingCall>()
   private val timeouts = ConcurrentHashMap<String, Runnable>()
   private val waiters = ArrayDeque<(Messenger) -> Unit>()
   private val sequence = AtomicInteger(0)
@@ -43,17 +64,46 @@ class OrbitMobileSandboxModule : Module() {
     Name("OrbitMobileSandbox")
 
     AsyncFunction("describe") { promise: Promise ->
-      enqueue("describe", JSONObject(), promise)
+      enqueue("describe", JSONObject(), PendingCall.Expo(promise))
     }
 
     AsyncFunction("validateManifest") { manifestJson: String, promise: Promise ->
       val manifest = parseObject(manifestJson, promise) ?: return@AsyncFunction
-      enqueue("validateManifest", JSONObject().put("manifest", manifest), promise)
+      enqueue(
+        "validateManifest",
+        JSONObject().put("manifest", manifest),
+        PendingCall.Expo(promise),
+      )
     }
 
-    AsyncFunction("execute") { requestJson: String, promise: Promise ->
+    AsyncFunction("checkPermission") { requestJson: String, promise: Promise ->
       val params = parseObject(requestJson, promise) ?: return@AsyncFunction
-      enqueue("executeProgram", params, promise)
+      enqueue("checkPermission", params, PendingCall.Expo(promise))
+    }
+
+    AsyncFunction("validatePath") { requestJson: String, promise: Promise ->
+      val params = parseObject(requestJson, promise) ?: return@AsyncFunction
+      enqueue("validatePath", params, PendingCall.Expo(promise))
+    }
+
+    AsyncFunction("validateNetwork") { requestJson: String, promise: Promise ->
+      val params = parseObject(requestJson, promise) ?: return@AsyncFunction
+      enqueue("validateNetwork", params, PendingCall.Expo(promise))
+    }
+
+    AsyncFunction("validateRequest") { requestJson: String, promise: Promise ->
+      val params = parseObject(requestJson, promise) ?: return@AsyncFunction
+      enqueue("validateRequest", params, PendingCall.Expo(promise))
+    }
+
+    AsyncFunction("authorizeOperation") { requestJson: String, promise: Promise ->
+      val params = parseObject(requestJson, promise) ?: return@AsyncFunction
+      enqueue("authorizeOperation", params, PendingCall.Expo(promise))
+    }
+
+    AsyncFunction("readFile") { requestJson: String, promise: Promise ->
+      val request = parseObject(requestJson, promise) ?: return@AsyncFunction
+      readFile(request, promise)
     }
 
     AsyncFunction("shutdown") { promise: Promise ->
@@ -75,7 +125,7 @@ class OrbitMobileSandboxModule : Module() {
     }
   }
 
-  private fun enqueue(method: String, params: JSONObject, promise: Promise) {
+  private fun enqueue(method: String, params: JSONObject, pending: PendingCall) {
     val id = "rn-${sequence.incrementAndGet()}"
     val envelope = JSONObject()
       .put("id", id)
@@ -83,33 +133,33 @@ class OrbitMobileSandboxModule : Module() {
       .put("params", params)
       .toString()
 
-    pendingCalls[id] = promise
+    pendingCalls[id] = pending
     val timeout = Runnable {
-      reject(id, promise, "SANDBOX_TIMEOUT", "Sandbox service did not respond in time.")
+      reject(id, "SANDBOX_TIMEOUT", "Sandbox service did not respond in time.")
     }
     timeouts[id] = timeout
     replyHandler.postDelayed(timeout, CALL_TIMEOUT_MS)
 
-    sendOrQueue(id, envelope, promise)
+    sendOrQueue(id, envelope)
   }
 
-  private fun sendOrQueue(id: String, envelope: String, promise: Promise) {
+  private fun sendOrQueue(id: String, envelope: String) {
     val current = messenger
     if (current != null) {
-      send(current, id, envelope, promise)
+      send(current, id, envelope)
       return
     }
 
     val context = appContext.reactContext?.applicationContext
     if (context == null) {
-      reject(id, promise, "SANDBOX_UNAVAILABLE", "No Android context is available.")
+      reject(id, "SANDBOX_UNAVAILABLE", "No Android context is available.")
       return
     }
 
     synchronized(waiters) {
       val bound = messenger
       if (bound != null) {
-        send(bound, id, envelope, promise)
+        send(bound, id, envelope)
         return@synchronized
       }
 
@@ -166,13 +216,13 @@ class OrbitMobileSandboxModule : Module() {
       waiters.add { service ->
         // The call may already have timed out or been rejected while it was queued.
         if (pendingCalls.containsKey(id)) {
-          send(service, id, envelope, promise)
+          send(service, id, envelope)
         }
       }
     }
   }
 
-  private fun send(service: Messenger, id: String, envelope: String, promise: Promise) {
+  private fun send(service: Messenger, id: String, envelope: String) {
     val message = Message.obtain(null, SandboxProtocol.MESSAGE_CALL).apply {
       data.putString(SandboxProtocol.KEY_REQUEST, envelope)
       replyTo = replyMessenger
@@ -180,30 +230,35 @@ class OrbitMobileSandboxModule : Module() {
     try {
       service.send(message)
     } catch (error: Exception) {
-      reject(id, promise, "SANDBOX_SEND_FAILED", error.message ?: "Unable to send sandbox request")
+      reject(id, "SANDBOX_SEND_FAILED", error.message ?: "Unable to send sandbox request")
     }
   }
 
   private fun handleReply(message: Message) {
     val response = message.data?.getString(SandboxProtocol.KEY_RESPONSE) ?: return
     val id = runCatching { JSONObject(response).optString("id") }.getOrDefault("")
-    val promise = pendingCalls.remove(id) ?: return
+    val pending = pendingCalls.remove(id) ?: return
     timeouts.remove(id)?.let(replyHandler::removeCallbacks)
-    promise.resolve(response)
+
+    when (pending) {
+      is PendingCall.Expo -> pending.promise.resolve(response)
+      is PendingCall.Callback -> pending.onResponse(response)
+    }
   }
 
-  private fun reject(id: String, promise: Promise, code: String, message: String) {
-    pendingCalls.remove(id)
+  private fun reject(id: String, code: String, message: String) {
+    val pending = pendingCalls.remove(id) ?: return
     timeouts.remove(id)?.let(replyHandler::removeCallbacks)
-    promise.reject(code, message, null)
+
+    when (pending) {
+      is PendingCall.Expo -> pending.promise.reject(code, message, null)
+      is PendingCall.Callback -> pending.onError(code, message)
+    }
   }
 
   private fun rejectAll(code: String, message: String) {
     for (id in pendingCalls.keys().toList()) {
-      pendingCalls.remove(id)?.let { promise ->
-        timeouts.remove(id)?.let(replyHandler::removeCallbacks)
-        promise.reject(code, message, null)
-      }
+      reject(id, code, message)
     }
     synchronized(waiters) {
       waiters.clear()
@@ -225,4 +280,299 @@ class OrbitMobileSandboxModule : Module() {
     releaseConnection()
     rejectAll("SANDBOX_SHUT_DOWN", "Sandbox was shut down before the call completed.")
   }
+
+  private fun readFile(request: JSONObject, promise: Promise) {
+    val manifest = request.optJSONObject("manifest")
+    if (manifest == null) {
+      promise.reject("SANDBOX_INVALID_REQUEST", "readFile requires a manifest object.", null)
+      return
+    }
+
+    val pluginId = request.optString("pluginId")
+    val manifestPluginId = manifest.optString("pluginId")
+
+    if (pluginId.isNotEmpty() && pluginId != manifestPluginId) {
+      promise.reject(
+        "SANDBOX_PLUGIN_MISMATCH",
+        "The request pluginId does not match the manifest.",
+        null,
+      )
+      return
+    }
+
+    val path = request.optString("path")
+
+    if (path.isEmpty()) {
+      promise.reject("SANDBOX_INVALID_REQUEST", "readFile requires a path.", null)
+      return
+    }
+
+    val granted = request.optJSONArray("grantedPermissions") ?: JSONArray()
+    val params = JSONObject()
+      .put("manifest", manifest)
+      .put("operation", "file.read")
+      .put("grantedPermissions", granted)
+      .put("resource", JSONObject().put("path", path))
+
+    request.optJSONObject("approval")?.let { params.put("approval", it) }
+
+    enqueue(
+      "authorizeOperation",
+      params,
+      PendingCall.Callback(
+        onResponse = { response -> completeReadFile(response, request, promise) },
+        onError = { code, message -> promise.reject(code, message, null) },
+      ),
+    )
+  }
+
+  private fun completeReadFile(response: String, request: JSONObject, promise: Promise) {
+    val started = System.currentTimeMillis()
+    val envelope = runCatching { JSONObject(response) }.getOrElse { error ->
+      promise.reject("SANDBOX_INVALID_RESPONSE", error.message, error)
+      return
+    }
+
+    if (!envelope.optBoolean("ok", false)) {
+      val error = envelope.optJSONObject("error")
+      promise.reject(
+        error?.optString("code") ?: "SANDBOX_POLICY_FAILED",
+        error?.optString("message") ?: "Sandbox policy call failed.",
+        null,
+      )
+      return
+    }
+
+    val decision = envelope.optJSONObject("result")
+
+    if (decision == null) {
+      promise.reject("SANDBOX_INVALID_RESPONSE", "Sandbox policy returned no decision.", null)
+      return
+    }
+
+    if (decision.optString("decision") != "allow") {
+      promise.resolve(response)
+      return
+    }
+
+    val normalizedPath = decision.optString("normalizedResource")
+    val limits = decision.optJSONObject("limits")
+    val maxFileBytes = limits?.optLong("maxFileBytes", DEFAULT_MAX_FILE_BYTES)
+      ?: DEFAULT_MAX_FILE_BYTES
+    val audit = decision.optJSONObject("audit")
+
+    try {
+      val root = appContext.reactContext?.applicationContext?.filesDir
+        ?: throw ReadDenied("sandbox_unavailable", "No app-private files directory is available.")
+      val rootCanonical = root.canonicalFile
+      val target = File(root, normalizedPath)
+
+      if (containsSymlink(root, normalizedPath)) {
+        throw ReadDenied("symlink_not_allowed", "Symlinks are not allowed in sandbox paths.")
+      }
+
+      val canonical = target.canonicalFile
+      val rootPath = rootCanonical.path
+      val targetPath = canonical.path
+
+      if (targetPath != rootPath && !targetPath.startsWith(rootPath + File.separator)) {
+        throw ReadDenied("path_escape", "The resolved path is outside the sandbox root.")
+      }
+
+      if (!target.exists()) {
+        throw ReadDenied("file_not_found", "The requested file does not exist.")
+      }
+
+      if (!target.isFile) {
+        throw ReadDenied("not_a_regular_file", "Only regular files can be read.")
+      }
+
+      if (target.length() > maxFileBytes) {
+        throw ReadDenied(
+          "file_too_large",
+          "The file is ${target.length()} bytes; the limit is $maxFileBytes.",
+        )
+      }
+
+      val bytes = readBounded(target, maxFileBytes)
+
+      if (bytes.any { it == 0.toByte() }) {
+        throw ReadDenied("binary_file", "Binary files are not readable through the sandbox.")
+      }
+
+      val content = try {
+        Charsets.UTF_8.newDecoder()
+          .onMalformedInput(CodingErrorAction.REPORT)
+          .onUnmappableCharacter(CodingErrorAction.REPORT)
+          .decode(ByteBuffer.wrap(bytes))
+          .toString()
+      } catch (error: Exception) {
+        throw ReadDenied("invalid_encoding", "The file is not valid UTF-8 text.")
+      }
+
+      val result = JSONObject(decision.toString())
+        .put("decision", "allow")
+        .put("operation", "file.read")
+        .put("path", normalizedPath)
+        .put("content", content)
+        .put("bytesRead", bytes.size)
+        .put("reason", "Permission, approval and path policy allowed the read.")
+        .put("reasonCode", "allowed")
+        .put(
+          "audit",
+          auditFor(
+            audit,
+            request.optString("pluginId", ""),
+            "file.read",
+            "allow",
+            "allowed",
+            "files.read",
+            normalizedPath,
+            bytes.size,
+            started,
+          ),
+        )
+
+      promise.resolve(
+        JSONObject()
+          .put("id", envelope.optString("id"))
+          .put("ok", true)
+          .put("result", result)
+          .toString(),
+      )
+    } catch (error: ReadDenied) {
+      promise.resolve(
+        deniedReadResponse(
+          envelope,
+          decision,
+          request,
+          error.code,
+          error.message ?: error.code,
+          started,
+        ),
+      )
+    } catch (error: Exception) {
+      promise.resolve(
+        deniedReadResponse(
+          envelope,
+          decision,
+          request,
+          "read_failed",
+          error.message ?: "The bounded file read failed.",
+          started,
+        ),
+      )
+    }
+  }
+
+  private fun deniedReadResponse(
+    envelope: JSONObject,
+    decision: JSONObject,
+    request: JSONObject,
+    code: String,
+    message: String,
+    started: Long,
+  ): String {
+    val normalizedPath = decision.optString("normalizedResource").takeIf { it.isNotEmpty() }
+    val audit = decision.optJSONObject("audit")
+    val result = JSONObject(decision.toString())
+      .put("decision", "deny")
+      .put("operation", "file.read")
+      .put("normalizedResource", normalizedPath ?: JSONObject.NULL)
+      .put("reason", message)
+      .put("reasonCode", code)
+      .put(
+        "audit",
+        auditFor(
+          audit,
+          request.optString("pluginId", ""),
+          "file.read",
+          "deny",
+          code,
+          "files.read",
+          normalizedPath,
+          0,
+          started,
+        ),
+      )
+
+    return JSONObject()
+      .put("id", envelope.optString("id"))
+      .put("ok", true)
+      .put("result", result)
+      .toString()
+  }
+
+  private fun auditFor(
+    original: JSONObject?,
+    pluginId: String,
+    operation: String,
+    decision: String,
+    reasonCode: String,
+    permission: String?,
+    resource: String?,
+    bytes: Int,
+    started: Long,
+  ): JSONObject {
+    val now = System.currentTimeMillis()
+    return JSONObject()
+      .put("id", original?.optString("id", "")?.takeIf { it.isNotEmpty() } ?: "audit-$now")
+      .put("at", original?.optLong("at", now) ?: now)
+      .put("pluginId", pluginId)
+      .put("operation", operation)
+      .put("decision", decision)
+      .put("reasonCode", reasonCode)
+      .put("permission", permission ?: JSONObject.NULL)
+      .put("resourceHash", resource?.let { sha256(it) } ?: JSONObject.NULL)
+      .put("bytes", bytes)
+      .put(
+        "durationMs",
+        (original?.optLong("durationMs", 0) ?: 0) + (System.currentTimeMillis() - started),
+      )
+      .put("policyVersion", original?.optInt("policyVersion", 2) ?: 2)
+  }
+
+  private fun containsSymlink(root: File, relativePath: String): Boolean {
+    var current = root
+
+    for (segment in relativePath.split('/')) {
+      if (segment.isEmpty()) continue
+      current = File(current, segment)
+      if (Files.isSymbolicLink(current.toPath())) {
+        return true
+      }
+    }
+
+    return false
+  }
+
+  private fun readBounded(file: File, maxBytes: Long): ByteArray {
+    FileInputStream(file).use { input ->
+      val output = ByteArrayOutputStream()
+      val chunk = ByteArray(8 * 1024)
+      var total = 0L
+
+      while (true) {
+        val read = input.read(chunk)
+        if (read < 0) break
+        total += read
+        if (total > maxBytes) {
+          throw ReadDenied(
+            "file_too_large",
+            "The file exceeded the $maxBytes byte read limit.",
+          )
+        }
+        output.write(chunk, 0, read)
+      }
+
+      return output.toByteArray()
+    }
+  }
+
+  private fun sha256(value: String): String =
+    MessageDigest.getInstance("SHA-256")
+      .digest(value.toByteArray(Charsets.UTF_8))
+      .joinToString("") { "%02x".format(it) }
+
+  private class ReadDenied(val code: String, message: String) : Exception(message)
 }

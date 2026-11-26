@@ -18,7 +18,6 @@ import {
   type BuilderDraft,
   type BuilderEnvironmentEntry,
   type BuilderLog,
-  type BuilderSandboxPreset,
   type BuilderValidationRule,
 } from './builder';
 import { isReservedPluginId } from './manifest';
@@ -40,7 +39,6 @@ const MAX_ARRAY_ITEMS = 40;
 const MAX_STRING = 4_000;
 const ENV_KEY_PATTERN = /^[A-Za-z][A-Za-z0-9._-]{0,63}$/;
 const SETTING_KEY_PATTERN = /^[A-Za-z][A-Za-z0-9._-]*$/;
-const BUILDER_PRESETS: readonly BuilderSandboxPreset[] = ['echo', 'sum', 'concat', 'constant'];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -230,16 +228,6 @@ function normalizeAction(raw: unknown, index: number): BuilderAction | null {
 
   if (!id) return null;
 
-  const handler = isRecord(raw.handler) ? raw.handler : {};
-  const preset = readEnum(handler.preset, BUILDER_PRESETS, 'echo');
-  const primitiveValue =
-    typeof handler.value === 'string' ||
-    typeof handler.value === 'number' ||
-    typeof handler.value === 'boolean' ||
-    handler.value === null
-      ? (handler.value as string | number | boolean | null)
-      : undefined;
-
   const permissions = readStringArray(raw.permissions, PLUGIN_PERMISSIONS.length).filter(
     (permission): permission is PluginPermission =>
       (PLUGIN_PERMISSIONS as readonly string[]).includes(permission)
@@ -258,14 +246,6 @@ function normalizeAction(raw: unknown, index: number): BuilderAction | null {
           .filter((rule): rule is BuilderValidationRule => rule !== null)
           .slice(0, MAX_ARRAY_ITEMS)
       : [],
-    handler: {
-      kind: 'sandbox',
-      preset,
-      ...(typeof handler.field === 'string' ? { field: handler.field.slice(0, 120) } : {}),
-      ...(typeof handler.fieldB === 'string' ? { fieldB: handler.fieldB.slice(0, 120) } : {}),
-      ...(typeof handler.prefix === 'string' ? { prefix: handler.prefix.slice(0, 240) } : {}),
-      ...(primitiveValue !== undefined ? { value: primitiveValue } : {}),
-    },
     errorHandling: {
       onError: readEnum(errorHandling.onError, ['fail', 'empty'] as const, 'fail'),
       fallbackMessage: readString(errorHandling.fallbackMessage, '', 300),

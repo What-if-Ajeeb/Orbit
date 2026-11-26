@@ -3,7 +3,6 @@ import type { BuilderDraft } from './builder';
 export type BuilderEditorText = {
   input: string;
   settings: string;
-  testInput: string;
   [key: string]: string;
 };
 
@@ -12,7 +11,6 @@ export function editorText(draft: BuilderDraft): BuilderEditorText {
   const text: BuilderEditorText = {
     input: JSON.stringify(draft.inputParameters ?? { type: 'object', properties: {} }, null, 2),
     settings: draft.settings.length > 0 ? JSON.stringify(draft.settings, null, 2) : '',
-    testInput: '{\n  "value": "hello"\n}',
   };
 
   for (const action of draft.actions) {
