@@ -20,6 +20,7 @@ import { registerBundledCatalog } from './catalog';
 import { registerBuilderTools, restoreBuilderTools } from './builder-service';
 import { PluginEventBus } from './events';
 import { syncMcpPluginRecords, mcpPluginAllowsTool, type McpPluginSyncResult } from './mcp-bridge';
+import { NATIVE_PLUGIN_MANIFESTS } from './native';
 import { PluginPermissionManager } from './permissions';
 import { SqlitePluginPersistence, type PluginPersistence } from './persistence';
 import { PluginRegistry } from './registry';
@@ -40,6 +41,7 @@ import {
 const APP_VERSION = '1.10.6';
 const LEGACY_MIGRATION_KEY = 'legacy.plugins.migrated.v1';
 const DIAGNOSTICS_KEY = 'builtin.diagnostics.installed.v1';
+const NATIVE_PLUGIN_KEY_PREFIX = 'native.plugin.installed.v1.';
 
 export type PluginNavigationContribution = ReturnType<
   PluginRegistry['getNavigationEntries']
@@ -272,6 +274,7 @@ export class PluginPlatformRuntime {
       await this.adoptCorePlugins();
       await this.migrateLegacyPlugins();
       await this.ensureDiagnostics();
+      await this.ensureNativePlugins();
 
       const servers = await loadMcpServers();
       await this.syncMcpServers(servers);
@@ -343,6 +346,51 @@ export class PluginPlatformRuntime {
       await this.persistence.setMeta(DIAGNOSTICS_KEY, new Date().toISOString());
     } catch (error) {
       this.logger('Could not install the built-in diagnostics plugin.', error);
+    }
+  }
+
+  /**
+   * Installs and enables reviewed native plugins once per install. Permissions
+   * are granted from the trusted built-in source; per-call approval is still
+   * required for sensitive tools (browser handoff, MCP sync, sandbox runs).
+   */
+  private async ensureNativePlugins(): Promise<void> {
+    for (const manifest of NATIVE_PLUGIN_MANIFESTS) {
+      if (!manifest.platformSupport.includes(this.platform)) {
+        continue;
+      }
+
+      const marker = `${NATIVE_PLUGIN_KEY_PREFIX}${manifest.pluginId}`;
+
+      if (await this.persistence.getMeta(marker)) {
+        continue;
+      }
+
+      try {
+        const existing = this.registry.getRecord(manifest.pluginId);
+
+        if (!existing || existing.status === 'available') {
+          if (existing?.status === 'available') {
+            await this.registry.install(manifest.pluginId);
+          }
+        }
+
+        const record = this.registry.getRecord(manifest.pluginId);
+
+        if (record && ['installed', 'disabled'].includes(record.status)) {
+          await this.permissions.grant(
+            manifest.pluginId,
+            manifest.permissions,
+            'core',
+            `Reviewed native plugin ${manifest.pluginId} initialized its declared permissions.`
+          );
+          await this.registry.enable(manifest.pluginId);
+        }
+
+        await this.persistence.setMeta(marker, new Date().toISOString());
+      } catch (error) {
+        this.logger(`Could not initialize native plugin ${manifest.pluginId}.`, error);
+      }
     }
   }
 

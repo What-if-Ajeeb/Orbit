@@ -5,6 +5,10 @@ import {
   CORE_PLUGIN_MANIFESTS,
   DIAGNOSTICS_MANIFEST,
 } from './builtins';
+import {
+  NATIVE_PLUGIN_MANIFESTS,
+  NATIVE_PLUGIN_READMES,
+} from './native';
 
 const CORE_README =
   'A core ORBIT service mounted by the Cordis harness. It is listed here so its ' +
@@ -40,6 +44,16 @@ export function registerBundledCatalog(registry: PluginRegistry): void {
     source: 'builtin',
     readme: DIAGNOSTICS_README,
   });
+
+  for (const manifest of NATIVE_PLUGIN_MANIFESTS) {
+    registry.registerCatalog(manifest, {
+      trustLevel: 'official',
+      source: 'builtin',
+      readme:
+        NATIVE_PLUGIN_READMES[manifest.pluginId] ??
+        'A reviewed native ORBIT plugin bundled with the app.',
+    });
+  }
 
   registry.registerCatalog(exampleManifest as unknown, {
     trustLevel: 'local',

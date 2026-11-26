@@ -58,8 +58,8 @@ this layer does not remount them.
 Implemented behavior:
 
 - Version 1 JSON manifests are validated; the bundled catalog includes the
-  Cordis core service metadata, built-in diagnostics and
-  `plugins/example-plugin`.
+  Cordis core service metadata, built-in diagnostics, ten reviewed ORBIT native
+  plugins and `plugins/example-plugin`.
 - Install, enable, disable, update and uninstall are explicit state transitions
   with dependency checks, lifecycle hook timeouts, update backups and rollback.
 - Permissions are default-deny and flow through `PluginApprovalHost`; there is no
@@ -81,6 +81,12 @@ Implemented behavior:
 - Legacy hook scripts are disabled: `HookEngine.runHookCode()` throws, stored
   hook rows are never evaluated, and failed `executeHook()` results are ignored
   by the agent.
+- Ten reviewed native plugins ship as canonical manifests paired with host code
+  in `src/lib/plugins/native/`. Bootstrap installs and enables them once on
+  supported platforms through the same `PluginRegistry`; declared permissions
+  are granted from the trusted `core` source, while sensitive tool calls still
+  require fresh per-call approval. They add no second runtime, plugin store,
+  agent loop, MCP transport, permission manager or database.
 - Pinned plugins are a sidebar preference, not a new plugin capability. The
   star control in the Plugin Manager and the sidebar's **Pin plugin** action
   store only stable plugin IDs and group IDs in the existing
@@ -90,6 +96,22 @@ Implemented behavior:
   The sidebar resolves names, icons and `/plugin/<id>` routes from the live
   manifest snapshot, so a renamed or removed plugin never persists an executable
   path and pinning never duplicates an installation.
+
+The native plugins reuse existing app seams and intentionally leave
+unsupported capabilities unimplemented:
+
+| Plugin | Tools | Boundary |
+| --- | --- | --- |
+| `orbit.builtin.agent` | `agent_status`, `agent_list_tools` | Read-only introspection; no agent-setting or permission changes. |
+| `orbit.builtin.memory` | `memory_read`, `memory_write` | Existing `agent_configs` memory; writes approved and refuse secret-looking values. |
+| `orbit.builtin.files` | `files_list`, `files_read`, `files_create`, `files_write`, `files_restore_version`, `files_remove`, `files_trash_list` | User-scoped artifacts and trash metadata; no raw filesystem paths. Mutations approved. |
+| `orbit.builtin.browser` | `browser_open_link` | Approved `http`, `https` or `mailto` OS handoff; no fetcher, automation or arbitrary-URL WebView. |
+| `orbit.builtin.code` | `code_artifact_save`, `code_artifact_read`, `code_paired_devices` | Code artifacts and read-only companion metadata; no `code_execute` or local shell. |
+| `orbit.builtin.tasks` | `tasks_list`, `tasks_stats`, `tasks_create`, `tasks_update`, `tasks_complete`, `tasks_delete` | Wraps `src/lib/tasks.ts`; reminder sync and buddy rewards stay owned there. Mutations approved. |
+| `orbit.builtin.projects` | `projects_workspace_summary`, `projects_scopes`, `projects_workflow_runs` | Read-only aggregation over chats, tasks, artifacts and workflows; no separate projects table. |
+| `orbit.builtin.buddy` | `buddy_list`, `buddy_activities`, `buddy_inventory`, `buddy_evolution_options`, `buddy_set_active`, `buddy_evolve` | Existing buddy store and rules; reads avoid creating a starter buddy. Mutations approved. |
+| `orbit.builtin.mcp` | `mcp_status`, `mcp_servers`, `mcp_sync` | Existing mirror introspection and approved re-sync; no second transport or gate. |
+| `orbit.builtin.sandbox` | `sandbox_policy`, `sandbox_compute` | Android-only data-only programs in the existing isolated process; no JS, file, network or device access. |
 
 Current limitations: third-party plugins are declarative only (no downloaded
 code execution), no remote marketplace or unknown-manifest fetch, `notifications`/`credentials` SDK adapters

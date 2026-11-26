@@ -2,9 +2,12 @@
  * Canonical ORBIT plugin platform types.
  *
  * These types are the single source of truth for plugin manifests, lifecycle
- * state, permissions, contributions and persisted records. Nothing here imports
- * React Native, SQLite or Cordis so the platform can be unit-tested in Node.
+ * state, permissions, contributions and persisted records. Runtime code here
+ * never imports React Native, SQLite or Cordis; the SQLite reference below is a
+ * type-only import and is erased at build time so the platform stays testable.
  */
+
+import type { SQLiteDatabase } from 'expo-sqlite';
 
 export const PLUGIN_MANIFEST_VERSION = 1;
 
@@ -462,9 +465,17 @@ export type PluginWidgetRenderer = (props: {
 
 export type PluginHook = () => void | Promise<void>;
 
+/**
+ * Context passed to a reviewed built-in tool body. `db` and `userId` are only
+ * supplied by the host for reviewed `official` builtins; declarative and
+ * untrusted plugins never receive an executable tool body at all.
+ */
 export type PluginSdkToolContext = {
   signal?: AbortSignal;
   log: (message: string, detail?: unknown) => void;
+  db?: SQLiteDatabase;
+  userId?: number;
+  conversationId?: number;
 };
 
 export type PluginSdkToolResult = {

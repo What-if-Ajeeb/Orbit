@@ -314,8 +314,9 @@ What is implemented today:
 
 - Declarative version-1 manifests with no downloaded JavaScript. See
   `plugins/example-plugin/manifest.json`.
-- A bundled catalog with the Cordis core service metadata, built-in diagnostics
-  and the example plugin. Catalog registration is not installation.
+- A bundled catalog with the Cordis core service metadata, built-in diagnostics,
+  ten reviewed ORBIT native plugins and the example plugin. Catalog registration
+  is not installation.
 - Explicit lifecycle transitions, dependency checks, hook timeouts, update
   backups and rollback, backed by the v12 SQLite schema.
 - Namespaced plugin tools (`plugin__<slug>__<name>`), per-plugin JSON storage and
@@ -336,6 +337,12 @@ What is implemented today:
 - A reviewed built-in tool can run its data-only body in the Android isolated
   sandbox through the same `PluginRegistry` and approval queue; no second runtime
   or downloaded code. MCP tools keep their host-side network bridge.
+- Ten native plugins (`orbit.builtin.*`) provide Agent, Memory, Files, Browser,
+  Code, Tasks, Projects, Buddy, MCP and Sandbox tools through the same runtime.
+  They reuse existing app services and stores; sensitive actions require fresh
+  approval. Browser has no page fetcher or arbitrary-URL WebView, Code has no
+  execution tool, MCP adds no second transport, and Sandbox is Android-only and
+  data-only.
 - Legacy hook code is disabled: stored hook rows are never compiled or
   evaluated, and failed executions are recorded and ignored by the agent.
 

@@ -78,7 +78,9 @@ A reviewed built-in plugin can declare a tool with a data-only `program` instead
 of a host `execute` function. `PluginRegistry` keeps ownership, namespacing,
 schema validation, timeouts and permission checks; `buildPluginAgentTool` routes
 only that tool body through the existing `MobileSandboxManager`. The built-in
-diagnostics plugin uses this path for `plugin__orbit_builtin_diagnostics__sandbox_echo`.
+diagnostics plugin uses this path for `plugin__orbit_builtin_diagnostics__sandbox_echo`,
+and `orbit.builtin.sandbox` uses the same bridge with fixed, reviewed programs
+for `sandbox_compute`; raw instructions are never accepted from callers.
 
 This is not a second runtime and not a new entry-point kind. The tool still uses
 the same registry, SDK, approval queue and agent tool registry. On non-Android

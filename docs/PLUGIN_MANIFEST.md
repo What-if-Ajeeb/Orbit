@@ -56,8 +56,9 @@ are supplied out of band by `registerCatalog()`.
   no plugin code is executed.
 - `builtin` — requires `moduleId` matching `^[a-z][a-z0-9-]*$` (max 120 chars).
   `isEntryPointAllowed()` permits this kind only for `official` trust. The
-  module id must match a key in `BUILTIN_IMPLEMENTATIONS`; currently only
-  `orbit-diagnostics` is present.
+  module id must match a key registered by `BUILTIN_IMPLEMENTATIONS` or by
+  `registerNativePluginImplementations()`; this tree has diagnostics and ten
+  `orbit.builtin.*` native plugins.
 - `mcp` — optional `serverId` string. Used by synthetic MCP integration
   records, not by third-party manifests.
 

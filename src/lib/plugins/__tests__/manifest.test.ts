@@ -148,7 +148,7 @@ describe('manifest strict validation', () => {
   it('validates event names, settings schemas and MCP tool declarations', () => {
     const result = validateManifest(
       rawManifest({
-        events: { emits: ['bad/name', 'bad/name'], listens: 'nope' },
+        events: { emits: ['bad/Name', 'bad/Name'], listens: 'nope' },
         settingsSchema: [
           {
             key: 'mode',
@@ -169,7 +169,7 @@ describe('manifest strict validation', () => {
     expect(result.ok).toBe(false);
     const errors = errorsOf(result).join(' ');
     expect(errors).toMatch(/events\.emits contains invalid event name/);
-    expect(errors).toMatch(/duplicate "bad\/name"/);
+    expect(errors).toMatch(/duplicate "bad\/Name"/);
     expect(errors).toMatch(/events\.listens must be an array/);
     expect(errors).toMatch(/default must match one of the select options/);
     expect(errors).toMatch(/mcpTools\[0\]\.name is invalid/);

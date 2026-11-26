@@ -30,9 +30,25 @@ the exact list of UI consumers.
 ### Built-in plugins
 
 `builtin` entry points are reserved for reviewed `official` plugins. They can
-supply a `PluginImplementation` with lifecycle hooks and SDK access. The only
-implementation in this tree is `orbit-diagnostics`. No downloaded JavaScript is
-evaluated.
+supply a `PluginImplementation` with lifecycle hooks and SDK access. This tree
+has `orbit-diagnostics` plus ten reviewed `orbit.builtin.*` native plugins that
+wrap existing app services. No downloaded JavaScript is evaluated, and the
+native plugin manifests are paired with host code only through
+`NATIVE_PLUGIN_DEFINITIONS`.
+
+When editing a native plugin:
+
+1. Keep its manifest in `src/lib/plugins/native/` and add it to
+   `NATIVE_PLUGIN_DEFINITIONS`; do not create a second runtime or registry.
+2. Use `nativeTool()` for storage-scoped tools and `nativeHostTool()` otherwise.
+   Return plain data and let the wrapper own JSON, redaction and logging.
+3. Use `nativeOutputSchema()` so wrapper failures validate, and enforce
+   least-privilege permissions plus `requiresApproval` for sensitive actions.
+4. Wrap existing app services instead of duplicating them. Do not add code
+   execution, arbitrary WebView routes, a second MCP transport or a new project
+   store.
+5. Add focused Vitest coverage under `src/lib/plugins/__tests__/` and run the
+   full verification loop in [`OPERATIONS.md`](OPERATIONS.md).
 
 ### MCP integrations
 

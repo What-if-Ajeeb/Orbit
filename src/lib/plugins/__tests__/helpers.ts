@@ -87,6 +87,11 @@ export function createHarness(
     persistence?: MemoryPluginPersistence;
     hookTimeoutMs?: number;
     sandboxExecutor?: SandboxToolExecutor;
+    confirmSensitiveTool?: (input: {
+      pluginId: string;
+      pluginName: string;
+      toolName: string;
+    }) => Promise<boolean>;
     logger?: (message: string, detail?: unknown) => void;
   } = {}
 ): Harness {
@@ -105,6 +110,7 @@ export function createHarness(
     now,
     hookTimeoutMs: options.hookTimeoutMs,
     sandboxExecutor: options.sandboxExecutor,
+    confirmSensitiveTool: options.confirmSensitiveTool,
     logger: options.logger ?? (() => undefined),
   });
 
