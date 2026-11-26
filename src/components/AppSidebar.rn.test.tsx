@@ -3,7 +3,7 @@ import React from 'react';
 import { Alert, Animated } from 'react-native';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 
-import { AppSidebar, SidebarContent } from './AppSidebar';
+import { AppSidebar, getInitials, SidebarContent } from './AppSidebar';
 
 const mockClose = jest.fn();
 const mockOpen = jest.fn();
@@ -188,6 +188,11 @@ describe('AppSidebar', () => {
       stop: () => undefined,
       reset: () => undefined,
     }));
+  });
+
+  it('builds two-letter avatar initials from full names', () => {
+    expect(getInitials('Ada Lovelace')).toBe('AL');
+    expect(getInitials('Ada')).toBe('A');
   });
 
   it('shows the six primary workspace destinations', async () => {
