@@ -4,19 +4,19 @@ import { Platform, StyleSheet, View } from 'react-native';
 import { useSQLiteContext } from 'expo-sqlite';
 
 import { AppSidebar } from '@/components/AppSidebar';
-import { BottomNavigation } from '@/components/BottomNavigation';
+import { NavigationFooter } from '@/components/NavigationFooter';
 import { OrientationController } from '@/components/OrientationController';
 import { PermissionHost } from '@/components/permissions/PermissionHost';
 import { PluginApprovalHost } from '@/components/plugins/PluginApprovalHost';
 import { TabletShell } from '@/components/TabletShell';
 import { BottomNavigationProvider } from '@/context/bottom-navigation';
+import { NavigationFooterProvider, useNavigationFooter } from '@/context/navigation-footer';
 import { PinnedPluginsProvider } from '@/context/pinned-plugins';
 import { SidebarProvider } from '@/context/sidebar';
 import { PluginPlatformProvider } from '@/context/plugins';
 import { TabletLayoutProvider, useTabletLayout } from '@/context/tablet-layout';
 import { useAppTheme, useStyles, type AppTheme } from '@/context/theme';
 import { setOrbitDb } from '@/lib/harness/plugins/orbit-session';
-import { layout, spacing } from '@/theme';
 import { permissionManager } from '@/lib/permissions';
 import { SafetyTrash } from '@/lib/safety/trash';
 
@@ -86,6 +86,7 @@ function AppLayoutContent() {
   const styles = useStyles(makeStyles);
   const db = useSQLiteContext();
   const { layout: responsive } = useTabletLayout();
+  const { reserve } = useNavigationFooter();
 
   useEffect(() => {
     setOrbitDb(db);
@@ -104,9 +105,8 @@ function AppLayoutContent() {
             headerShown: false,
             contentStyle: {
               backgroundColor: colors.background,
-              paddingBottom: responsive.showBottomNav
-                ? layout.touchTarget + spacing.md
-                : 0,
+              // Applied once, only on routes that show the floating footer.
+              paddingBottom: reserve,
             },
             animation: 'slide_from_right',
           }}
@@ -145,7 +145,7 @@ function AppLayoutContent() {
         </Stack>
       </TabletShell>
 
-      {responsive.showBottomNav ? <BottomNavigation /> : null}
+      <NavigationFooter />
       {!responsive.persistentSidebar ? <AppSidebar /> : null}
       <PermissionHost />
       <PluginApprovalHost />
@@ -160,7 +160,9 @@ export default function AppLayout() {
         <SidebarProvider>
           <PinnedPluginsProvider>
             <TabletLayoutProvider>
-              <AppLayoutContent />
+              <NavigationFooterProvider>
+                <AppLayoutContent />
+              </NavigationFooterProvider>
             </TabletLayoutProvider>
           </PinnedPluginsProvider>
         </SidebarProvider>

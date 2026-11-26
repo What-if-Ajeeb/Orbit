@@ -5,8 +5,10 @@ import {
   BOTTOM_NAV_DEFAULT_IDS,
   BOTTOM_NAV_SLOT_COUNT,
   buildNavDestinations,
+  isBottomNavRoute,
   isNavPathActive,
   normalizeNavIds,
+  normalizeNavPath,
   pluginDestinationId,
   resolveNavSlots,
   unavailableNavIds,
@@ -82,5 +84,50 @@ describe('bottom navigation destinations', () => {
     expect(isNavPathActive('/', '/')).toBe(true);
     expect(isNavPathActive('/tasks', '/chat')).toBe(false);
     expect(BOTTOM_NAV_DEFAULT_IDS).toHaveLength(3);
+  });
+});
+
+describe('bottom navigation footer visibility', () => {
+  it.each([
+    '/',
+    '/chat',
+    '/tasks',
+    '/workflows',
+    '/marketplace',
+    '/projects',
+    '/conversations',
+    '/connections',
+    '/agents',
+    '/plugins',
+    '/artifacts',
+    '/buddy',
+  ])('shows the footer on the main screen %s', (pathname) => {
+    expect(isBottomNavRoute(pathname)).toBe(true);
+  });
+
+  it.each([
+    '/settings',
+    '/settings/navigation',
+    '/artifact',
+    '/agent-action',
+    '/agents/agent-1',
+    '/agents/agent-1/tools',
+    '/projects/project-1',
+    '/plugins/plugin-1',
+    '/plugin/plugin-1',
+    '/buddy/tree',
+    '/permissions',
+    '/approvals',
+    '/tool-permissions',
+  ])('hides the footer on the detail screen %s', (pathname) => {
+    expect(isBottomNavRoute(pathname)).toBe(false);
+  });
+
+  it('normalizes index routes, trailing slashes and query strings', () => {
+    expect(normalizeNavPath('/index')).toBe('/');
+    expect(normalizeNavPath('/chat/?n=1')).toBe('/chat');
+    expect(isBottomNavRoute('/index')).toBe(true);
+    expect(isBottomNavRoute('/chat/?n=1')).toBe(true);
+    expect(isBottomNavRoute('/settings?tab=general')).toBe(false);
   });
 });

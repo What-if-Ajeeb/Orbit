@@ -1,12 +1,9 @@
 import { Tabs } from 'expo-router';
 
-import { useTabletLayout } from '@/context/tablet-layout';
 import { useAppTheme } from '@/context/theme';
-import { layout, spacing } from '@/theme';
 
 export default function TabLayout() {
   const { colors } = useAppTheme();
-  const { layout: responsive } = useTabletLayout();
 
   return (
     <Tabs
@@ -14,13 +11,10 @@ export default function TabLayout() {
       screenOptions={{
         headerShown: false,
         // Navigation lives in the drawer/persistent sidebar and, on phones,
-        // the customizable bottom bar.
+        // the shared floating footer mounted by the app layout.
         tabBarStyle: { display: 'none' },
         sceneStyle: {
           backgroundColor: colors.background,
-          paddingBottom: responsive.showBottomNav
-            ? layout.touchTarget + spacing.md
-            : 0,
         },
       }}
     >

@@ -216,10 +216,18 @@ New typed integrations can register through `registerAgentActionIntegration()`;
 each declares its own validation, exact arguments and approval requirement, but
 none can bypass the shared permission executor.
 
+The floating bottom pill appears only on main-level screens (Chat, Tasks, Make,
+Marketplace and the other top-level destinations). Detail screens — an individual
+conversation, task/project/plugin detail, Settings and its nested pages, connected
+tools and approval flows — use the full screen instead. The pill is centered above
+the safe-area/system navigation inset, reserves space for main-screen content once,
+and steps aside while the keyboard is open so a composer is never covered.
+
 Use **Settings → Navigation** to customize the three bottom slots. Every
 destination — including the built-ins — can be picked, reordered, removed from a
 slot, and restored to defaults. Only stable IDs are persisted; unavailable plugin
-destinations fall back to built-ins without breaking deep links.
+destinations fall back to built-ins without breaking deep links. Duplicate
+assignments are swapped automatically, so the three slots always stay unique.
 
 Open **Settings → Agent Permissions** (also in the drawer) to see connected
 computers, every registered agent, active and past grants, denials, emergency-stop
@@ -468,7 +476,8 @@ src/
       permissions.tsx     # agent consent control room + companion pairing
   components/             # Brand, Button, TaskItem, ChatBubble, AppSidebar, ...
     actions/              # reusable durable AgentActionCard
-    BottomNavigation.tsx  # three-slot bottom bar
+    BottomNavigation.tsx  # floating three-slot pill and Settings preview
+    NavigationFooter.tsx  # single shared footer host for the app layout
     TabletShell.tsx       # landscape shell: sidebar + workspace + context panel
     TabletSidebar.tsx     # persistent icon rail/full sidebar
     TabletContextPanel.tsx # resizable task/context pane
@@ -480,11 +489,12 @@ src/
     auth.tsx              # session state + sign in/up/out
     sidebar.tsx           # app-wide drawer state
     bottom-navigation.tsx # saved/draft slot customization state
+    navigation-footer.tsx # route-aware footer visibility + layout reservation
     pinned-plugins.tsx    # persisted user-pinned plugin IDs
     tablet-layout.tsx     # sidebar/panel state across rotations
   lib/
     agent-actions/        # typed integrations, durable store, approval/execution service
-    bottom-navigation.ts  # destination discovery + exactly-three resolution
+    bottom-navigation.ts  # destinations, route visibility + exactly-three resolution
     bottom-navigation-storage.ts # versioned local slot persistence
     responsive.ts         # phone/tablet breakpoint classification
     pinned-plugins.ts     # versioned pin-ID persistence

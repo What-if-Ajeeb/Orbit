@@ -216,6 +216,43 @@ export function unavailableNavIds(
   return savedIds.filter((id) => !available.has(id));
 }
 
+/**
+ * Route metadata for the floating footer. Only the file-backed top-level
+ * screens are listed; every other route (details, settings, approval flows and
+ * plugin configuration) is intentionally hidden. This is an exact match, so a
+ * new screen never inherits the footer by accident.
+ */
+export const BOTTOM_NAV_VISIBLE_ROUTES: ReadonlySet<string> = new Set([
+  '/',
+  '/chat',
+  '/tasks',
+  '/workflows',
+  '/marketplace',
+  '/projects',
+  '/conversations',
+  '/connections',
+  '/agents',
+  '/plugins',
+  '/artifacts',
+  '/buddy',
+]);
+
+/** Expo Router pathnames are already normalized, but deep links can still vary. */
+export function normalizeNavPath(pathname: string): string {
+  const withoutQuery = pathname.split('?')[0] ?? '/';
+  const trimmed = withoutQuery.replace(/\/+$/, '');
+
+  if (!trimmed) {
+    return '/';
+  }
+
+  return trimmed === '/index' ? '/' : trimmed;
+}
+
+export function isBottomNavRoute(pathname: string): boolean {
+  return BOTTOM_NAV_VISIBLE_ROUTES.has(normalizeNavPath(pathname));
+}
+
 /** Compares a destination href with the current pathname without query params. */
 export function isNavPathActive(pathname: string, href: Href): boolean {
   const target = String(href).split('?')[0];
