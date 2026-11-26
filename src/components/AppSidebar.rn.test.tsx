@@ -1,9 +1,9 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
 import React from 'react';
-import { Animated } from 'react-native';
+import { Alert, Animated } from 'react-native';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 
-import { AppSidebar } from './AppSidebar';
+import { AppSidebar, SidebarContent } from './AppSidebar';
 
 const mockClose = jest.fn();
 const mockOpen = jest.fn();
@@ -12,6 +12,29 @@ const mockReplace = jest.fn();
 const mockSwitchAccount = jest.fn(async (..._args: unknown[]) => undefined);
 const mockDb = {};
 let mockSidebarOpen = true;
+const mockPinState = {
+  groups: [
+    { id: 'everything', pluginIds: [] as string[] },
+    { id: 'more', pluginIds: [] as string[] },
+  ],
+  collapsedGroupIds: [] as string[],
+};
+
+const mockPinActions = {
+  togglePin: jest.fn(),
+  setPinned: jest.fn(),
+  pinPlugin: jest.fn(),
+  unpinPlugin: jest.fn(),
+  movePinnedPlugin: jest.fn(),
+  movePinnedPluginToGroup: jest.fn(),
+  setGroupExpanded: jest.fn(),
+  toggleGroup: jest.fn(),
+};
+
+const mockPluginSnapshot = {
+  navigation: [] as Record<string, unknown>[],
+  summaries: [] as Record<string, unknown>[],
+};
 
 const mockConversation = {
   id: 7,
@@ -29,10 +52,11 @@ const mockChatStore = {
 
 jest.mock('@expo/vector-icons/Ionicons', () => {
   const ReactModule = require('react');
+  const Icon = () => ReactModule.createElement(require('react-native').View, null, null);
 
   return {
     __esModule: true,
-    default: () => ReactModule.createElement(require('react-native').View, null, null),
+    default: Object.assign(Icon, { glyphMap: {} }),
     glyphMap: {},
   };
 });
@@ -89,7 +113,31 @@ jest.mock('@/context/sidebar', () => ({
 }));
 
 jest.mock('@/context/plugins', () => ({
-  usePluginSnapshot: () => ({ navigation: [] }),
+  usePluginSnapshot: () => mockPluginSnapshot,
+}));
+
+jest.mock('@/context/pinned-plugins', () => ({
+  usePinnedPlugins: () => {
+    const pinnedIds = mockPinState.groups.flatMap((group) => group.pluginIds);
+
+    return {
+      state: { groups: mockPinState.groups, collapsedGroupIds: mockPinState.collapsedGroupIds },
+      pinnedIds,
+      groups: mockPinState.groups,
+      collapsedGroupIds: mockPinState.collapsedGroupIds,
+      ready: true,
+      isPinned: (id: string) => pinnedIds.includes(id),
+      togglePin: (...args: unknown[]) => mockPinActions.togglePin(...args),
+      setPinned: (...args: unknown[]) => mockPinActions.setPinned(...args),
+      pinPlugin: (...args: unknown[]) => mockPinActions.pinPlugin(...args),
+      unpinPlugin: (...args: unknown[]) => mockPinActions.unpinPlugin(...args),
+      movePinnedPlugin: (...args: unknown[]) => mockPinActions.movePinnedPlugin(...args),
+      movePinnedPluginToGroup: (...args: unknown[]) =>
+        mockPinActions.movePinnedPluginToGroup(...args),
+      setGroupExpanded: (...args: unknown[]) => mockPinActions.setGroupExpanded(...args),
+      toggleGroup: (...args: unknown[]) => mockPinActions.toggleGroup(...args),
+    };
+  },
 }));
 
 jest.mock('expo-sqlite', () => ({
@@ -124,6 +172,14 @@ describe('AppSidebar', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockSidebarOpen = true;
+    mockPinState.groups = [
+      { id: 'everything', pluginIds: [] },
+      { id: 'more', pluginIds: [] },
+    ];
+    mockPinState.collapsedGroupIds = [];
+    mockPluginSnapshot.navigation = [];
+    mockPluginSnapshot.summaries = [];
+    mockChatStore.listConversations.mockResolvedValue([mockConversation]);
     jest.spyOn(Animated, 'timing').mockImplementation((value, config) => ({
       start: (callback?: Animated.EndCallback) => {
         value.setValue(config.toValue as number);
@@ -197,6 +253,26 @@ describe('AppSidebar', () => {
     expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('/chat?c=7'));
   });
 
+  it('truncates recents and opens the selected conversation', async () => {
+    mockChatStore.listConversations.mockResolvedValueOnce(
+      Array.from({ length: 9 }, (_, index) => ({
+        ...mockConversation,
+        id: index + 1,
+        title: `Recent ${index + 1}`,
+      }))
+    );
+
+    const view = await render(<AppSidebar />);
+
+    await waitFor(() => {
+      expect(view.getAllByLabelText(/^Open chat Recent /)).toHaveLength(6);
+    });
+
+    fireEvent.press(view.getByLabelText('Open chat Recent 6'));
+
+    expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('/chat?c=6'));
+  });
+
   it('keeps New chat available from the drawer footer', async () => {
     const view = await render(<AppSidebar />);
     await act(async () => {});
@@ -221,5 +297,146 @@ describe('AppSidebar', () => {
     await act(async () => {});
 
     expect(view.getByLabelText('Swipe right to open navigation')).toBeTruthy();
+  });
+
+  it('shows a subtle tree empty state when no plugins are pinned', async () => {
+    const view = await render(<AppSidebar />);
+    await act(async () => {});
+
+    expect(view.getByText('Pinned')).toBeTruthy();
+    expect(view.getByText('No pinned plugins yet.')).toBeTruthy();
+    expect(view.getByLabelText('Pin plugin')).toBeTruthy();
+  });
+
+  it('opens a pinned plugin from its nested sidebar row', async () => {
+    mockPinState.groups[0].pluginIds = ['calendar'];
+    mockPluginSnapshot.summaries = [
+      {
+        manifest: {
+          pluginId: 'calendar',
+          name: 'Calendar',
+          icon: 'calendar-outline',
+        },
+        status: 'enabled',
+        legacy: false,
+      },
+    ];
+
+    const view = await render(<AppSidebar />);
+    await act(async () => {});
+
+    fireEvent.press(view.getByLabelText('Calendar'));
+
+    expect(mockNavigate).toHaveBeenCalledWith('/plugin/calendar');
+    expect(mockClose).toHaveBeenCalled();
+  });
+
+  it('collapses a pinned group from its chevron', async () => {
+    const view = await render(<AppSidebar />);
+    await act(async () => {});
+
+    fireEvent.press(view.getByLabelText('Collapse Everything group'));
+
+    expect(mockPinActions.toggleGroup).toHaveBeenCalledWith('everything');
+  });
+
+  it('expands a collapsed pinned group from its chevron', async () => {
+    mockPinState.collapsedGroupIds = ['everything'];
+
+    const view = await render(<AppSidebar />);
+    await act(async () => {});
+
+    fireEvent.press(view.getByLabelText('Expand Everything group'));
+
+    expect(mockPinActions.toggleGroup).toHaveBeenCalledWith('everything');
+  });
+
+  it('unpins a plugin from its long-press menu', async () => {
+    mockPinState.groups[0].pluginIds = ['calendar'];
+    mockPluginSnapshot.summaries = [
+      {
+        manifest: { pluginId: 'calendar', name: 'Calendar', icon: 'calendar-outline' },
+        status: 'enabled',
+        legacy: false,
+      },
+    ];
+
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation((title, message, buttons) => {
+      const actions = (buttons ?? []) as { text?: string; onPress?: () => void }[];
+      expect(title).toBe('Calendar');
+      expect(message).toContain('Reorder');
+      actions.find((action) => action.text === 'Unpin')?.onPress?.();
+    });
+
+    const view = await render(<AppSidebar />);
+    await act(async () => {});
+
+    fireEvent(view.getByLabelText('Calendar'), 'longPress');
+
+    expect(alertSpy).toHaveBeenCalled();
+    expect(mockPinActions.unpinPlugin).toHaveBeenCalledWith('calendar');
+  });
+
+  it('adds an installed plugin from the Pin plugin picker', async () => {
+    mockPluginSnapshot.summaries = [
+      {
+        manifest: { pluginId: 'calendar', name: 'Calendar', icon: 'calendar-outline' },
+        status: 'enabled',
+        legacy: false,
+      },
+    ];
+
+    const view = await render(<AppSidebar />);
+    await act(async () => {});
+
+    fireEvent.press(view.getByLabelText('Pin plugin'));
+
+    await waitFor(() => {
+      expect(view.getByLabelText('Add Calendar')).toBeTruthy();
+    });
+
+    fireEvent.press(view.getByLabelText('Add Calendar'));
+
+    expect(mockPinActions.pinPlugin).toHaveBeenCalledWith('calendar', 'everything');
+  });
+
+  it('offers chat history from Recents', async () => {
+    const view = await render(<AppSidebar />);
+    await act(async () => {});
+
+    fireEvent.press(view.getByLabelText('Open chat history'));
+
+    expect(mockNavigate).toHaveBeenCalledWith('/conversations');
+  });
+
+  it('keeps the account footer free of a dropdown arrow', async () => {
+    const view = await render(<AppSidebar />);
+    await act(async () => {});
+
+    expect(view.getByLabelText('Account settings')).toBeTruthy();
+    expect(view.queryByLabelText('Switch account')).toBeNull();
+  });
+
+  it('collapses a persistent sidebar to an icon rail without losing labels', async () => {
+    const onCollapse = jest.fn();
+    const onNavigate = jest.fn();
+
+    const view = await render(
+      <SidebarContent
+        variant="persistent"
+        collapsed
+        onCollapse={onCollapse}
+        onNavigate={onNavigate}
+      />
+    );
+    await act(async () => {});
+
+    fireEvent.press(view.getByLabelText('Expand sidebar'));
+    fireEvent.press(view.getByLabelText('Chats'));
+
+    expect(onCollapse).toHaveBeenCalled();
+    expect(onNavigate).toHaveBeenCalledWith('/chat');
+    expect(view.queryByText('Pinned')).toBeNull();
+    expect(view.queryByLabelText('Pin plugin')).toBeNull();
   });
 });

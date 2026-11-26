@@ -3,13 +3,14 @@
     "name": "ORBIT",
     "slug": "orbit",
     "version": "1.10.6",
-    "orientation": "portrait",
+    "orientation": "default",
     "scheme": "orbit",
     "icon": "./assets/app_icon_1024.png",
     "userInterfaceStyle": "automatic",
     "backgroundColor": "#121212",
     "ios": {
       "supportsTablet": true,
+      "requireFullScreen": true,
       "bundleIdentifier": "com.orbit.app"
     },
     "android": {
@@ -39,6 +40,12 @@
       "expo-router",
       "expo-sqlite",
       "expo-secure-store",
+      [
+        "expo-screen-orientation",
+        {
+          "initialOrientation": "DEFAULT"
+        }
+      ],
       "expo-speech-recognition",
       [
         "expo-notifications",

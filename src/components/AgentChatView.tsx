@@ -24,6 +24,7 @@ import { SidebarButton } from '@/components/SidebarButton';
 import { ToolStatusList } from '@/components/ToolStatusList';
 import { useSession } from '@/context/auth';
 import { useSidebar } from '@/context/sidebar';
+import { useTabletLayout } from '@/context/tablet-layout';
 import { useAppTheme, useStyles, type AppTheme } from '@/context/theme';
 import { runAgent } from '@/lib/ai/agent';
 import type { LlmAttachment } from '@/lib/ai/types';
@@ -40,7 +41,7 @@ import { getChatStore, type ChatMessage, type Conversation, type ToolExecutionEv
 import { permissionManager, type AgentIdentity } from '@/lib/permissions';
 import type { ActivityRecord } from '@/lib/safety/types';
 import { useVoiceInput } from '@/lib/voice-input';
-import { fonts, radius, spacing } from '@/theme';
+import { fonts, layout, radius, spacing } from '@/theme';
 
 const ATTACHMENT_LIMIT = 4;
 
@@ -102,6 +103,7 @@ export function AgentChatView({ agent, agentId, allowCreatorMode = false }: Agen
   const insets = useSafeAreaInsets();
   const { user } = useSession();
   const { open: openSidebar } = useSidebar();
+  const { layout: responsive } = useTabletLayout();
   const scopeAgentId = agentId ?? agent.id;
   const {
     prompt,
@@ -661,7 +663,13 @@ export function AgentChatView({ agent, agentId, allowCreatorMode = false }: Agen
   return (
     <KeyboardAvoidingView style={styles.root} behavior="padding">
       <View style={styles.flex}>
-        <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
+        <View
+          style={[
+            styles.header,
+            responsive.isTablet && styles.contentWide,
+            { paddingTop: insets.top + spacing.sm },
+          ]}
+        >
           <View style={styles.headerRow}>
             <SidebarButton onPress={openSidebar} />
 
@@ -753,7 +761,10 @@ export function AgentChatView({ agent, agentId, allowCreatorMode = false }: Agen
         <ScrollView
           ref={scrollRef}
           style={styles.flex}
-          contentContainerStyle={styles.messageContent}
+          contentContainerStyle={[
+            styles.messageContent,
+            responsive.isTablet && styles.contentWide,
+          ]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
           onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
@@ -803,7 +814,13 @@ export function AgentChatView({ agent, agentId, allowCreatorMode = false }: Agen
         </ScrollView>
       </View>
 
-      <View style={[styles.composerWrap, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
+      <View
+        style={[
+          styles.composerWrap,
+          responsive.isTablet && styles.contentWide,
+          { paddingBottom: Math.max(insets.bottom, spacing.sm) },
+        ]}
+      >
         {error ? (
           <View style={styles.errorWrap}>
             <FormError message={error} onDismiss={() => setError(null)} />
@@ -883,6 +900,13 @@ export function AgentChatView({ agent, agentId, allowCreatorMode = false }: Agen
             multiline
             maxLength={1500}
             editable={!isSending}
+            returnKeyType="send"
+            blurOnSubmit={false}
+            onSubmitEditing={() => {
+              if (canSend) {
+                void send();
+              }
+            }}
           />
 
           <View style={styles.composerRow}>
@@ -1012,6 +1036,11 @@ const makeStyles = ({ colors }: AppTheme) =>
     },
     flex: {
       flex: 1,
+    },
+    contentWide: {
+      width: '100%',
+      maxWidth: layout.contentMaxWidth,
+      alignSelf: 'center',
     },
     header: {
       paddingHorizontal: spacing.md,

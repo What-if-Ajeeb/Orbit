@@ -81,6 +81,15 @@ Implemented behavior:
 - Legacy hook scripts are disabled: `HookEngine.runHookCode()` throws, stored
   hook rows are never evaluated, and failed `executeHook()` results are ignored
   by the agent.
+- Pinned plugins are a sidebar preference, not a new plugin capability. The
+  star control in the Plugin Manager and the sidebar's **Pin plugin** action
+  store only stable plugin IDs and group IDs in the existing
+  SecureStore/localStorage preference pattern. The nested **Pinned** tree keeps
+  Everything / More Plugins membership, user order and collapsed groups across
+  restarts; drag handles and the long-press menu only change that preference.
+  The sidebar resolves names, icons and `/plugin/<id>` routes from the live
+  manifest snapshot, so a renamed or removed plugin never persists an executable
+  path and pinning never duplicates an installation.
 
 Current limitations: third-party plugins are declarative only (no downloaded
 code execution), no remote marketplace or unknown-manifest fetch, `notifications`/`credentials` SDK adapters

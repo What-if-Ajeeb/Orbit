@@ -19,12 +19,13 @@ and **expo-notifications**.
 - Tool-using agent: create, list, update, complete, and delete tasks
 - Local notifications for due dates and reminders, even when the app is closed
 - Task list with quick-add (`pay bill tomorrow 5pm`), filters, and long-press delete
-- Sidebar-first workspace with a collapsible drawer, six primary destinations, readable chat recents, local account switching, and a persistent New chat action
+- Sidebar-first workspace with a collapsible drawer, six primary destinations, a grouped Pinned plugin tree, readable chat recents, local account switching, and a persistent New chat action
 - Exactly three customizable bottom-navigation slots with reordering, local persistence, restore defaults, and fallback for destinations whose plugin is unavailable
 - Typed Agent Action Cards for email, files, git and calendar: exact target/payload preview, explicit approval, real execution results, and activity logging
 - Projects overview built from real stored conversations, tasks, artifacts, files and workflow runs — no placeholder projects
 - Light / Dark / System color mode — flat warm-neutral design with a coral accent and serif headings; navigation lives in the left drawer
 - Multi-conversation chat history with per-chat delete and a slide-in history panel
+- Responsive tablet workspace: phones keep the existing portrait UI, portrait tablets use the overlay drawer, landscape tablets get a persistent sidebar, and large landscape tablets can show a resizable Context panel
 - Individual AI agents with dedicated chats, instructions/memory, and per-agent tool allowlists
 - Image and text-document attachments, streaming replies, cancellation, retry, and offline/local states
 - Config-driven Google connections (Gmail, Calendar, Drive) using real OAuth and Keystore-backed tokens; unconfigured integrations show a setup state, never a fake “connected” state
@@ -42,6 +43,31 @@ and **expo-notifications**.
 - **Plugin platform**: declarative manifests, default-deny permissions, namespaced tools/storage, and a Plugin Manager (`Plugins` in the drawer)
 - **Android mobile sandbox** (Android-only): backend-only Rust policy core in an isolated Android service, owned from RN through an Expo Module. It has no screen, drawer item, setting, or branding. See [`docs/MOBILE_SANDBOX.md`](docs/MOBILE_SANDBOX.md).
 - Offline **local mode** for basic commands when no API key is configured
+
+## Tablets and landscape
+
+The phone UI is unchanged. A device is treated as a tablet when its shorter screen
+side is at least 600 density-independent pixels; phones stay locked to portrait
+while tablets may rotate.
+
+- **Tablet portrait** keeps one workspace area and the existing overlay drawer.
+- **Landscape tablets** show a persistent left sidebar with Chats, Projects,
+  Plugins, Marketplace, Buddy, Settings, the Pinned tree, Recents, account actions
+  and New chat. The bottom bar is hidden; the sidebar can collapse to an icon rail.
+- **Large landscape tablets** (width at least 1024) can show a collapsible,
+  resizable **Context** panel with chat history, approvals and open tasks. The
+  sidebar, workspace and panel scroll independently.
+
+Pin an installed plugin from the Plugins screen with the star control, or use
+**Pinned → Pin plugin** in the sidebar. Pinned shortcuts appear in two collapsible
+groups — **Everything** and **More Plugins** — with nested connector rows, an
+active-plugin highlight, drag handles for reordering and a long-press menu for
+unpinning or moving between groups. Pin membership, order and collapse state are
+persisted with the existing SecureStore/localStorage preference pattern; only
+stable plugin IDs and group IDs are stored. Labels, icons and `/plugin/<id>`
+routes are resolved from the live plugin snapshot, so pins never install or
+duplicate plugins. Sidebar collapse, Context visibility and panel width are also
+persisted locally.
 
 ## Connect the AI brain
 
@@ -443,15 +469,26 @@ src/
   components/             # Brand, Button, TaskItem, ChatBubble, AppSidebar, ...
     actions/              # reusable durable AgentActionCard
     BottomNavigation.tsx  # three-slot bottom bar
+    TabletShell.tsx       # landscape shell: sidebar + workspace + context panel
+    TabletSidebar.tsx     # persistent icon rail/full sidebar
+    TabletContextPanel.tsx # resizable task/context pane
+    OrientationController.tsx # phones portrait, tablets free to rotate
     permissions/          # global approval dialog, host, pairing modal
+  hooks/
+    useResponsiveLayout.ts # window breakpoints with keyboard-stable dimensions
   context/
     auth.tsx              # session state + sign in/up/out
     sidebar.tsx           # app-wide drawer state
     bottom-navigation.tsx # saved/draft slot customization state
+    pinned-plugins.tsx    # persisted user-pinned plugin IDs
+    tablet-layout.tsx     # sidebar/panel state across rotations
   lib/
     agent-actions/        # typed integrations, durable store, approval/execution service
     bottom-navigation.ts  # destination discovery + exactly-three resolution
     bottom-navigation-storage.ts # versioned local slot persistence
+    responsive.ts         # phone/tablet breakpoint classification
+    pinned-plugins.ts     # versioned pin-ID persistence
+    tablet-layout-storage.ts # sidebar/panel preference persistence
     ai/
       agent.ts            # tool-calling loop (max 6 rounds)
       provider-registry.ts # provider plugin seam
