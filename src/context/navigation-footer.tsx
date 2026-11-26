@@ -1,9 +1,9 @@
 import { createContext, useContext, useMemo, type PropsWithChildren } from 'react';
-import { usePathname } from 'expo-router';
+import { useGlobalSearchParams, usePathname } from 'expo-router';
 
 import { BOTTOM_NAV_RESERVE } from '@/components/BottomNavigation';
 import { useTabletLayout } from '@/context/tablet-layout';
-import { isBottomNavRoute } from '@/lib/bottom-navigation';
+import { isBottomNavRoute, type BottomNavChatParams } from '@/lib/bottom-navigation';
 
 type NavigationFooterContextValue = {
   /** Whether the shared floating footer is currently mounted. */
@@ -23,10 +23,13 @@ const NavigationFooterContext = createContext<NavigationFooterContextValue>(FALL
  */
 export function NavigationFooterProvider({ children }: PropsWithChildren) {
   const pathname = usePathname();
+  const params = useGlobalSearchParams<BottomNavChatParams>();
   const { layout } = useTabletLayout();
 
   const visible =
-    layout.showBottomNav && isBottomNavRoute(pathname) && !layout.keyboardVisible;
+    layout.showBottomNav &&
+    isBottomNavRoute(pathname, params) &&
+    !layout.keyboardVisible;
 
   const value = useMemo<NavigationFooterContextValue>(
     () => ({ visible, reserve: visible ? BOTTOM_NAV_RESERVE : 0 }),

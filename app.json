@@ -63,6 +63,14 @@
         }
       ],
       "expo-font",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "ORBIT uses your photos to attach images to chat messages.",
+          "cameraPermission": "ORBIT uses the camera to take photos for chat messages.",
+          "microphonePermission": "ORBIT uses the microphone for voice input in chat."
+        }
+      ],
       "./plugins/withLocalhostCleartext.js",
       "expo-asset"
     ],

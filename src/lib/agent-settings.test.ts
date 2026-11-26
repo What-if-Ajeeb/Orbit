@@ -10,6 +10,7 @@ import {
   newToolEventId,
   saveAgentConfig,
 } from './agent-settings';
+import { WEB_SEARCH_TOOL_NAME } from './skills';
 
 vi.mock('expo-crypto', () => ({
   randomUUID: () => 'uuid-1',
@@ -75,6 +76,7 @@ describe('agent settings', () => {
     expect(config.allowedTools).toContain('artifact_read');
     expect(config.allowedTools).toContain('orbit_plugin_discover');
     expect(config.allowedTools).toContain('orbit_plugin_request');
+    expect(config.allowedTools).toContain(WEB_SEARCH_TOOL_NAME);
     expect(config.allowedTools).not.toContain('google_gmail_send');
   });
 

@@ -130,4 +130,12 @@ describe('bottom navigation footer visibility', () => {
     expect(isBottomNavRoute('/chat/?n=1')).toBe(true);
     expect(isBottomNavRoute('/settings?tab=general')).toBe(false);
   });
+
+  it('hides the footer while /chat holds an active conversation', () => {
+    expect(isBottomNavRoute('/chat')).toBe(true);
+    expect(isBottomNavRoute('/chat', { c: '7' })).toBe(false);
+    expect(isBottomNavRoute('/chat', { n: '1' })).toBe(false);
+    expect(isBottomNavRoute('/chat', { prompt: 'Explain this' })).toBe(false);
+    expect(isBottomNavRoute('/chat', { h: '1' })).toBe(false);
+  });
 });

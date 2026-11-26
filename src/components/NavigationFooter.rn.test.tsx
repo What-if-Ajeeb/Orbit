@@ -7,6 +7,7 @@ import { NavigationFooterProvider } from '@/context/navigation-footer';
 import { NavigationFooter } from './NavigationFooter';
 
 let mockPathname = '/chat';
+let mockSearchParams: Record<string, string> = {};
 const mockLayout = { showBottomNav: true, keyboardVisible: false };
 const mockNavigate = jest.fn();
 
@@ -102,6 +103,7 @@ jest.mock('expo-router', () => ({
     navigate: (...args: unknown[]) => mockNavigate(...args),
   },
   usePathname: () => mockPathname,
+  useGlobalSearchParams: () => mockSearchParams,
 }));
 
 jest.mock('@/context/bottom-navigation', () => ({
@@ -125,6 +127,7 @@ function renderFooter() {
 describe('NavigationFooter', () => {
   beforeEach(() => {
     mockPathname = '/chat';
+    mockSearchParams = {};
     mockLayout.showBottomNav = true;
     mockLayout.keyboardVisible = false;
     jest.clearAllMocks();
@@ -136,6 +139,17 @@ describe('NavigationFooter', () => {
     expect(view.getAllByRole('tab')).toHaveLength(3);
     expect(view.getByLabelText('Open Chat').props.accessibilityState.selected).toBe(true);
   });
+
+  it.each([{ c: '7' }, { n: '1' }, { prompt: 'Explain this' }, { h: '1' }])(
+    'hides the footer inside an active chat with %p',
+    async (params) => {
+      mockSearchParams = params;
+
+      const view = await renderFooter();
+
+      expect(view.queryAllByRole('tab')).toHaveLength(0);
+    }
+  );
 
   it.each([
     '/settings',

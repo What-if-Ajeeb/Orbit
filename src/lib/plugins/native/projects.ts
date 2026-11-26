@@ -3,6 +3,7 @@ import { ArtifactStore } from '@/lib/artifacts';
 import { getChatStore } from '@/lib/chat';
 import { MASTER_AGENT } from '@/lib/permissions/agents';
 import { redactSecrets } from '@/lib/permissions/redact';
+import { WORKSPACE_PROJECT_ID } from '@/lib/project-scopes';
 import { listTasks } from '@/lib/tasks';
 import { WorkflowStore } from '@/lib/workflows';
 
@@ -20,8 +21,6 @@ import {
 
 export const PROJECTS_PLUGIN_ID = 'orbit.builtin.projects';
 
-/** Stable workspace scope used by AgentChatView and runAgent. */
-const WORKSPACE_PROJECT_ID = 'orbit-workspace';
 const SUMMARY_MAX = 500;
 
 export const projectsManifest: PluginManifest = seedPluginManifest({

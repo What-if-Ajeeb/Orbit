@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState, type ComponentRef } from 'rea
 import {
   ActivityIndicator,
   Alert,
+  Image,
   Keyboard,
   KeyboardAvoidingView,
   Pressable,
@@ -16,6 +17,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { AddToChatSheet } from '@/components/AddToChatSheet';
 import { AgentActivityTimeline } from '@/components/AgentActivityTimeline';
 import { ChatBubble } from '@/components/ChatBubble';
 import { ChatHistoryPanel } from '@/components/ChatHistoryPanel';
@@ -31,6 +33,8 @@ import type { LlmAttachment } from '@/lib/ai/types';
 import { OllamaRequestError } from '@/lib/ai/ollama';
 import { isAiConfigured, loadAiSettings, type AiSettings } from '@/lib/ai/settings';
 import {
+  mergeAttachments,
+  pickCamera,
   pickDocuments,
   pickImages,
   toChatAttachments,
@@ -38,18 +42,26 @@ import {
   type PickedAttachment,
 } from '@/lib/chat-attachments';
 import { getChatStore, type ChatMessage, type Conversation, type ToolExecutionEvent } from '@/lib/chat';
+import { setWebSearchPreference } from '@/lib/chat-preferences';
 import { permissionManager, type AgentIdentity } from '@/lib/permissions';
+import {
+  WORKSPACE_PROJECT_ID,
+  WORKSPACE_PROJECT_LABEL,
+  WORKSPACE_PROJECT_SCOPE,
+  listChatProjectScopes,
+  type ChatProjectScope,
+} from '@/lib/project-scopes';
 import type { ActivityRecord } from '@/lib/safety/types';
 import { useVoiceInput } from '@/lib/voice-input';
 import { fonts, layout, radius, spacing } from '@/theme';
-
-const ATTACHMENT_LIMIT = 4;
 
 type AgentChatViewProps = {
   agent: AgentIdentity;
   /** Conversation scope. Defaults to the agent id; master chat uses `master`. */
   agentId?: string | null;
   allowCreatorMode?: boolean;
+  /** Master chat exposes the composer add menu; specialist chats stay unchanged. */
+  showAddMenu?: boolean;
 };
 
 type RetryPayload = {
@@ -94,7 +106,12 @@ function historyAttachments(message: ChatMessage): LlmAttachment[] {
   }));
 }
 
-export function AgentChatView({ agent, agentId, allowCreatorMode = false }: AgentChatViewProps) {
+export function AgentChatView({
+  agent,
+  agentId,
+  allowCreatorMode = false,
+  showAddMenu = false,
+}: AgentChatViewProps) {
   const { colors } = useAppTheme();
   const styles = useStyles(makeStyles);
   const db = useSQLiteContext();
@@ -139,6 +156,10 @@ export function AgentChatView({ agent, agentId, allowCreatorMode = false }: Agen
   const [creatorMode, setCreatorMode] = useState(false);
   const [historyManualOpen, setHistoryManualOpen] = useState(false);
   const [historyDismissedKey, setHistoryDismissedKey] = useState<string | null>(null);
+  const [addSheetOpen, setAddSheetOpen] = useState(false);
+  const [webSearchEnabled, setWebSearchEnabled] = useState(true);
+  const [selectedProject, setSelectedProject] = useState<ChatProjectScope | null>(null);
+  const [projectScopes, setProjectScopes] = useState<ChatProjectScope[]>([WORKSPACE_PROJECT_SCOPE]);
   const voice = useVoiceInput(setInput);
 
   const historyNavKey = historyParam ? `${promptStamp ?? ''}|${historyParam}` : null;
@@ -160,6 +181,7 @@ export function AgentChatView({ agent, agentId, allowCreatorMode = false }: Agen
 
       setAiReady(isAiConfigured(settings));
       setAiLabel(describeAiMode(settings));
+      setWebSearchEnabled(settings.webSearch !== false);
 
       let currentId = activeIdRef.current;
 
@@ -322,6 +344,30 @@ export function AgentChatView({ agent, agentId, allowCreatorMode = false }: Agen
     };
   }, [activeId, agent.id, activityUserId]);
 
+  useEffect(() => {
+    if (!showAddMenu || !addSheetOpen || activityUserId === null) {
+      return;
+    }
+
+    let mounted = true;
+
+    void listChatProjectScopes(db, activityUserId)
+      .then((scopes) => {
+        if (mounted) {
+          setProjectScopes(scopes);
+        }
+      })
+      .catch(() => {
+        if (mounted) {
+          setProjectScopes([WORKSPACE_PROJECT_SCOPE]);
+        }
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [activityUserId, addSheetOpen, db, showAddMenu]);
+
   if (!user) {
     return null;
   }
@@ -370,6 +416,42 @@ export function AgentChatView({ agent, agentId, allowCreatorMode = false }: Agen
   function openHistory() {
     Keyboard.dismiss();
     setHistoryManualOpen(true);
+  }
+
+  function openAddSheet() {
+    Keyboard.dismiss();
+    setAddSheetOpen(true);
+  }
+
+  function closeAddSheet() {
+    setAddSheetOpen(false);
+  }
+
+  async function attachFromSheet(picker: () => Promise<PickedAttachment[]>) {
+    closeAddSheet();
+    await addPicked(picker);
+  }
+
+  async function toggleWebSearch(enabled: boolean) {
+    setWebSearchEnabled(enabled);
+
+    try {
+      const saved = await setWebSearchPreference(db, activeUser.id, scopeAgentId, enabled);
+      setWebSearchEnabled(saved.webSearch !== false);
+      setError(null);
+    } catch (preferenceError) {
+      setWebSearchEnabled(!enabled);
+      setError(
+        preferenceError instanceof Error
+          ? preferenceError.message
+          : 'Could not update the Web Search preference.'
+      );
+    }
+  }
+
+  function openConnectors() {
+    closeAddSheet();
+    router.navigate('/connections');
   }
 
   function recordToolEvent(event: ToolExecutionEvent) {
@@ -467,8 +549,8 @@ export function AgentChatView({ agent, agentId, allowCreatorMode = false }: Agen
         settings,
         conversationId,
         agent,
-        projectId: 'orbit-workspace',
-        projectLabel: 'Orbit workspace',
+        projectId: selectedProject?.id ?? WORKSPACE_PROJECT_ID,
+        projectLabel: selectedProject?.label ?? WORKSPACE_PROJECT_LABEL,
         creatorMode: allowCreatorMode && creatorMode,
         signal: controller.signal,
         onTextDelta: (delta) => {
@@ -553,7 +635,7 @@ export function AgentChatView({ agent, agentId, allowCreatorMode = false }: Agen
       const picked = await picker();
 
       if (picked.length > 0) {
-        setAttachments((current) => [...current, ...picked].slice(0, ATTACHMENT_LIMIT));
+        setAttachments((current) => mergeAttachments(current, picked));
         setError(null);
       }
     } catch (pickerError) {
@@ -863,11 +945,11 @@ export function AgentChatView({ agent, agentId, allowCreatorMode = false }: Agen
           <ScrollView horizontal style={styles.attachmentStrip} showsHorizontalScrollIndicator={false}>
             {attachments.map((attachment) => (
               <View key={attachment.id} style={styles.attachmentChip}>
-                <Ionicons
-                  name={attachment.kind === 'image' ? 'image-outline' : 'document-text-outline'}
-                  size={15}
-                  color={colors.accent}
-                />
+                {attachment.kind === 'image' ? (
+                  <Image source={{ uri: attachment.uri }} style={styles.attachmentThumb} />
+                ) : (
+                  <Ionicons name="document-text-outline" size={15} color={colors.accent} />
+                )}
                 <Text numberOfLines={1} style={styles.attachmentChipText}>
                   {attachment.name}
                 </Text>
@@ -911,6 +993,17 @@ export function AgentChatView({ agent, agentId, allowCreatorMode = false }: Agen
 
           <View style={styles.composerRow}>
             <View style={styles.composerTools}>
+              {showAddMenu ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Add to chat"
+                  disabled={isSending}
+                  onPress={openAddSheet}
+                  style={({ pressed }) => [styles.attachButton, pressed && styles.pressed]}
+                >
+                  <Ionicons name="add-circle-outline" size={22} color={colors.accent} />
+                </Pressable>
+              ) : null}
               {voice.available !== false ? (
                 <Pressable
                   accessibilityRole="button"
@@ -936,28 +1029,6 @@ export function AgentChatView({ agent, agentId, allowCreatorMode = false }: Agen
                   />
                 </Pressable>
               ) : null}
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Attach an image"
-                disabled={isSending || attachments.length >= ATTACHMENT_LIMIT}
-                onPress={() => {
-                  void addPicked(pickImages);
-                }}
-                style={({ pressed }) => [styles.attachButton, pressed && styles.pressed]}
-              >
-                <Ionicons name="image-outline" size={20} color={colors.textMuted} />
-              </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Attach a document"
-                disabled={isSending || attachments.length >= ATTACHMENT_LIMIT}
-                onPress={() => {
-                  void addPicked(pickDocuments);
-                }}
-                style={({ pressed }) => [styles.attachButton, pressed && styles.pressed]}
-              >
-                <Ionicons name="document-outline" size={20} color={colors.textMuted} />
-              </Pressable>
               {aiReady !== null ? (
                 <Pressable
                   accessibilityRole="button"
@@ -1009,6 +1080,31 @@ export function AgentChatView({ agent, agentId, allowCreatorMode = false }: Agen
           Images and text documents stay on this device · tasks stay local
         </Text>
       </View>
+
+      {showAddMenu ? (
+        <AddToChatSheet
+          visible={addSheetOpen}
+          onClose={closeAddSheet}
+          onCamera={() => {
+            void attachFromSheet(pickCamera);
+          }}
+          onPhotos={() => {
+            void attachFromSheet(pickImages);
+          }}
+          onFiles={() => {
+            void attachFromSheet(pickDocuments);
+          }}
+          projectScopes={projectScopes}
+          selectedProject={selectedProject}
+          onSelectProject={setSelectedProject}
+          webSearchEnabled={webSearchEnabled}
+          onToggleWebSearch={(enabled) => {
+            void toggleWebSearch(enabled);
+          }}
+          onOpenConnectors={openConnectors}
+          attachmentCount={attachments.length}
+        />
+      ) : null}
 
       <ChatHistoryPanel
         visible={historyOpen}
@@ -1231,6 +1327,12 @@ const makeStyles = ({ colors }: AppTheme) =>
       paddingVertical: spacing.sm,
       marginRight: spacing.sm,
       maxWidth: 220,
+    },
+    attachmentThumb: {
+      width: 26,
+      height: 26,
+      borderRadius: 7,
+      backgroundColor: colors.surfaceAlt,
     },
     attachmentChipText: {
       color: colors.text,

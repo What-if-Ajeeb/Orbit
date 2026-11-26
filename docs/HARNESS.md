@@ -168,6 +168,13 @@ conversations for that agent, sends the agent id to `runAgent`, and persists too
 events with the assistant message. Attachments are converted in
 `src/lib/chat-attachments.ts`: picked image bytes stay in memory for the current
 request, and only redacted text previews and metadata reach SQLite or history.
+The Master Agent composer adds an in-place "Add to chat" sheet for camera,
+photos, files, project scope and Web Search. Project scope uses the existing
+stable scopes in `src/lib/project-scopes.ts` (no second projects table), and the
+Web Search toggle persists with AI settings while also updating the built-in
+skill and that agent's tool allowlist. Connectors reopen the existing
+connections screen; grants and approvals are unchanged. The shared footer hides
+while `/chat` carries an open-conversation parameter and returns on main routes.
 
 Per-agent instructions, memory, and tool patterns come from `src/lib/agent-settings.ts`.
 The default is `selected` mode with a small safe allowlist. `runAgent` filters every

@@ -1,6 +1,8 @@
 import * as Crypto from 'expo-crypto';
 import type { SQLiteDatabase } from 'expo-sqlite';
 
+import { WEB_SEARCH_TOOL_NAME } from './skills';
+
 export type AgentToolAccessMode = 'all' | 'selected';
 
 export type AgentConfig = {
@@ -56,6 +58,10 @@ const DEFAULT_ALLOWED_TOOLS = [
   // grant access without the native plugin approval dialog.
   'orbit_plugin_discover',
   'orbit_plugin_request',
+  // Web Search is an opt-in chat preference, but its built-in tool is part of
+  // the default allowlist so the enabled toggle works before the user edits
+  // agent tools. Disabling the preference removes it from this agent's config.
+  WEB_SEARCH_TOOL_NAME,
 ];
 
 function clampText(value: unknown, max: number): string {

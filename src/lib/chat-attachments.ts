@@ -7,7 +7,7 @@ import type { LlmAttachment } from './ai/types';
 import type { ChatAttachment } from './chat';
 import { redactSecrets } from './permissions/redact';
 
-const MAX_ATTACHMENTS = 4;
+export const MAX_ATTACHMENTS = 4;
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const MAX_DOCUMENT_BYTES = 2 * 1024 * 1024;
 const MAX_PREVIEW_CHARS = 12_000;
@@ -19,6 +19,18 @@ const TEXT_MIME_TYPES = new Set([
   'application/json',
   'text/html',
 ]);
+
+/** `application/octet-stream` is tolerated when Android omits a precise MIME type. */
+export const SUPPORTED_DOCUMENT_MIME_TYPES = new Set([
+  ...TEXT_MIME_TYPES,
+  'application/pdf',
+  'application/octet-stream',
+]);
+
+const DOCUMENT_PICKER_TYPES = [
+  ...TEXT_MIME_TYPES,
+  'application/pdf',
+];
 
 /** Stored metadata plus the in-memory payload sent to the model this turn. */
 export type PickedAttachment = ChatAttachment & {
@@ -36,6 +48,30 @@ function safeMime(value: string | null | undefined, fallback: string): string {
 
 function limit(items: PickedAttachment[]): PickedAttachment[] {
   return items.slice(0, MAX_ATTACHMENTS);
+}
+
+function imageAttachment(asset: ImagePicker.ImagePickerAsset): PickedAttachment {
+  const size = typeof asset.fileSize === 'number' ? asset.fileSize : null;
+
+  if (size !== null && size > MAX_IMAGE_BYTES) {
+    throw new Error(`“${safeName(asset.fileName, 'Image')}” is too large. Use an image under 8 MB.`);
+  }
+
+  const data = asset.base64 ?? '';
+
+  if (!data) {
+    throw new Error('That image could not be read. Please choose it again.');
+  }
+
+  return {
+    id: `att_${Crypto.randomUUID()}`,
+    name: safeName(asset.fileName, 'Image'),
+    kind: 'image',
+    mimeType: safeMime(asset.mimeType, 'image/jpeg'),
+    uri: asset.uri,
+    size,
+    data,
+  };
 }
 
 export async function pickImages(): Promise<PickedAttachment[]> {
@@ -59,44 +95,38 @@ export async function pickImages(): Promise<PickedAttachment[]> {
       break;
     }
 
-    const size = typeof asset.fileSize === 'number' ? asset.fileSize : null;
-
-    if (size !== null && size > MAX_IMAGE_BYTES) {
-      throw new Error(`“${safeName(asset.fileName, 'Image')}” is too large. Use an image under 8 MB.`);
-    }
-
-    const data = asset.base64 ?? '';
-
-    if (!data) {
-      throw new Error('That image could not be read. Please choose it again.');
-    }
-
-    picked.push({
-      id: `att_${Crypto.randomUUID()}`,
-      name: safeName(asset.fileName, 'Image'),
-      kind: 'image',
-      mimeType: safeMime(asset.mimeType, 'image/jpeg'),
-      uri: asset.uri,
-      size,
-      data,
-    });
+    picked.push(imageAttachment(asset));
   }
 
   return picked;
 }
 
+export async function pickCamera(): Promise<PickedAttachment[]> {
+  const permission = await ImagePicker.requestCameraPermissionsAsync();
+
+  if (!permission.granted) {
+    throw new Error('Camera permission is required to take a photo.');
+  }
+
+  const result = await ImagePicker.launchCameraAsync({
+    mediaTypes: ['images'],
+    allowsEditing: false,
+    quality: 0.7,
+    base64: true,
+  });
+
+  if (result.canceled || !result.assets?.length) {
+    return [];
+  }
+
+  return [imageAttachment(result.assets[0])];
+}
+
 export async function pickDocuments(): Promise<PickedAttachment[]> {
   const result = await DocumentPicker.getDocumentAsync({
-    type: [
-      'text/plain',
-      'text/markdown',
-      'text/csv',
-      'application/json',
-      'application/pdf',
-      'text/html',
-    ],
+    type: DOCUMENT_PICKER_TYPES,
     copyToCacheDirectory: true,
-    multiple: false,
+    multiple: true,
   });
 
   if (result.canceled || !result.assets?.length) {
@@ -106,13 +136,18 @@ export async function pickDocuments(): Promise<PickedAttachment[]> {
   const picked: PickedAttachment[] = [];
 
   for (const asset of result.assets.slice(0, MAX_ATTACHMENTS)) {
+    const name = safeName(asset.name, 'Document');
     const size = typeof asset.size === 'number' ? asset.size : null;
+    const mimeType = safeMime(asset.mimeType, 'text/plain');
 
-    if (size !== null && size > MAX_DOCUMENT_BYTES) {
-      throw new Error(`“${safeName(asset.name, 'Document')}” is too large. Use a file under 2 MB.`);
+    if (asset.mimeType && !SUPPORTED_DOCUMENT_MIME_TYPES.has(mimeType)) {
+      throw new Error(`“${name}” uses an unsupported format. Choose a text, JSON, HTML or PDF file.`);
     }
 
-    const mimeType = safeMime(asset.mimeType, 'text/plain');
+    if (size !== null && size > MAX_DOCUMENT_BYTES) {
+      throw new Error(`“${name}” is too large. Use a file under 2 MB.`);
+    }
+
     const isText = TEXT_MIME_TYPES.has(mimeType);
     let data: string | undefined;
 
@@ -126,7 +161,7 @@ export async function pickDocuments(): Promise<PickedAttachment[]> {
 
     picked.push({
       id: `att_${Crypto.randomUUID()}`,
-      name: safeName(asset.name, 'Document'),
+      name,
       kind: 'document',
       mimeType,
       uri: asset.uri,
@@ -137,6 +172,40 @@ export async function pickDocuments(): Promise<PickedAttachment[]> {
   }
 
   return picked;
+}
+
+function isSameAttachment(a: PickedAttachment, b: PickedAttachment): boolean {
+  if (a.uri === b.uri) {
+    return true;
+  }
+
+  return (
+    a.kind === b.kind &&
+    a.name === b.name &&
+    a.size !== null &&
+    b.size !== null &&
+    a.size === b.size
+  );
+}
+
+/** Adds newly picked files without duplicating them or exceeding the cap. */
+export function mergeAttachments(
+  current: PickedAttachment[],
+  incoming: PickedAttachment[]
+): PickedAttachment[] {
+  const merged = [...current];
+
+  for (const item of incoming) {
+    if (!merged.some((existing) => isSameAttachment(existing, item))) {
+      merged.push(item);
+    }
+
+    if (merged.length >= MAX_ATTACHMENTS) {
+      break;
+    }
+  }
+
+  return limit(merged);
 }
 
 export function toChatAttachments(items: PickedAttachment[]): ChatAttachment[] {
