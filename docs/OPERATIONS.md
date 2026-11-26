@@ -98,7 +98,8 @@ Implemented behavior to preserve when editing:
   and only `$schema` is ignored.
 - Entry kinds are `builtin`, `declarative` and `mcp`. Third-party plugins are
   declarative; only reviewed `official` plugins can attach executable code from
-  `BUILTIN_IMPLEMENTATIONS` (currently only `orbit-diagnostics`).
+  `BUILTIN_IMPLEMENTATIONS` and `NATIVE_PLUGIN_DEFINITIONS` (built-in diagnostics
+  plus the ten ORBIT native plugins).
 - Lifecycle transitions are explicit, with dependency/version checks, lifecycle
   hook timeouts, update backups and rollback.
 - Permissions are default-deny and pass through `PluginApprovalHost`; there is no
@@ -111,7 +112,9 @@ Implemented behavior to preserve when editing:
 - A reviewed plugin tool may declare a data-only `program`; `buildPluginAgentTool`
   then routes only that tool body through `MobileSandboxManager` and the existing
   approval queue. No `sandbox` entry kind, second runtime or code loader is added.
-  MCP tool transport stays host-side because the isolated core has no network API.
+  The `orbit.builtin.sandbox` plugin uses the same bridge with fixed programs and
+  accepts no raw instructions. MCP tool transport stays host-side because the
+  isolated core has no network API.
 - Demand-based installation (`src/lib/plugins/demand.ts` and `demand-runtime.ts`)
   is a planning layer over the same registry. It searches only the bundled
   trusted catalog and user-configured MCP servers, validates manifest/trust/
@@ -133,6 +136,9 @@ Implemented behavior to preserve when editing:
   `TOOL_CANCELLED` results; plugin tools already reuse this cancellation seam.
 - Legacy `hooks` rows are data only. `runHookCode()` always throws, no hook code
   is compiled, and failed `executeHook()` results are ignored by the agent.
+- Ten reviewed native plugins install and enable from canonical manifests once
+  per install on supported platforms. Declared permissions come from the trusted
+  `core` source; each sensitive tool call still has its own approval boundary.
 - There is no downloaded code loader, notifications/credentials adapter, SDK
   file API, `sdk.mcp` or global widget renderer.
 

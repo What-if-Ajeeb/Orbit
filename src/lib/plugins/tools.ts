@@ -211,6 +211,9 @@ export function buildPluginAgentTool(input: BuildPluginToolInput): AgentTool {
         const toolContext: PluginSdkToolContext = {
           signal: controller.signal,
           log: input.log,
+          db: context.db,
+          userId: context.userId,
+          conversationId: context.conversationId,
         };
         const program = input.definition.program;
         const run = program

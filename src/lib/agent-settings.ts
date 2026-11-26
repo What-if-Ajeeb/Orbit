@@ -33,7 +33,7 @@ type AgentConfigRow = {
 };
 
 const INSTRUCTIONS_MAX = 4_000;
-const MEMORY_MAX = 8_000;
+export const MEMORY_MAX = 8_000;
 const TOOL_LIMIT = 300;
 const TOOL_PATTERN_MAX = 120;
 const TOOL_NAME_MAX = 256;

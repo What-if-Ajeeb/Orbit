@@ -56,8 +56,9 @@ are supplied out of band by `registerCatalog()`.
   no plugin code is executed.
 - `builtin` — requires `moduleId` matching `^[a-z][a-z0-9-]*$` (max 120 chars).
   `isEntryPointAllowed()` permits this kind only for `official` trust. The
-  module id must match a key in `BUILTIN_IMPLEMENTATIONS`; currently only
-  `orbit-diagnostics` is present.
+  module id must match a key registered by `BUILTIN_IMPLEMENTATIONS` or by
+  `registerNativePluginImplementations()`; this tree has diagnostics and ten
+  `orbit.builtin.*` native plugins.
 - `mcp` — optional `serverId` string. Used by synthetic MCP integration
   records, not by third-party manifests.
 
@@ -173,3 +174,20 @@ Non-blocking warnings are produced for:
 
 Errors must be resolved before the manifest can be discovered, cataloged,
 adopted, or used as an update.
+
+## Builder-generated manifests
+
+The in-app Plugin Builder compiles its drafts into exactly this manifest shape
+before validation, installation or export. Generated manifests are always:
+
+- `manifestVersion: 1` with `entryPoint.kind: 'declarative'`;
+- `trustLevel: 'local'` at discovery and never `official`/`builtin`;
+- free of reserved plugin-id prefixes;
+- limited to fixed, data-only sandbox programs — no host executable fields.
+
+Builder-only editor metadata (tags, action presets, validation rules, error
+handling and environment references) is intentionally not a manifest field and
+never reaches this validator. Export copies the canonical JSON, which can be
+reviewed or submitted through the normal review process; the builder never
+publishes automatically. See
+[`PLUGIN_DEVELOPER_GUIDE.md`](PLUGIN_DEVELOPER_GUIDE.md#plugin-builder).

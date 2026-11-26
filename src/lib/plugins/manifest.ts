@@ -22,7 +22,11 @@ import { isValidRange, isValidSemver } from './semver';
 export const PLUGIN_ID_PATTERN = /^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$/;
 export const CONTRIBUTION_ID_PATTERN = /^[a-z][a-z0-9-]*$/;
 export const SETTING_KEY_PATTERN = /^[A-Za-z][A-Za-z0-9._-]*$/;
-export const EVENT_NAME_PATTERN = /^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$/;
+/**
+ * Plugin event names may use dots (plugin event bus) or slashes (Cordis spine
+ * events such as `session/created`). Both are data-only names, not code.
+ */
+export const EVENT_NAME_PATTERN = /^[a-z][a-z0-9]*(?:[._/-][a-z0-9]+)*$/;
 export const RESERVED_PLUGIN_ID_PREFIXES = [
   'orbit.core.',
   'orbit.builtin.',

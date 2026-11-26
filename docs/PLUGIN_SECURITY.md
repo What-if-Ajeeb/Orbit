@@ -7,10 +7,10 @@ tree. It is runtime behavior, not a claim of a formal security audit.
 
 Third-party plugins are declarative manifests. `entryPoint.kind` may be
 `builtin`, `declarative`, or `mcp`. A `builtin` entry point requires
-`trustLevel: 'official'`, a `moduleId`, and a reviewed module in
-`BUILTIN_IMPLEMENTATIONS`; only `orbit-diagnostics` is present. The platform has
-no JavaScript loader, no remote plugin code fetch, and no dynamic Cordis
-remount.
+`trustLevel: 'official'`, a `moduleId`, and reviewed host code registered through
+`BUILTIN_IMPLEMENTATIONS` or `registerNativePluginImplementations()`. This tree
+contains diagnostics plus ten `orbit.builtin.*` native plugins. The platform has
+no JavaScript loader, no remote plugin code fetch, and no dynamic Cordis remount.
 
 The five Cordis spine plugins (`orbit.core.session`, `orbit.core.tools`,
 `orbit.core.llm`, `orbit.core.mcp`, `orbit.core.agent`) are already mounted by
@@ -42,8 +42,9 @@ catalog membership and source do not imply a grant.
 Grant sources are `user`, `core`, `mcp_settings` and `migration`:
 
 - `user` — approved through `PluginApprovalHost`.
-- `core` — used once by bootstrap for the built-in diagnostics plugin's
-  `ui.contribute` permission.
+- `core` — used by bootstrap for the built-in diagnostics plugin's
+  `ui.contribute` permission and for permissions declared by the reviewed native
+  plugins. Per-call approval still applies to sensitive tool actions.
 - `mcp_settings` — used when configured MCP servers are mirrored into synthetic
   plugins. An explicit user revocation is not re-granted on later syncs.
 - `migration` — a valid persisted source type; the current legacy importer does
@@ -192,13 +193,64 @@ A reviewed built-in tool may supply a data-only `program` on its
 `PluginToolDefinition`. The sandbox is then the tool body: the same registry,
 namespacing, schema checks, timeouts and permission assertions still apply, and
 only the execution of the tool body moves into the isolated process. The
-diagnostics plugin's `sandbox_echo` tool is the reference implementation. There
-is no `sandbox` manifest entry kind and no dynamic code loader. MCP tools keep
-their host-side network bridge because the Rust core has no network API.
+diagnostics plugin's `sandbox_echo` tool is the small reference implementation;
+`orbit.builtin.sandbox` exposes `sandbox_policy` and `sandbox_compute` with fixed,
+reviewed instruction sequences and rejects raw instructions. There is no
+`sandbox` manifest entry kind and no dynamic code loader. MCP tools keep their
+host-side network bridge because the Rust core has no network API.
 
 This is a process boundary plus a bounded interpreter. It is **not** a claim of
 complete isolation from the Android kernel, Binder, or a device compromise, and it
 must not be used to justify running arbitrary third-party native or JavaScript code.
+
+## Native plugin boundaries
+
+The ten `orbit.builtin.*` plugins are bundled, reviewed code, not extension
+points for user-supplied programs. They reuse the canonical registry, stores and
+approval host:
+
+- Agent is read-only introspection and does not change agent settings or grants.
+- Files exposes only user-scoped artifact operations and trash metadata; it never
+  returns raw filesystem paths.
+- Browser hands approved `http`, `https` and `mailto` links to the OS; it has no
+  fetcher, automation API, or arbitrary-URL WebView.
+- Code is an education-only tutor that sends explanations to the configured AI
+  provider through the existing adapter registry. It has only `ai.invoke`, reads
+  no files, and has no editor, execution, shell, scaffolding or sandbox-coding
+  tool. Code snippets are illustrative text, not programs run by ORBIT.
+- Tasks, Projects and Buddy reuse their existing app stores. Tasks does not
+  duplicate reminder sync or buddy rewards, Projects has no separate CRUD store,
+  and Buddy reads do not create a starter buddy.
+- MCP is read-only introspection plus an approved re-sync of the existing mirror;
+  it does not add a transport, tool gate or synthetic plugin store.
+- Sandbox is Android-only and data-only. Its manifest does not support iOS/web,
+  and unavailable security checks fail closed.
+
+## Plugin Builder
+
+The in-app builder does not introduce a second runtime, registry, permission
+manager, event bus or persistence layer. It compiles editor drafts into the same
+version-1 manifests validated by `validateManifest()` and drives the canonical
+registry and approval host.
+
+- Drafts are normalized on every load and save. Unknown fields, unsupported
+  enums, reserved ids and secret values are dropped or rejected before the data
+  reaches any runtime seam.
+- Builder actions compile only to fixed sandbox presets. The generated tool
+  definitions never contain `execute`, host callbacks or code strings; a
+  defensive check in `registerBuilderTools()` refuses any definition that
+  unexpectedly contains host code.
+- Install, enable and playground test each require explicit approval. No grant
+  is auto-approved, and the playground approval is never persisted as a grant.
+- Secret environment entries are references only. Values are written with
+  `expo-secure-store` (`WHEN_UNLOCKED`) and are never stored in drafts, manifests
+  or logs. Error strings and execution logs pass through the existing secret
+  redaction helper.
+- Marketplace preparation is local only: a validated draft can be marked ready
+  for review and exported, but the builder never publishes, submits or promotes
+  a plugin.
+- The five core Cordis plugins remain managed by the harness and cannot be
+  disabled, uninstalled or replaced through builder flows.
 
 ## Current limitations
 

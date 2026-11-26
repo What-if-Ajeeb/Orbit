@@ -42,8 +42,9 @@ manifests and adopted at bootstrap as `official`/`builtin` records with status
 
 These manifests give the Plugin Manager and agent tools a read-only view of
 services the existing harness already mounts. The platform does not mount or
-execute them again. Their `moduleId` values are metadata; only
-`orbit-diagnostics` has a registered implementation.
+execute them again. Their `moduleId` values are metadata; they do not receive
+native implementations. Reviewed implementations exist only for
+`orbit-diagnostics` and the ten `orbit.builtin.*` native plugins.
 
 ## MCP servers as plugins
 
@@ -68,8 +69,12 @@ and MCP sync complete. A tool is allowed only while the synthetic integration is
 
 The built-in diagnostics plugin is registered from `builtins.ts` and
 installed/enabled once during bootstrap. Its `ui.contribute` permission is
-granted with source `core`. It is the only `BUILTIN_IMPLEMENTATIONS` entry in
-this tree.
+granted with source `core`. The ten `orbit.builtin.*` native plugins are
+registered from `native/` and installed/enabled once on supported platforms by
+`ensureNativePlugins()`; their declared permissions also use source `core`, but
+sensitive tool calls still require fresh per-call approval. Diagnostics is the
+only `BUILTIN_IMPLEMENTATIONS` entry; native plugins use
+`registerNativePluginImplementations()`.
 
 ## Updates and backups
 

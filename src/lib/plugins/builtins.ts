@@ -1,56 +1,15 @@
 import type { SandboxProgramManifest } from '@/lib/sandbox/types';
 
+import {
+  ALL_PLUGIN_PLATFORMS as ALL_PLATFORMS,
+  seedPluginManifest as seed,
+} from './manifest-seed';
+import { registerNativePluginImplementations } from './native';
 import type { PluginRegistry } from './registry';
 import type {
   PluginImplementation,
   PluginManifest,
-  PluginPlatform,
 } from './types';
-
-type ManifestSeed = Partial<PluginManifest> &
-  Pick<
-    PluginManifest,
-    | 'pluginId'
-    | 'name'
-    | 'version'
-    | 'description'
-    | 'category'
-    | 'minimumOrbitVersion'
-    | 'platformSupport'
-    | 'entryPoint'
-  >;
-
-function seed(input: ManifestSeed): PluginManifest {
-  return {
-    manifestVersion: 1,
-    author: { name: 'ORBIT' },
-    publisher: {
-      id: 'orbit',
-      name: 'ORBIT',
-      verified: true,
-    },
-    icon: 'extension-puzzle-outline',
-    permissions: [],
-    capabilities: [],
-    dependencies: [],
-    optionalDependencies: [],
-    routes: [],
-    navigationEntries: [],
-    dashboardWidgets: [],
-    settingsSections: [],
-    settingsSchema: [],
-    toolbarActions: [],
-    contextActions: [],
-    mcpTools: [],
-    events: { emits: [], listens: [] },
-    lifecycleHooks: [],
-    dataSchemaVersion: 1,
-    updatePolicy: 'manual',
-    ...input,
-  };
-}
-
-const ALL_PLATFORMS: PluginPlatform[] = ['android', 'ios', 'web'];
 
 /**
  * The five Cordis spine plugins remain the core of ORBIT. These manifests are
@@ -246,4 +205,6 @@ export function registerBuiltinImplementations(registry: PluginRegistry): void {
       registry.registerImplementation(manifest.pluginId, implementation);
     }
   }
+
+  registerNativePluginImplementations(registry);
 }

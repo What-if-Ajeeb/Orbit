@@ -45,10 +45,12 @@ not block rendering, and exposes snapshots through
    state (`enabled`, `starting`, `running`) are restored as `disabled`. Records
    that were both `enabled` and active are returned as resumable ids.
 3. Register the bundled catalog: five Cordis core service manifests, the
-   built-in diagnostics manifest, and `plugins/example-plugin/manifest.json`.
-   Registering a catalog entry makes it available; it does not install it.
-4. Register reviewed built-in implementations from `BUILTIN_IMPLEMENTATIONS`.
-   Only the diagnostics module is present.
+   built-in diagnostics manifest, ten ORBIT native manifests and
+   `plugins/example-plugin/manifest.json`. Registering a catalog entry makes it
+   available; it does not install it.
+4. Register reviewed host code: diagnostics from `BUILTIN_IMPLEMENTATIONS` and
+   the native plugins from `registerNativePluginImplementations()`. Third-party
+   declarative manifests never reach either path.
 5. Adopt the five Cordis spine plugins as `official`/`builtin` records with
    status `running` and `enabled = true`. The existing Cordis harness still
    mounts them; the platform does not mount or execute them again.
@@ -56,10 +58,13 @@ not block rendering, and exposes snapshots through
    `legacy` records. No legacy code is loaded.
 7. Install and enable built-in diagnostics once, using a `plugin_meta` marker.
    Its declared `ui.contribute` permission is granted with source `core`.
-8. Load MCP server settings and mirror each server into a synthetic
+8. Install and enable native plugins once on supported platforms using per-id
+   markers. Declared permissions are granted with source `core`; sensitive tool
+   calls still require fresh per-call approval.
+9. Load MCP server settings and mirror each server into a synthetic
    `mcp.server.*` plugin. The gate was already installed by the constructor.
-9. Re-enable resumable plugins via `registry.getStartupOrder()`, with a sorted
-   fallback if ordering fails.
+10. Re-enable resumable plugins via `registry.getStartupOrder()`, with a sorted
+    fallback if ordering fails.
 
 Bootstrap errors are stored on the runtime, logged, rethrown to the provider,
 and shown by the Plugin Manager. `bootstrapMs` and `lastBootstrapError` are
@@ -153,6 +158,27 @@ Tables created by the v12 migration in `src/lib/db.ts`: `plugin_records`,
 `plugin_permission_audit`, `plugin_install_history`, `plugin_settings`,
 `plugin_kv`, `plugin_backups` and `plugin_meta`.
 
+## Native plugins
+
+`src/lib/plugins/native/` holds the ten bundled ORBIT-native definitions. Each
+manifest is created with `seedPluginManifest()` and paired with reviewed host code
+in `NATIVE_PLUGIN_DEFINITIONS`; `registerNativePluginImplementations()` is the
+only path that attaches implementations to them. They use the canonical registry,
+permission manager, event bus, persistence, tool wrappers, DB and sandbox. No
+second agent loop, MCP client, plugin store or code loader is introduced.
+
+Native tool bodies are built with `nativeTool()` or `nativeHostTool()` so
+success/error JSON, secret redaction and execution logging are identical for all
+plugins. Tools needing SQLite use the host-injected `db` and `userId`; tools that
+do not need storage do not request it. `nativeOutputSchema()` permits wrapper
+failures without bypassing output validation.
+
+The plugins are Agent, Memory, Files, Browser, Code, Tasks, Projects, Buddy, MCP
+and Sandbox. Browser, MCP mutations, Sandbox runs, artifact/task/buddy mutations
+and memory writes require per-call approval via the existing host. Browser does
+not fetch or render pages, Code does not execute source, MCP does not add a
+transport or gate, and Sandbox is Android-only and data-only.
+
 ## Contributions and UI
 
 A contribution is exposed only when the plugin is `running`, declares
@@ -196,8 +222,10 @@ A tool definition may provide a data-only `program` instead of a host `execute`
 function. `createSandboxToolExecutor()` is the single bridge from that wrapper to
 `MobileSandboxManager`; the program body runs in the Android isolated process,
 while ownership, grants, validation, timeout and result checks stay in the
-plugin layer. The diagnostics plugin's `sandbox_echo` tool is the reference.
-There is no `sandbox` manifest entry kind and no second runtime.
+plugin layer. The diagnostics plugin's `sandbox_echo` tool is the small reference;
+`orbit.builtin.sandbox` builds fixed programs for its `sandbox_compute` tool and
+never accepts raw instructions. There is no `sandbox` manifest entry kind and no
+second runtime.
 
 MCP servers remain owned by `src/lib/mcp/registry.ts`. Each configured server
 is mirrored as a synthetic `mcp.server.<slug>` plugin with `mcp.connect` and

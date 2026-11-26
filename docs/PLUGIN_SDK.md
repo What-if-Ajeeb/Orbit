@@ -6,9 +6,11 @@ and do not import or receive this SDK. The runtime passes a narrow adapter; it
 does not pass the database, Cordis context, app state, raw `fetch`, router,
 `process`, `globalThis` or a code loader.
 
-Only `BUILTIN_IMPLEMENTATIONS['orbit-diagnostics']` supplies implementation code
-in this tree. `definePlugin(manifest, implementation)` is a helper for keeping a
-built-in manifest and implementation together.
+`BUILTIN_IMPLEMENTATIONS['orbit-diagnostics']` and the reviewed native plugin
+definitions in `src/lib/plugins/native/` are the only sources of implementation
+code in this tree. `definePlugin(manifest, implementation)` is a helper for
+keeping a built-in manifest and implementation together; native plugins use
+`NATIVE_PLUGIN_DEFINITIONS` and `registerNativePluginImplementations()` instead.
 
 ## Identity and permissions
 

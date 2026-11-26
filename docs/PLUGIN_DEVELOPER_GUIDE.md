@@ -30,9 +30,25 @@ the exact list of UI consumers.
 ### Built-in plugins
 
 `builtin` entry points are reserved for reviewed `official` plugins. They can
-supply a `PluginImplementation` with lifecycle hooks and SDK access. The only
-implementation in this tree is `orbit-diagnostics`. No downloaded JavaScript is
-evaluated.
+supply a `PluginImplementation` with lifecycle hooks and SDK access. This tree
+has `orbit-diagnostics` plus ten reviewed `orbit.builtin.*` native plugins that
+wrap existing app services. No downloaded JavaScript is evaluated, and the
+native plugin manifests are paired with host code only through
+`NATIVE_PLUGIN_DEFINITIONS`.
+
+When editing a native plugin:
+
+1. Keep its manifest in `src/lib/plugins/native/` and add it to
+   `NATIVE_PLUGIN_DEFINITIONS`; do not create a second runtime or registry.
+2. Use `nativeTool()` for storage-scoped tools and `nativeHostTool()` otherwise.
+   Return plain data and let the wrapper own JSON, redaction and logging.
+3. Use `nativeOutputSchema()` so wrapper failures validate, and enforce
+   least-privilege permissions plus `requiresApproval` for sensitive actions.
+4. Wrap existing app services instead of duplicating them. Do not add code
+   execution, arbitrary WebView routes, a second MCP transport or a new project
+   store.
+5. Add focused Vitest coverage under `src/lib/plugins/__tests__/` and run the
+   full verification loop in [`OPERATIONS.md`](OPERATIONS.md).
 
 ### MCP integrations
 
@@ -79,6 +95,43 @@ catalog fetch in this build.
 auto-approve permissions and has no "Approve all" control. Updates require
 approval for added permissions and roll back on failure. Revoking a permission
 stops an active plugin.
+
+## Plugin Builder
+
+**ORBIT → Plugins → Create Plugin** opens an in-app builder under the Plugins
+screen; it is not a separate top-level destination. The guided flow has five
+steps: **Basic Info**, **Configuration**, **Actions & Tools**, **Testing** and
+**Save & Install**. **My Plugins** lists drafts and locally installed plugins.
+
+Builder drafts are editor documents, not a second plugin format. They are
+normalized on every load/save through `PluginPersistence.getMeta()`/`setMeta()`
+and compiled to the same version-1 `PluginManifest` used by every other plugin.
+Drafts can be saved, edited, duplicated, deleted, exported and marked locally as
+ready for review. There is no automatic publishing.
+
+Builder-authored plugins are strictly declarative and data-only:
+
+- every action compiles to a fixed `SandboxProgramManifest` preset (`echo`,
+  `sum`, `concat` or `constant`) interpreted by the isolated Android sandbox;
+- no `PluginImplementation`, `PluginToolDefinition.execute`, `eval`,
+  `new Function`, dynamic import, hook or host JavaScript is ever generated;
+- editor-only fields (tags, presets, validation rules, error handling,
+  environment references) never appear in the installed manifest and are never
+  executed;
+- environment entries are references only — secret values live in
+  `expo-secure-store`, never in the draft, manifest or logs.
+
+Installation asks for explicit approval and never auto-grants permissions.
+Enabling uses the same approval host. Each Testing Playground run asks for fresh
+approval and executes only through `createSandboxToolExecutor()`; on non-Android
+platforms the sandbox fails closed. To install updated builder changes, increase
+the draft version first. Revoke a permission or uninstall from **My Plugins** or
+the plugin detail screen; drafts are retained after uninstall.
+
+Implementation references: `src/lib/plugins/builder.ts`,
+`src/lib/plugins/builder-store.ts`, `src/lib/plugins/builder-service.ts`,
+`src/lib/plugins/permissions.ts`, `src/lib/sandbox/` and
+`src/app/(app)/plugins/{builder,my-plugins}.tsx`.
 
 ## Tools from a plugin
 
