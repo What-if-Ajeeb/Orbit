@@ -30,6 +30,29 @@ const mockStore = {
   deleteConversation: jest.fn(async () => undefined),
 };
 
+const mockRouter = {
+  navigate: jest.fn(),
+  push: jest.fn(),
+};
+
+const mockChatPreferences = {
+  setWebSearchPreference: jest.fn(async (_db: unknown, _userId: number, _agentId: string, enabled: boolean) => ({
+    provider: 'ollama' as const,
+    mode: 'local' as const,
+    baseUrl: 'http://127.0.0.1:11434',
+    model: 'local-model',
+    apiKey: '',
+    webSearch: enabled,
+  })),
+};
+
+const mockProjectScopes = {
+  listChatProjectScopes: jest.fn(async () => [
+    { id: 'orbit-workspace', label: 'Orbit workspace', source: 'workspace' as const },
+    { id: 'workflow-2', label: 'Workflow: Draft', source: 'workflow' as const },
+  ]),
+};
+
 const mockAgent = {
   runAgent: jest.fn(async () => ({
     reply: 'Done',
@@ -39,6 +62,8 @@ const mockAgent = {
     mode: 'ai' as const,
   })),
 };
+
+const mockBottomSheetProps: Record<string, unknown> = {};
 
 const mockAttachments = {
   pickImages: jest.fn(async () => [
@@ -52,8 +77,42 @@ const mockAttachments = {
       data: 'abc123',
     },
   ]),
+  pickCamera: jest.fn(async () => []),
   pickDocuments: jest.fn(async () => []),
 };
+
+jest.mock('@expo/ui', () => {
+  const ReactModule = require('react');
+  const { View } = require('react-native');
+
+  return {
+    BottomSheet: (props: any) => {
+      Object.assign(mockBottomSheetProps, props);
+
+      return props.isPresented
+        ? ReactModule.createElement(View, { testID: props.testID }, props.children)
+        : null;
+    },
+    RNHostView: ({ children }: any) => ReactModule.createElement(View, null, children),
+  };
+});
+
+jest.mock('@/lib/chat-preferences', () => ({
+  setWebSearchPreference: (
+    ...args: Parameters<typeof mockChatPreferences.setWebSearchPreference>
+  ) => mockChatPreferences.setWebSearchPreference(...args),
+}));
+
+jest.mock('@/lib/project-scopes', () => ({
+  listChatProjectScopes: () => mockProjectScopes.listChatProjectScopes(),
+  WORKSPACE_PROJECT_ID: 'orbit-workspace',
+  WORKSPACE_PROJECT_LABEL: 'Orbit workspace',
+  WORKSPACE_PROJECT_SCOPE: {
+    id: 'orbit-workspace',
+    label: 'Orbit workspace',
+    source: 'workspace',
+  },
+}));
 
 jest.mock('@/lib/voice-input', () => ({
   useVoiceInput: () => ({
@@ -124,7 +183,7 @@ jest.mock('expo-sqlite', () => ({
 
 jest.mock('expo-router', () => ({
   useLocalSearchParams: () => ({}),
-  useRouter: () => ({ push: jest.fn(), navigate: jest.fn() }),
+  useRouter: () => mockRouter,
   useFocusEffect: (callback: () => unknown) => {
     require('react').useEffect(callback, []);
   },
@@ -163,6 +222,10 @@ jest.mock('@/lib/permissions', () => ({
 }));
 
 jest.mock('@/lib/chat-attachments', () => ({
+  MAX_ATTACHMENTS: 4,
+  mergeAttachments: (current: Record<string, unknown>[], incoming: Record<string, unknown>[]) =>
+    [...current, ...incoming].slice(0, 4),
+  pickCamera: () => mockAttachments.pickCamera(),
   pickImages: () => mockAttachments.pickImages(),
   pickDocuments: () => mockAttachments.pickDocuments(),
   toChatAttachments: (items: Record<string, unknown>[]) =>
@@ -200,6 +263,23 @@ const AGENT = {
 describe('AgentChatView', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    for (const key of Object.keys(mockBottomSheetProps)) {
+      delete mockBottomSheetProps[key];
+    }
+    mockProjectScopes.listChatProjectScopes.mockResolvedValue([
+      { id: 'orbit-workspace', label: 'Orbit workspace', source: 'workspace' },
+      { id: 'workflow-2', label: 'Workflow: Draft', source: 'workflow' },
+    ]);
+    mockChatPreferences.setWebSearchPreference.mockImplementation(
+      async (_db: unknown, _userId: number, _agentId: string, enabled: boolean) => ({
+        provider: 'ollama' as const,
+        mode: 'local' as const,
+        baseUrl: 'http://127.0.0.1:11434',
+        model: 'local-model',
+        apiKey: '',
+        webSearch: enabled,
+      })
+    );
     mockTabletLayout.layout.isTablet = false;
     mockStoredMessages.length = 0;
     mockStore.listConversations.mockResolvedValue([]);
@@ -311,11 +391,15 @@ describe('AgentChatView', () => {
   });
 
   it('turns a picked image into an attachment sent with the next turn', async () => {
-    const view = await render(<AgentChatView agent={AGENT} />);
+    const view = await render(<AgentChatView agent={AGENT} showAddMenu />);
 
-    await waitFor(() => expect(view.getByLabelText('Attach an image')).toBeTruthy());
+    await waitFor(() => expect(view.getByLabelText('Add to chat')).toBeTruthy());
     await act(async () => {
-      fireEvent.press(view.getByLabelText('Attach an image'));
+      fireEvent.press(view.getByLabelText('Add to chat'));
+    });
+    await waitFor(() => expect(view.getByLabelText('Photos')).toBeTruthy());
+    await act(async () => {
+      fireEvent.press(view.getByLabelText('Photos'));
     });
 
     await waitFor(() => expect(view.getByText('photo.jpg')).toBeTruthy());
@@ -335,7 +419,7 @@ describe('AgentChatView', () => {
   });
 
   it('sends a prepared message from the hardware keyboard', async () => {
-    const view = await render(<AgentChatView agent={AGENT} />);
+    const view = await render(<AgentChatView agent={AGENT} showAddMenu />);
 
     await waitFor(() => expect(view.getByLabelText('Message Research Agent')).toBeTruthy());
 
@@ -351,7 +435,7 @@ describe('AgentChatView', () => {
     });
 
     await waitFor(() => expect(mockAgent.runAgent).toHaveBeenCalledTimes(1));
-    expect(view.getByLabelText('Attach an image')).toBeTruthy();
+    expect(view.getByLabelText('Add to chat')).toBeTruthy();
     expect(view.getByLabelText('Voice input')).toBeTruthy();
   });
 
@@ -391,5 +475,150 @@ describe('AgentChatView', () => {
 
     expect(hasWideStyle(view.toJSON())).toBe(true);
     expect(view.getByLabelText('Open chat history')).toBeTruthy();
+  });
+
+  it('opens the add sheet from the composer and closes it with the X control', async () => {
+    const view = await render(<AgentChatView agent={AGENT} showAddMenu />);
+
+    await act(async () => {
+      fireEvent.press(view.getByLabelText('Add to chat'));
+    });
+
+    await waitFor(() => expect(view.getByLabelText('Camera')).toBeTruthy());
+    expect(view.getByLabelText('Photos')).toBeTruthy();
+    expect(view.getByLabelText('Files')).toBeTruthy();
+    expect(view.getByLabelText('Connectors')).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.press(view.getByLabelText('Close add to chat'));
+    });
+
+    expect(view.queryByLabelText('Camera')).toBeNull();
+  });
+
+  it('uses native sheet dismissal for back press, backdrop tap and downward swipe', async () => {
+    const view = await render(<AgentChatView agent={AGENT} showAddMenu />);
+
+    await act(async () => {
+      fireEvent.press(view.getByLabelText('Add to chat'));
+    });
+
+    await waitFor(() => expect(view.getByLabelText('Camera')).toBeTruthy());
+    expect(mockBottomSheetProps.shouldDismissOnBackPress).toBe(true);
+    expect(mockBottomSheetProps.shouldDismissOnClickOutside).toBe(true);
+    expect(mockBottomSheetProps.snapPoints).toEqual(['half', 'full']);
+    expect(mockBottomSheetProps.showDragIndicator).toBe(true);
+
+    await act(async () => {
+      (mockBottomSheetProps.onDismiss as () => void)();
+    });
+
+    expect(view.queryByLabelText('Camera')).toBeNull();
+  });
+
+  it('attaches a camera photo from the add sheet', async () => {
+    mockAttachments.pickCamera.mockResolvedValueOnce([
+      {
+        id: 'att_camera',
+        name: 'camera.jpg',
+        kind: 'image',
+        mimeType: 'image/jpeg',
+        uri: 'file:///camera.jpg',
+        size: 12,
+        data: 'camera123',
+      },
+    ]);
+
+    const view = await render(<AgentChatView agent={AGENT} showAddMenu />);
+
+    await act(async () => {
+      fireEvent.press(view.getByLabelText('Add to chat'));
+    });
+    await waitFor(() => expect(view.getByLabelText('Camera')).toBeTruthy());
+
+    await act(async () => {
+      fireEvent.press(view.getByLabelText('Camera'));
+    });
+
+    await waitFor(() => expect(view.getByText('camera.jpg')).toBeTruthy());
+    expect(mockAttachments.pickCamera).toHaveBeenCalledTimes(1);
+    expect(view.queryByLabelText('Camera')).toBeNull();
+  });
+
+  it('persists the Web Search toggle through the chat preference helper', async () => {
+    const view = await render(<AgentChatView agent={AGENT} showAddMenu />);
+
+    await act(async () => {
+      fireEvent.press(view.getByLabelText('Add to chat'));
+    });
+    await waitFor(() => expect(view.getByLabelText('Web Search')).toBeTruthy());
+
+    expect(view.getByLabelText('Web Search').props.value).toBe(true);
+
+    await act(async () => {
+      fireEvent(view.getByLabelText('Web Search'), 'valueChange', false);
+    });
+
+    await waitFor(() =>
+      expect(mockChatPreferences.setWebSearchPreference).toHaveBeenCalledWith(
+        expect.anything(),
+        1,
+        'research',
+        false
+      )
+    );
+    await waitFor(() => expect(view.getByLabelText('Web Search').props.value).toBe(false));
+  });
+
+  it('passes a selected project scope into the agent turn', async () => {
+    const view = await render(<AgentChatView agent={AGENT} showAddMenu />);
+
+    await act(async () => {
+      fireEvent.press(view.getByLabelText('Add to chat'));
+    });
+    await waitFor(() => expect(view.getByLabelText('Add to project')).toBeTruthy());
+
+    await act(async () => {
+      fireEvent.press(view.getByLabelText('Add to project'));
+    });
+    await waitFor(() => expect(view.getByLabelText('Select Workflow: Draft')).toBeTruthy());
+
+    await act(async () => {
+      fireEvent.press(view.getByLabelText('Select Workflow: Draft'));
+    });
+
+    await act(async () => {
+      fireEvent.press(view.getByLabelText('Close add to chat'));
+    });
+
+    await act(async () => {
+      fireEvent.changeText(view.getByLabelText('Message Research Agent'), 'Use this workflow');
+    });
+    await act(async () => {
+      fireEvent.press(view.getByLabelText('Send message'));
+    });
+
+    await waitFor(() => expect(mockAgent.runAgent).toHaveBeenCalledTimes(1));
+    const input = mockAgent.runAgent.mock.calls[0][0] as {
+      projectId: string;
+      projectLabel: string;
+    };
+    expect(input.projectId).toBe('workflow-2');
+    expect(input.projectLabel).toBe('Workflow: Draft');
+  });
+
+  it('opens the existing connectors screen from the sheet', async () => {
+    const view = await render(<AgentChatView agent={AGENT} showAddMenu />);
+
+    await act(async () => {
+      fireEvent.press(view.getByLabelText('Add to chat'));
+    });
+    await waitFor(() => expect(view.getByLabelText('Connectors')).toBeTruthy());
+
+    await act(async () => {
+      fireEvent.press(view.getByLabelText('Connectors'));
+    });
+
+    expect(mockRouter.navigate).toHaveBeenCalledWith('/connections');
   });
 });

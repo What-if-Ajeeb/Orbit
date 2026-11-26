@@ -16,7 +16,13 @@ import { TelemetryStore } from '../telemetry';
 import { policyEngine } from '../policy';
 import { buildCordisTools } from '../cordis-tools';
 import { HookEngine } from '../hooks';
-import { SkillStore, SkillExecutor } from '../skills';
+import {
+  getDefaultSkill,
+  SkillStore,
+  SkillExecutor,
+  WEB_SEARCH_SKILL_ID,
+  WEB_SEARCH_TOOL_NAME,
+} from '../skills';
 import { MASTER_AGENT } from '../permissions/agents';
 import { secureExecuteTool } from '../permissions/executor';
 import { redactSecrets } from '../permissions/redact';
@@ -269,10 +275,27 @@ export async function runAgent(input: AgentInput): Promise<AgentResult> {
   // block the chat because ensureMcpTools never throws.
   await ensureMcpTools();
 
-  // Load skills and register skill tools as agent tools
+  // Load skills and register skill tools as agent tools. A disabled Web Search
+  // preference is enforced here as well as in the agent tool allowlist, so the
+  // model cannot call it through a legacy config or a wildcard pattern.
+  const webSearchDisabled = settings.webSearch === false;
+
+  if (!webSearchDisabled) {
+    const defaultWebSearch = getDefaultSkill(WEB_SEARCH_SKILL_ID);
+
+    if (defaultWebSearch) {
+      try {
+        await skillStore.ensureSkill(defaultWebSearch);
+      } catch (error) {
+        console.warn('Could not seed the built-in Web Search skill.', error);
+      }
+    }
+  }
+
   const registeredSkills = await skillStore.listSkills();
   for (const skill of registeredSkills) {
     if (!skill.enabled) continue;
+    if (webSearchDisabled && skill.id === WEB_SEARCH_SKILL_ID) continue;
     for (const cap of skill.capabilities) {
       agentToolRegistry.register(
         {
@@ -313,6 +336,11 @@ export async function runAgent(input: AgentInput): Promise<AgentResult> {
   }
 
   let toolDefinitions = filterAllowedTools(listAgentTools(), agentConfig);
+
+  if (webSearchDisabled) {
+    toolDefinitions = toolDefinitions.filter((tool) => tool.name !== WEB_SEARCH_TOOL_NAME);
+  }
+
   const traces: string[] = [];
   const toolEvents: ToolExecutionEvent[] = [];
   const artifactRefs = new Map<string, ArtifactRef>();

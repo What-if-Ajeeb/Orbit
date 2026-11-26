@@ -2,6 +2,10 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 import type { JsonSchema } from './ai/types';
 
+export const WEB_SEARCH_SKILL_ID = 'skill_web_search';
+export const WEB_SEARCH_CAPABILITY = 'search_web';
+export const WEB_SEARCH_TOOL_NAME = `${WEB_SEARCH_SKILL_ID}_${WEB_SEARCH_CAPABILITY}`;
+
 export type SkillStatus = 'active' | 'inactive' | 'error' | 'loading';
 
 export type SkillCapability = {
@@ -110,6 +114,31 @@ export class SkillStore {
   async setSkillEnabled(id: string, enabled: boolean): Promise<void> {
     await this.db.runAsync('UPDATE skills SET enabled = ?, updated_at = ? WHERE id = ?', enabled ? 1 : 0, Date.now(), id);
   }
+
+  /** Inserts a built-in skill once; never overwrites a user-edited definition. */
+  async ensureSkill(skill: SkillPlugin): Promise<void> {
+    const now = Date.now();
+
+    await this.db.runAsync(
+      `INSERT INTO skills (id, name, description, version, capabilities, enabled, auto_load, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO NOTHING`,
+      skill.id,
+      skill.name,
+      skill.description,
+      skill.version,
+      JSON.stringify(skill.capabilities),
+      skill.enabled ? 1 : 0,
+      skill.autoLoad ? 1 : 0,
+      now,
+      now
+    );
+  }
+}
+
+export function getDefaultSkill(id: string): SkillPlugin | null {
+  const found = defaultSkills().find((skill) => skill.id === id);
+  return found ? { ...found, capabilities: found.capabilities.map((cap) => ({ ...cap })) } : null;
 }
 
 function defaultSkills(): SkillPlugin[] {

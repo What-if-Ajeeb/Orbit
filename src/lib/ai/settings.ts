@@ -25,6 +25,8 @@ export type AiSettings = {
   baseUrl: string;
   model: string;
   apiKey: string;
+  /** Opt-in for automatic web tools. Older saved settings default to enabled. */
+  webSearch?: boolean;
 };
 
 /**
@@ -38,6 +40,7 @@ export function onDeviceOllamaSettings(): AiSettings {
     baseUrl: ON_DEVICE_OLLAMA_BASE_URL,
     model: '',
     apiKey: '',
+    webSearch: true,
   };
 }
 
@@ -222,6 +225,7 @@ function normalizeSettings(value: Partial<AiSettings> | null): AiSettings {
     baseUrl,
     model: (value?.model ?? preset.model).trim(),
     apiKey: (value?.apiKey ?? '').trim(),
+    webSearch: value?.webSearch !== false,
   };
 }
 

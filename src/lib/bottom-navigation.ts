@@ -249,8 +249,39 @@ export function normalizeNavPath(pathname: string): string {
   return trimmed === '/index' ? '/' : trimmed;
 }
 
-export function isBottomNavRoute(pathname: string): boolean {
-  return BOTTOM_NAV_VISIBLE_ROUTES.has(normalizeNavPath(pathname));
+/** Chat state lives in search params because `/chat` hosts every conversation. */
+export type BottomNavChatParams = {
+  c?: string | string[];
+  n?: string | string[];
+  prompt?: string | string[];
+  h?: string | string[];
+};
+
+function hasChatParam(value: string | string[] | undefined): boolean {
+  const first = Array.isArray(value) ? value[0] : value;
+  return typeof first === 'string' && first.trim().length > 0;
+}
+
+export function isBottomNavRoute(pathname: string, params?: BottomNavChatParams): boolean {
+  const path = normalizeNavPath(pathname);
+
+  if (!BOTTOM_NAV_VISIBLE_ROUTES.has(path)) {
+    return false;
+  }
+
+  // The cache-buster `t` is deliberately ignored: only conversation, new-chat,
+  // prompt and history params mean the user is focused inside the chat.
+  if (
+    path === '/chat' &&
+    (hasChatParam(params?.c) ||
+      hasChatParam(params?.n) ||
+      hasChatParam(params?.prompt) ||
+      hasChatParam(params?.h))
+  ) {
+    return false;
+  }
+
+  return true;
 }
 
 /** Compares a destination href with the current pathname without query params. */

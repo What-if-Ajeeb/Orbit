@@ -80,6 +80,20 @@ describe('AI settings', () => {
     expect((await loadAiSettings()).baseUrl).toBe('http://127.0.0.1:11434');
   });
 
+  it('persists the Web Search opt-out with the chat settings', async () => {
+    const saved = await saveAiSettings({
+      provider: 'ollama',
+      mode: 'local',
+      baseUrl: 'http://127.0.0.1:11434',
+      model: 'local-model',
+      apiKey: '',
+      webSearch: false,
+    });
+
+    expect(saved.webSearch).toBe(false);
+    expect((await loadAiSettings()).webSearch).toBe(false);
+  });
+
   it('persists custom settings and can switch back to Ollama', async () => {
     const saved = await saveAiSettings({
       provider: 'openai',
