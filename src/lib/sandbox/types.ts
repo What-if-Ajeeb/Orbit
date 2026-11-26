@@ -25,6 +25,8 @@ export type SandboxManifest = {
 
 export type SandboxApprovalEvidence = {
   permission: SandboxPermission;
+  /** Exact resource (relative path or URL) this grant is valid for. */
+  resource: string;
   grantedAt: number;
   expiresAt: number;
   requestId?: string;

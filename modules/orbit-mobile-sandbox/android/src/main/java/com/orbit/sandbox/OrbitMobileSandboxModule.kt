@@ -314,6 +314,8 @@ class OrbitMobileSandboxModule : Module() {
       .put("grantedPermissions", granted)
       .put("resource", JSONObject().put("path", path))
 
+    // Forward approval evidence unchanged. Rust binds it to `resource` and
+    // rejects a grant for any other path; Kotlin never rewrites that binding.
     request.optJSONObject("approval")?.let { params.put("approval", it) }
 
     enqueue(
@@ -356,6 +358,15 @@ class OrbitMobileSandboxModule : Module() {
     }
 
     val normalizedPath = decision.optString("normalizedResource")
+    if (normalizedPath.isEmpty()) {
+      promise.reject(
+        "SANDBOX_INVALID_RESPONSE",
+        "Sandbox allowed a read without an authorized resource.",
+        null,
+      )
+      return
+    }
+
     val limits = decision.optJSONObject("limits")
     val maxFileBytes = limits?.optLong("maxFileBytes", DEFAULT_MAX_FILE_BYTES)
       ?: DEFAULT_MAX_FILE_BYTES

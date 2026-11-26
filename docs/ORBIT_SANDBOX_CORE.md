@@ -40,6 +40,8 @@ ORBIT Sandbox — System Design
   - plugin manifest valid hai ya nahi;
   - required permission declared aur granted hai ya nahi;
   - fresh, one-time approval evidence hai ya nahi;
+  - approval evidence usi exact path/URL ke liye hai ya nahi (doosre resource par
+    replay nahi hota; normalization ke baad compare hota hai);
   - relative path safe hai ya nahi (traversal, absolute path, encoded separator,
     symlink risk);
   - envelope, path aur file limits ke andar hai ya nahi.
@@ -89,7 +91,7 @@ Koi bhi boundary unavailable, invalid ya expired ho to operation deny hoti hai:
 - malformed envelope → deny;
 - unknown method ya unknown field → deny;
 - binding fail, disconnect ya timeout → deny;
-- approval denied, timeout ya replay → deny;
+- approval denied, timeout, doosre resource par replay ya resource ke bina → deny;
 - Rust deny → Kotlin file read nahi karti;
 - Kotlin boundary deny → content return nahi hota.
 

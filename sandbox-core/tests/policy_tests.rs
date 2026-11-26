@@ -12,14 +12,15 @@ fn manifest() -> Value {
     json!({
         "pluginId": "orbit.example.reader",
         "version": "1.0.0",
-        "permissions": ["ai.invoke", "files.read", "sandbox.inspect"],
+        "permissions": ["ai.invoke", "files.read", "network.access", "sandbox.inspect"],
         "capabilities": ["tools.ai"]
     })
 }
 
-fn approval(permission: &str, now: u64) -> Value {
+fn approval(permission: &str, resource: &str, now: u64) -> Value {
     json!({
         "permission": permission,
+        "resource": resource,
         "grantedAt": now,
         "expiresAt": now + 60_000,
         "requestId": "approval-1"
@@ -128,7 +129,7 @@ fn permission_check_requires_declaration_grant_and_fresh_approval() {
             "manifest": manifest(),
             "grantedPermissions": [],
             "requestedPermission": "files.read",
-            "approval": approval("files.read", now),
+            "approval": approval("files.read", "orbit/notes/today.txt", now),
             "now": now
         }),
     );
@@ -176,7 +177,7 @@ fn permission_check_requires_declaration_grant_and_fresh_approval() {
             "manifest": manifest(),
             "grantedPermissions": ["files.read"],
             "requestedPermission": "files.read",
-            "approval": approval("files.read", now),
+            "approval": approval("files.read", "orbit/notes/today.txt", now),
             "now": now
         }),
     );
@@ -287,7 +288,7 @@ fn authorize_operation_allows_an_approved_file_read() {
             "manifest": manifest(),
             "operation": "file.read",
             "grantedPermissions": ["files.read"],
-            "approval": approval("files.read", now),
+            "approval": approval("files.read", "./orbit//notes/./today.txt", now),
             "resource": { "path": "./orbit/notes/today.txt" },
             "now": now
         }),
@@ -301,6 +302,103 @@ fn authorize_operation_allows_an_approved_file_read() {
     );
     assert_eq!(response["result"]["audit"]["decision"], "allow");
     assert_eq!(response["result"]["audit"]["policyVersion"], 2);
+}
+
+#[test]
+fn authorize_operation_denies_when_approval_is_bound_to_another_path() {
+    let now = 1_000_000u64;
+    let response = call(
+        "authorizeOperation",
+        json!({
+            "manifest": manifest(),
+            "operation": "file.read",
+            "grantedPermissions": ["files.read"],
+            "approval": approval("files.read", "orbit/secret.txt", now),
+            "resource": { "path": "orbit/notes/today.txt" },
+            "now": now
+        }),
+    );
+
+    assert_eq!(response["result"]["decision"], "deny");
+    assert_eq!(response["result"]["reasonCode"], "approval_resource_mismatch");
+    assert_eq!(response["result"]["audit"]["decision"], "deny");
+}
+
+#[test]
+fn authorize_operation_denies_when_approval_has_no_resource() {
+    let now = 1_000_000u64;
+    let response = call(
+        "authorizeOperation",
+        json!({
+            "manifest": manifest(),
+            "operation": "file.read",
+            "grantedPermissions": ["files.read"],
+            "approval": {
+                "permission": "files.read",
+                "grantedAt": now,
+                "expiresAt": now + 60_000
+            },
+            "resource": { "path": "orbit/notes/today.txt" },
+            "now": now
+        }),
+    );
+
+    assert_eq!(response["result"]["decision"], "deny");
+    assert_eq!(response["result"]["reasonCode"], "approval_resource_required");
+}
+
+#[test]
+fn authorize_operation_denies_when_approval_resource_is_unsafe() {
+    let now = 1_000_000u64;
+    let response = call(
+        "authorizeOperation",
+        json!({
+            "manifest": manifest(),
+            "operation": "file.read",
+            "grantedPermissions": ["files.read"],
+            "approval": approval("files.read", "../secret", now),
+            "resource": { "path": "orbit/notes/today.txt" },
+            "now": now
+        }),
+    );
+
+    assert_eq!(response["result"]["decision"], "deny");
+    assert_eq!(response["result"]["reasonCode"], "approval_resource_invalid");
+}
+
+#[test]
+fn authorize_operation_binds_network_approval_to_normalized_url() {
+    let now = 1_000_000u64;
+    let approved = call(
+        "authorizeOperation",
+        json!({
+            "manifest": manifest(),
+            "operation": "network.request",
+            "grantedPermissions": ["network.access"],
+            "approval": approval("network.access", "HTTPS://Example.COM/path", now),
+            "resource": { "url": "https://example.com/path" },
+            "now": now
+        }),
+    );
+    assert_eq!(approved["result"]["decision"], "allow");
+    assert_eq!(
+        approved["result"]["normalizedResource"],
+        "https://example.com/path"
+    );
+
+    let replayed = call(
+        "authorizeOperation",
+        json!({
+            "manifest": manifest(),
+            "operation": "network.request",
+            "grantedPermissions": ["network.access"],
+            "approval": approval("network.access", "https://example.com/path", now),
+            "resource": { "url": "https://example.com/other" },
+            "now": now
+        }),
+    );
+    assert_eq!(replayed["result"]["decision"], "deny");
+    assert_eq!(replayed["result"]["reasonCode"], "approval_resource_mismatch");
 }
 
 #[test]

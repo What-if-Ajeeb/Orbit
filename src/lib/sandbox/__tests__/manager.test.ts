@@ -171,10 +171,12 @@ describe('MobileSandboxManager', () => {
       pluginId: 'local.reader',
       trustLevel: 'local',
       permission: 'files.read',
+      resource: 'orbit/note.txt',
       reason: 'Read a note.',
     });
     expect(approval).toEqual({
       permission: 'files.read',
+      resource: 'orbit/note.txt',
       grantedAt: 1_000,
       expiresAt: 301_000,
       requestId: 'sandbox-approval-1000',
@@ -200,6 +202,7 @@ describe('MobileSandboxManager', () => {
         pluginId: 'local.reader',
         permissions: ['files.read'],
         trustLevel: 'local',
+        reason: expect.stringContaining('Target: orbit/note.txt'),
       })
     );
 
@@ -221,6 +224,7 @@ describe('MobileSandboxManager', () => {
         pluginId: 'local.reader',
         trustLevel: 'local',
         permission: 'files.read',
+        resource: 'orbit/note.txt',
         reason: 'Read a note.',
       })
     ).rejects.toBeInstanceOf(SandboxApprovalDeniedError);
