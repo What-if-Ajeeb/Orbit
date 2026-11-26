@@ -55,6 +55,7 @@ const AUDIT_LABEL: Record<PermissionAuditRecord['event'], string> = {
   permissions_changed_on_update: 'Permissions changed on update',
   permission_denied_at_runtime: 'Permission denied at runtime',
   mcp_consent_created: 'MCP consent created',
+  sandbox_operation: 'Sandbox operation',
 };
 
 function statusTone(summary: PluginSummary): StatusTone {

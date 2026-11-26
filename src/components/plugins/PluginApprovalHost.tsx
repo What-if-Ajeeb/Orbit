@@ -200,8 +200,9 @@ function PluginApprovalDialog({
                 ) : null}
                 {install.requiresSandbox ? (
                   <Text style={styles.warningText}>
-                    This plugin requests isolated execution. ORBIT runs it behind the scenes, and
-                    every run still needs its own approval.
+                    This plugin requests mediated sandbox access. Rust checks every operation and
+                    the Android boundary enforces it; sensitive operations still need fresh
+                    approval.
                   </Text>
                 ) : null}
               </View>

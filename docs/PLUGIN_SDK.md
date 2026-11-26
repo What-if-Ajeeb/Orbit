@@ -107,32 +107,13 @@ const unregister = await sdk.tools.register(
 );
 ```
 
-A reviewed built-in tool can instead declare a data-only sandbox program; this is
-available only when the platform supplies a sandbox executor (Android):
-
-```ts
-{
-  name: 'sandbox_echo',
-  description: 'Echo a value through the isolated sandbox',
-  parameters: {
-    type: 'object',
-    properties: { value: { type: 'string' } },
-    required: ['value'],
-  },
-  program: {
-    pluginId: 'orbit.builtin.diagnostics',
-    version: '1.0.0',
-    program: {
-      version: 1,
-      instructions: [
-        { op: 'load', key: 'input', field: 'value' },
-        { op: 'emit', key: 'content' },
-        { op: 'return' },
-      ],
-    },
-  },
-}
-```
+There are no sandbox-backed tool bodies. Tool definitions cannot declare a
+`program`, `instructions`, `handler` or `execute` string, and the registry
+rejects program-only tools. The reviewed Android sandbox plugin exposes
+read-only security tools such as `sandbox_policy`, `sandbox_validate_manifest`
+and `sandbox_validate_network`; sensitive operations require fresh approval and
+are enforced by Rust plus the Kotlin platform boundary. See
+[`MOBILE_SANDBOX.md`](MOBILE_SANDBOX.md).
 
 Registration requires `starting`/`running` status, `ai.invoke` in the manifest,
 and an active `ai.invoke` grant. Extra tool permissions must also be declared

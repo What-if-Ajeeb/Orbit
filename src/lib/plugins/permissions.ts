@@ -40,14 +40,14 @@ export const PLUGIN_PERMISSION_META: Record<
   'files.read': {
     permission: 'files.read',
     label: 'Read files',
-    description: 'Reserved declaration for reading approved files. The current SDK exposes no file API.',
+    description: 'Read approved app-private files through the Rust policy and Kotlin bounded-read mediator.',
     risk: 'medium',
     sensitive: false,
   },
   'files.write': {
     permission: 'files.write',
     label: 'Write files',
-    description: 'Reserved declaration for writing approved files. The current SDK exposes no file API.',
+    description: 'Reserved declaration for approved file writes. Writing is not enabled by the current mediator.',
     risk: 'high',
     sensitive: true,
   },
@@ -156,12 +156,12 @@ export const PLUGIN_PERMISSION_META: Record<
     risk: 'low',
     sensitive: false,
   },
-  'sandbox.execute': {
-    permission: 'sandbox.execute',
-    label: 'Run in sandbox',
-    description: 'Run a deterministic program in the Android isolated sandbox. The program cannot access files, network or device permissions.',
-    risk: 'high',
-    sensitive: true,
+  'sandbox.inspect': {
+    permission: 'sandbox.inspect',
+    label: 'Inspect sandbox policy',
+    description: 'Read the Android sandbox security policy and run read-only manifest, permission, path, network and request validation. It cannot read files or execute code.',
+    risk: 'low',
+    sensitive: false,
   },
 };
 
@@ -229,6 +229,11 @@ export class PluginPermissionManager {
     this.grants.clear();
 
     for (const record of records) {
+      if (!isPluginPermission(record.permission)) {
+        // Retired permissions such as sandbox.execute are dropped on load.
+        continue;
+      }
+
       this.grants.set(this.key(record.pluginId, record.permission), record);
     }
 

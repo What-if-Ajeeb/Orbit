@@ -13,7 +13,27 @@ class OrbitMobileSandboxModule extends NativeModule<{}> {
     return Promise.reject(this.unavailable());
   }
 
-  execute(): Promise<string> {
+  checkPermission(): Promise<string> {
+    return Promise.reject(this.unavailable());
+  }
+
+  validatePath(): Promise<string> {
+    return Promise.reject(this.unavailable());
+  }
+
+  validateNetwork(): Promise<string> {
+    return Promise.reject(this.unavailable());
+  }
+
+  validateRequest(): Promise<string> {
+    return Promise.reject(this.unavailable());
+  }
+
+  authorizeOperation(): Promise<string> {
+    return Promise.reject(this.unavailable());
+  }
+
+  readFile(): Promise<string> {
     return Promise.reject(this.unavailable());
   }
 

@@ -1,5 +1,3 @@
-import type { SandboxProgramManifest } from '@/lib/sandbox/types';
-
 import {
   ALL_PLUGIN_PLATFORMS as ALL_PLATFORMS,
   seedPluginManifest as seed,
@@ -139,20 +137,6 @@ export const DIAGNOSTICS_MANIFEST: PluginManifest = seed({
   updatePolicy: 'manual',
 });
 
-/** Data-only program executed in the isolated process, never as JavaScript. */
-const DIAGNOSTICS_ECHO_PROGRAM: SandboxProgramManifest = {
-  pluginId: DIAGNOSTICS_PLUGIN_ID,
-  version: DIAGNOSTICS_MANIFEST.version,
-  program: {
-    version: 1,
-    instructions: [
-      { op: 'load', key: 'input', field: 'value' },
-      { op: 'emit', key: 'content' },
-      { op: 'return' },
-    ],
-  },
-};
-
 const diagnosticsImplementation: PluginImplementation = {
   hooks: {
     onStart() {
@@ -168,18 +152,6 @@ const diagnosticsImplementation: PluginImplementation = {
   activate(sdk) {
     sdk.events.subscribe('plugin.error', (event) => {
       sdk.logger.warn('Plugin error observed.', event.payload);
-    });
-
-    void sdk.tools.register({
-      name: 'sandbox_echo',
-      description: 'Echo a short value through the isolated Android sandbox.',
-      parameters: {
-        type: 'object',
-        properties: { value: { type: 'string' } },
-        required: ['value'],
-        additionalProperties: false,
-      },
-      program: DIAGNOSTICS_ECHO_PROGRAM,
     });
   },
 };

@@ -732,7 +732,7 @@ function inspectionFor(input: {
   }
 
   if (input.requiresSandbox) {
-    warnings.push('Each sandbox run still needs its own approval.');
+    warnings.push('Sandbox access is policy-checked, mediated and audited.');
   }
 
   if (candidate.registry === 'configured-mcp') {
@@ -890,7 +890,8 @@ export function buildDemandPlan(input: {
       requiresInstall,
       requiresUpdate,
       requiresEnable,
-      requiresSandbox: permissions.includes('sandbox.execute'),
+      requiresSandbox:
+        permissions.includes('files.read') || permissions.includes('network.access'),
       ...(requiresUpdate ? { updateManifest: manifest } : {}),
       steps,
       inspection: inspectionFor({
@@ -899,7 +900,8 @@ export function buildDemandPlan(input: {
         permissions,
         sensitivePermissions,
         dependencies,
-        requiresSandbox: permissions.includes('sandbox.execute'),
+        requiresSandbox:
+        permissions.includes('files.read') || permissions.includes('network.access'),
       }),
     },
   };

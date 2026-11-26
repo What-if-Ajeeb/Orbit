@@ -101,7 +101,7 @@ export const NATIVE_PLUGIN_READMES: Record<string, string> = {
   [MCP_PLUGIN_ID]:
     'Reads existing MCP mirror status and server metadata and can force an approved re-sync. It has no second HTTP transport, gate or synthetic plugin store.',
   [SANDBOX_PLUGIN_ID]:
-    'Android-only data-only arithmetic and string programs in the existing isolated process. It rejects raw instructions, has no file/network/device access, and fails closed on iOS and web.',
+    'Android-only security policy and permission mediation. It validates manifests, approvals, paths, URLs and request envelopes and mediates bounded app-private file reads after Rust allows them. It never executes code and fails closed on iOS and web.',
 };
 
 export {

@@ -111,7 +111,7 @@ unsupported capabilities unimplemented:
 | `orbit.builtin.projects` | `projects_workspace_summary`, `projects_scopes`, `projects_workflow_runs` | Read-only aggregation over chats, tasks, artifacts and workflows; no separate projects table. |
 | `orbit.builtin.buddy` | `buddy_list`, `buddy_activities`, `buddy_inventory`, `buddy_evolution_options`, `buddy_set_active`, `buddy_evolve` | Existing buddy store and rules; reads avoid creating a starter buddy. Mutations approved. |
 | `orbit.builtin.mcp` | `mcp_status`, `mcp_servers`, `mcp_sync` | Existing mirror introspection and approved re-sync; no second transport or gate. |
-| `orbit.builtin.sandbox` | `sandbox_policy`, `sandbox_compute` | Android-only data-only programs in the existing isolated process; no JS, file, network or device access. |
+| `orbit.builtin.sandbox` | `sandbox_policy`, `sandbox_validate_manifest`, `sandbox_check_permission`, `sandbox_validate_path`, `sandbox_validate_network`, `sandbox_validate_request`, `sandbox_authorize_operation` | Android-only read-only policy validation and mediation; Rust decides, Kotlin enforces bounded app-private reads. No code execution, JS, network or device access in the sandbox. |
 
 ORBIT Code is a tutor, not a mobile IDE. It accepts pasted code or an image payload
 through the existing agent attachment flow, calls the configured AI provider via

@@ -9,6 +9,8 @@ import {
 import { loadMcpServers, type McpServerConfig } from '@/lib/mcp/settings';
 import { PluginStore, type PluginType } from '@/lib/plugin-store';
 
+import { getMobileSandboxManager } from '@/lib/sandbox/manager';
+
 import { pluginApprovalService } from './approvals';
 import {
   CORE_PLUGIN_IDS,
@@ -17,7 +19,6 @@ import {
   registerBuiltinImplementations,
 } from './builtins';
 import { registerBundledCatalog } from './catalog';
-import { registerBuilderTools, restoreBuilderTools } from './builder-service';
 import { PluginEventBus } from './events';
 import { syncMcpPluginRecords, mcpPluginAllowsTool, type McpPluginSyncResult } from './mcp-bridge';
 import { NATIVE_PLUGIN_MANIFESTS } from './native';
@@ -27,16 +28,13 @@ import { PluginRegistry } from './registry';
 import { PluginKeyValueStorage } from './storage';
 import type {
   PluginManifest,
+  PluginPermission,
   PluginPlatform as PluginPlatformName,
   PluginRuntimeStats,
   PluginSummary,
   PluginTrustLevel,
 } from './types';
-import {
-  createSandboxToolExecutor,
-  type PluginToolHost,
-  type SandboxToolExecutor,
-} from './tools';
+import type { PluginToolHost } from './tools';
 
 const APP_VERSION = '1.10.6';
 const LEGACY_MIGRATION_KEY = 'legacy.plugins.migrated.v1';
@@ -94,7 +92,6 @@ export type PluginPlatformOptions = {
     pluginName: string;
     toolName: string;
   }) => Promise<boolean>;
-  sandboxExecutor?: SandboxToolExecutor;
   logger?: (message: string, detail?: unknown) => void;
 };
 
@@ -124,7 +121,6 @@ export class PluginPlatformRuntime {
   private readonly listeners = new Set<() => void>();
   private readonly db: SQLiteDatabase;
   private readonly logger: (message: string, detail?: unknown) => void;
-  private builderToolsSyncing = false;
 
   constructor(options: PluginPlatformOptions) {
     this.db = options.db;
@@ -173,14 +169,29 @@ export class PluginPlatformRuntime {
             permissions: ['ai.invoke'],
             reason: `Run the "${input.toolName}" tool?`,
           })),
-      sandboxExecutor: options.sandboxExecutor ?? createSandboxToolExecutor(),
     });
 
     this.registry.subscribe(() => {
       this.snapshot = null;
       this.snapshotVersion += 1;
       this.emitChange();
-      this.scheduleBuilderToolsSync();
+    });
+
+    getMobileSandboxManager().onAudit((record) => {
+      void this.persistence
+        .appendPermissionAudit({
+          pluginId: record.pluginId || 'unknown.sandbox.plugin',
+          event: 'sandbox_operation',
+          permissions: record.permission
+            ? [record.permission as PluginPermission]
+            : [],
+          source: 'system',
+          detail: `Sandbox ${record.operation}: ${record.decision} (${record.reasonCode}); resource ${record.resourceHash ?? 'none'}; ${record.bytes} bytes; ${record.durationMs} ms.`,
+          createdAt: record.at,
+        })
+        .catch((error) => {
+          this.logger('Could not persist sandbox audit.', error);
+        });
     });
 
     // Install the gate before bootstrap finishes. Until MCP records are synced,
@@ -198,24 +209,6 @@ export class PluginPlatformRuntime {
         this.logger('Plugin platform listener failed.', error);
       }
     }
-  }
-
-  /**
-   * Reattaches local builder tools whenever a builder plugin starts, including
-   * when it is enabled from the regular Plugin Manager path. Registration is
-   * idempotent and overlapping syncs are skipped.
-   */
-  private scheduleBuilderToolsSync(): void {
-    if (!this.ready || this.builderToolsSyncing) return;
-
-    this.builderToolsSyncing = true;
-    void registerBuilderTools(this)
-      .catch((error: unknown) => {
-        this.logger('Could not sync builder tools.', error);
-      })
-      .finally(() => {
-        this.builderToolsSyncing = false;
-      });
   }
 
   subscribe = (listener: () => void): (() => void) => {
@@ -280,7 +273,6 @@ export class PluginPlatformRuntime {
       await this.syncMcpServers(servers);
 
       await this.resumePlugins(resumable);
-      await restoreBuilderTools(this);
 
       this.ready = true;
       this.bootstrapMs = Date.now() - started;

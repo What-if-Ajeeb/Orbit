@@ -3,12 +3,8 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   BUILDER_DRAFT_VERSION,
   buildManifest,
-  buildSandboxProgram,
-  buildToolDefinitions,
   createBuilderAction,
   createEmptyDraft,
-  requiredActionPermissions,
-  runBuilderAction,
   validateAndBuild,
   validateDraft,
   type BuilderAction,
@@ -27,13 +23,10 @@ import {
 import {
   exportBuilderManifest,
   installBuilderDraft,
-  testBuilderAction,
 } from './builder-service';
 import { createHarness, type Harness } from './__tests__/helpers';
 import { MemoryPluginPersistence } from './persistence';
 import type { PluginPlatformRuntime } from './platform';
-import type { SandboxProgramManifest } from '@/lib/sandbox/types';
-import type { PluginSdkToolResult } from './types';
 
 function makeAction(overrides: Partial<BuilderAction> = {}): BuilderAction {
   return {
@@ -51,7 +44,6 @@ function makeAction(overrides: Partial<BuilderAction> = {}): BuilderAction {
       properties: { result: { type: 'string' } },
       required: ['result'],
     },
-    handler: { kind: 'sandbox', preset: 'echo', field: 'value' },
     ...overrides,
   };
 }
@@ -80,15 +72,6 @@ function fakePlatform(harness: Harness): PluginPlatformRuntime {
     platform: 'android',
     appVersion: '1.10.6',
   } as unknown as PluginPlatformRuntime;
-}
-
-function fakeExecutor(
-  output: unknown = { result: 'hello' }
-): (manifest: SandboxProgramManifest) => Promise<PluginSdkToolResult> {
-  return vi.fn(async () => ({
-    content: JSON.stringify(output),
-    trace: 'sandbox-test',
-  }));
 }
 
 describe('builder manifest validation', () => {
@@ -128,7 +111,7 @@ describe('builder manifest validation', () => {
     expect(result.errors.join(' ')).toMatch(/must not be stored/i);
   });
 
-  it('adds required permissions for actions, sandbox and secret references', () => {
+  it('adds AI permission for declared actions without an execution permission', () => {
     const manifest = buildManifest(
       makeDraft({
         environment: [{ key: 'API_TOKEN', secret: true }],
@@ -137,7 +120,7 @@ describe('builder manifest validation', () => {
     );
 
     expect(manifest.permissions).toContain('ai.invoke');
-    expect(manifest.permissions).toContain('sandbox.execute');
+    expect(manifest.permissions).not.toContain('sandbox.execute');
     expect(manifest.permissions).toContain('credentials.request');
     expect(manifest.permissions).toContain('mcp.connect');
     expect(manifest.capabilities).toContain('tools.ai');
@@ -145,13 +128,19 @@ describe('builder manifest validation', () => {
     expect(manifest.dependencies).toEqual([]);
   });
 
-  it('never emits executable host code or reserved entry points', () => {
-    const definitions = buildToolDefinitions(makeDraft());
-    expect(definitions).toHaveLength(1);
-    expect(definitions[0].execute).toBeUndefined();
-    expect(definitions[0].program).toBeDefined();
-    expect(definitions[0].permissions).toEqual(
-      expect.arrayContaining(['ai.invoke', 'sandbox.execute'])
+  it('emits only inert MCP tool metadata, never executable code or programs', () => {
+    const manifest = buildManifest(makeDraft());
+    expect(manifest.entryPoint.kind).toBe('declarative');
+    expect(manifest.mcpTools).toEqual([
+      {
+        name: 'echo',
+        description: 'Return a value.',
+        inputSchema: expect.any(Object),
+        outputSchema: expect.any(Object),
+      },
+    ]);
+    expect(JSON.stringify(manifest)).not.toMatch(
+      /"program"|"instructions"|"handler"|sandbox\.execute/
     );
   });
 
@@ -162,114 +151,6 @@ describe('builder manifest validation', () => {
       pluginId: 'local.test.plugin',
     });
     expect(() => exportBuilderManifest(makeDraft({ pluginId: '' }))).toThrow();
-  });
-});
-
-describe('sandbox program generation', () => {
-  it('compiles every preset to fixed data-only instructions', () => {
-    const draft = makeDraft();
-
-    for (const preset of ['echo', 'sum', 'concat', 'constant'] as const) {
-      const action = makeAction({
-        handler: {
-          kind: 'sandbox',
-          preset,
-          value: 'fixed',
-          field: 'first',
-          fieldB: 'second',
-          prefix: 'pre-',
-        },
-      });
-      const program = buildSandboxProgram(draft, action);
-
-      expect(program.pluginId).toBe(draft.pluginId);
-      expect(program.program.version).toBe(1);
-      expect(program.program.instructions.length).toBeGreaterThan(0);
-
-      for (const instruction of program.program.instructions) {
-        expect(['push', 'load', 'add', 'concat', 'emit', 'return']).toContain(
-          instruction.op
-        );
-        expect(JSON.stringify(instruction)).not.toMatch(/eval|Function|import|require/);
-      }
-    }
-  });
-
-  it('uses configurable field names for the sum preset', () => {
-    const program = buildSandboxProgram(
-      makeDraft(),
-      makeAction({
-        handler: { kind: 'sandbox', preset: 'sum', field: 'left', fieldB: 'right' },
-      })
-    );
-
-    expect(program.program.instructions.slice(0, 2)).toEqual([
-      { op: 'load', key: 'input', field: 'left' },
-      { op: 'load', key: 'input', field: 'right' },
-    ]);
-  });
-
-  it('requires baseline permissions for every action', () => {
-    expect(requiredActionPermissions(makeAction())).toEqual(
-      expect.arrayContaining(['ai.invoke', 'sandbox.execute'])
-    );
-  });
-});
-
-describe('safe execution', () => {
-  it('fails closed when no sandbox executor is available', async () => {
-    const result = await runBuilderAction(makeDraft(), 'echo', { value: 'hi' }, {
-      hasPermission: () => true,
-    });
-    expect(result.ok).toBe(false);
-    expect(result.errors.join(' ')).toMatch(/sandbox.*unavailable|Android/i);
-  });
-
-  it('blocks execution when permissions are missing', async () => {
-    const result = await runBuilderAction(makeDraft(), 'echo', { value: 'hi' }, {
-      executor: fakeExecutor(),
-      hasPermission: () => false,
-    });
-    expect(result.ok).toBe(false);
-    expect(result.errors.join(' ')).toMatch(/Missing permission/i);
-  });
-
-  it('rejects input that violates the declared schema', async () => {
-    const result = await runBuilderAction(makeDraft(), 'echo', {}, {
-      executor: fakeExecutor(),
-      hasPermission: () => true,
-    });
-    expect(result.ok).toBe(false);
-    expect(result.logs.join(' ')).toMatch(/invalid input/i);
-  });
-
-  it('validates sandbox output against the action output schema', async () => {
-    const good = await runBuilderAction(makeDraft(), 'echo', { value: 'hi' }, {
-      executor: fakeExecutor({ result: 'ok' }),
-      hasPermission: () => true,
-    });
-    expect(good.ok).toBe(true);
-    expect(good.output).toEqual({ result: 'ok' });
-
-    const bad = await runBuilderAction(makeDraft(), 'echo', { value: 'hi' }, {
-      executor: fakeExecutor({ wrong: true }),
-      hasPermission: () => true,
-    });
-    expect(bad.ok).toBe(false);
-    expect(bad.errors.join(' ')).toMatch(/Output failed validation/i);
-  });
-
-  it('redacts input secrets from error messages', async () => {
-    const secret = 'ultra-secret-value-123';
-    const result = await runBuilderAction(makeDraft(), 'echo', { value: secret }, {
-      executor: async () => {
-        throw new Error(`failed for ${secret}`);
-      },
-      hasPermission: () => true,
-    });
-    expect(result.ok).toBe(false);
-    expect(result.errors.join(' ')).not.toContain(secret);
-    expect(result.logs.join(' ')).not.toContain(secret);
   });
 });
 
@@ -287,7 +168,7 @@ describe('draft lifecycle', () => {
     expect(loaded?.actions).toHaveLength(1);
   });
 
-  it('drops unknown fields and strips secret values on load', async () => {
+  it('drops unknown fields, secret values and execution handlers on load', () => {
     const raw = {
       ...makeDraft(),
       schemaVersion: BUILDER_DRAFT_VERSION,
@@ -306,12 +187,11 @@ describe('draft lifecycle', () => {
     expect(normalized).not.toBeNull();
     expect(normalized).not.toHaveProperty('arbitraryField');
     expect(normalized?.environment[0].value).toBeUndefined();
-    expect(normalized?.actions[0].handler.kind).toBe('sandbox');
-    expect(normalized?.actions[0].handler.preset).toBe('echo');
+    expect(normalized?.actions[0]).not.toHaveProperty('handler');
     expect(normalized?.actions[0]).not.toHaveProperty('arbitrary');
   });
 
-  it('rejects reserved ids when loading persisted drafts', async () => {
+  it('rejects reserved ids when loading persisted drafts', () => {
     expect(normalizeDraft(makeDraft({ pluginId: 'orbit.core.reserved' }))).toBeNull();
   });
 
@@ -347,7 +227,7 @@ describe('draft lifecycle', () => {
   });
 });
 
-describe('builder installation and testing', () => {
+describe('builder installation', () => {
   it('does not install when approval is denied', async () => {
     const harness = createHarness();
     const platform = fakePlatform(harness);
@@ -388,7 +268,7 @@ describe('builder installation and testing', () => {
   });
 
   it('installs through the canonical registry after approval', async () => {
-    const harness = createHarness({ sandboxExecutor: fakeExecutor() });
+    const harness = createHarness();
     const platform = fakePlatform(harness);
     const approvals = {
       requestInstall: vi.fn(async () => true),
@@ -404,31 +284,6 @@ describe('builder installation and testing', () => {
     expect(result.record).toBeDefined();
     expect(result.record?.status).toBe('installed');
     expect(approvals.requestInstall).toHaveBeenCalledTimes(1);
-  });
-
-  it('requires a fresh approval for every playground run', async () => {
-    const approvals = {
-      requestInstall: vi.fn(async () => true),
-      requestPermissions: vi.fn(async () => false),
-    };
-
-    const denied = await testBuilderAction(
-      makeDraft(),
-      'echo',
-      { value: 'hi' },
-      { approvals, executor: fakeExecutor() }
-    );
-    expect(denied.ok).toBe(false);
-    expect(denied.errors.join(' ')).toMatch(/cancelled/i);
-
-    approvals.requestPermissions.mockResolvedValue(true);
-    const allowed = await testBuilderAction(
-      makeDraft(),
-      'echo',
-      { value: 'hi' },
-      { approvals, executor: fakeExecutor({ result: 'ok' }) }
-    );
-    expect(allowed.ok).toBe(true);
-    expect(approvals.requestPermissions).toHaveBeenCalledTimes(2);
+    expect(harness.toolHost.tools.size).toBe(0);
   });
 });

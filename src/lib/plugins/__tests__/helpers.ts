@@ -5,7 +5,7 @@ import { PluginEventBus } from '../events';
 import { PluginPermissionManager } from '../permissions';
 import { MemoryPluginPersistence } from '../persistence';
 import { PluginRegistry } from '../registry';
-import type { PluginToolHost, SandboxToolExecutor } from '../tools';
+import type { PluginToolHost } from '../tools';
 import type {
   PersistedPlugin,
   PluginManifest,
@@ -86,7 +86,6 @@ export function createHarness(
     toolHost?: FakeToolHost;
     persistence?: MemoryPluginPersistence;
     hookTimeoutMs?: number;
-    sandboxExecutor?: SandboxToolExecutor;
     confirmSensitiveTool?: (input: {
       pluginId: string;
       pluginName: string;
@@ -109,7 +108,6 @@ export function createHarness(
     toolHost,
     now,
     hookTimeoutMs: options.hookTimeoutMs,
-    sandboxExecutor: options.sandboxExecutor,
     confirmSensitiveTool: options.confirmSensitiveTool,
     logger: options.logger ?? (() => undefined),
   });

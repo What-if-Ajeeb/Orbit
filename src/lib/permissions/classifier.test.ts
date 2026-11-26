@@ -113,16 +113,6 @@ describe('agent safety risk taxonomy', () => {
     expect(action.allowAlways).toBe(false);
   });
 
-  it('requires a fresh decision for every sandbox execution', () => {
-    const action = classifyArgs('sandbox.execute', { manifest: '{}' });
-
-    expect(action.category).toBe('terminal_commands');
-    expect(action.risk).toBe('high');
-    expect(action.freshConfirmation).toBe(true);
-    expect(action.allowAlways).toBe(false);
-    expect(action.metadata).toMatchObject({ sandbox: true });
-  });
-
   it('keeps reversible file operations scoped and narrowable', () => {
     const trash = classifyArgs('file_trash', { path: '/documents/report.md' });
     const restore = classifyArgs('file_restore', { trash_id: 'trash_1' });

@@ -724,37 +724,6 @@ export function classifyToolAction(input: ClassifyInput): ClassifiedPermissionAc
     });
   }
 
-  if (name.replace(/[._]/g, '_') === 'sandbox_execute') {
-    return makeAction(input, {
-      category: 'terminal_commands',
-      risk: 'high',
-      title: `Run ${display} in the isolated sandbox?`,
-      summary:
-        'Every sandbox run needs a fresh decision. Saved permissions can never reuse this approval.',
-      actions: [
-        `Run ${display}`,
-        ...summarizeArguments(args, 5),
-        ...(command ? [`Command: ${truncate(command, 160)}`] : []),
-      ],
-      target: {
-        kind: 'resource',
-        label: 'Mobile Sandbox isolated process',
-        detail: 'On this device',
-      },
-      reason: 'The isolated runner executes declared operations under a fresh, bounded policy.',
-      scopeKey: `sandbox_execute:${input.projectId}`,
-      narrowable: false,
-      freshConfirmation: true,
-      cancellable: true,
-      reversible: false,
-      consequences: [
-        'The declared program will run in a separate Android process.',
-        'The sandbox limits are enforced by the native runner, not only by this dialog.',
-      ],
-      metadata: { sandbox: true, freshConfirmation: true },
-    });
-  }
-
   if (COMMAND_TOOL_PATTERN.test(name) || name === 'computer_execute') {
     const assessment = assessCommand(command || '');
     const remote = name === 'computer_execute' || Boolean(input.devices?.length) || Boolean(firstString(args, ['device_id']));

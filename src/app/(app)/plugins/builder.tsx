@@ -4,7 +4,6 @@ import { router, useLocalSearchParams, type Href } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -34,23 +33,18 @@ import { useSidebar } from '@/context/sidebar';
 import { useAppTheme, useStyles, type AppTheme } from '@/context/theme';
 import {
   BUILDER_ICON_CHOICES,
-  BUILDER_PRESET_LABELS,
-  BUILDER_SANDBOX_PRESETS,
   createBuilderAction,
   createEmptyDraft,
   parseJsonObject,
   validateAndBuild,
   type BuilderAction,
   type BuilderDraft,
-  type BuilderRunResult,
-  type BuilderSandboxPreset,
 } from '@/lib/plugins/builder';
 import {
   exportBuilderManifest,
   installBuilderDraft,
   prepareBuilderDraftForPublish,
   previewBuilderManifest,
-  testBuilderAction,
 } from '@/lib/plugins/builder-service';
 import { loadBuilderDrafts } from '@/lib/plugins/builder-store';
 import { PLUGIN_PERMISSION_META } from '@/lib/plugins/permissions';
@@ -66,7 +60,7 @@ import { formatRelative } from '@/lib/dates';
 import { layout, radius, spacing, typography } from '@/theme';
 import { editorText } from '@/lib/plugins/builder-editor';
 
-const STEPS = ['Basic Info', 'Configuration', 'Actions & Tools', 'Testing', 'Save & Install'];
+const STEPS = ['Basic Info', 'Configuration', 'Actions & Tools', 'Save & Install'];
 
 const CAPABILITY_LABELS: Record<PluginCapability, string> = {
   'ui.screens': 'Plugin screen',
@@ -120,14 +114,10 @@ export default function PluginBuilderScreen() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [inputTexts, setInputTexts] = useState<Record<string, string>>({});
-  const [testActionId, setTestActionId] = useState('');
-  const [testInput, setTestInput] = useState('{\n  "value": "hello"\n}');
-  const [testResult, setTestResult] = useState<BuilderRunResult | null>(null);
-  const [testing, setTesting] = useState(false);
 
   const validation = useMemo(() => validateAndBuild(draft), [draft]);
   const previewText = useMemo(() => {
-    if (step !== 4) return '';
+    if (step !== 3) return '';
 
     try {
       return JSON.stringify(previewBuilderManifest(draft), null, 2);
@@ -154,8 +144,6 @@ export default function PluginBuilderScreen() {
           const resolved = next ?? createEmptyDraft();
           setDraft(resolved);
           setInputTexts(editorText(resolved));
-          setTestActionId(resolved.actions[0]?.id ?? '');
-          setTestInput(editorText(resolved).testInput);
         }
       } catch (loadError) {
         if (active) {
@@ -229,24 +217,6 @@ export default function PluginBuilderScreen() {
 
   function previousStep() {
     if (step > 0) setStep((current) => current - 1);
-  }
-
-  async function runTest() {
-    setTesting(true);
-    setError(null);
-    setNotice(null);
-    try {
-      const parsed = parseJsonObject(testInput, 'Test input');
-      if (!parsed.ok) throw new Error(parsed.error);
-      const result = await testBuilderAction(draft, testActionId, parsed.value, {
-        persistence: platform.persistence,
-      });
-      setTestResult(result);
-    } catch (testError) {
-      setError(testError instanceof Error ? testError.message : 'Test failed.');
-    } finally {
-      setTesting(false);
-    }
   }
 
   async function install() {
@@ -331,7 +301,7 @@ export default function PluginBuilderScreen() {
           <SidebarButton onPress={openSidebar} />
           <ScreenHeader
             title={editingId ? 'Edit Plugin' : 'Create Plugin'}
-            subtitle="Build a safe, declarative plugin in five guided steps."
+            subtitle="Build a safe, declarative plugin in four guided steps."
           />
         </View>
 
@@ -377,19 +347,6 @@ export default function PluginBuilderScreen() {
           />
         ) : null}
         {step === 3 ? (
-          <TestingStep
-            draft={draft}
-            testActionId={testActionId}
-            setTestActionId={setTestActionId}
-            testInput={testInput}
-            setTestInput={setTestInput}
-            testResult={testResult}
-            testing={testing}
-            onRun={runTest}
-            styles={styles}
-          />
-        ) : null}
-        {step === 4 ? (
           <SaveStep
             draft={draft}
             validation={validation}
@@ -438,8 +395,8 @@ export default function PluginBuilderScreen() {
         </Pressable>
 
         <Text style={styles.footnote}>
-          Local plugins run as fixed sandbox programs only. No user-authored code is executed
-          in the app process. Platform: {snapshot.ready ? platform.platform : 'loading'} ·{' '}
+          Local plugins are declarative only. Actions are metadata; the sandbox never executes
+          guest code. Platform: {snapshot.ready ? platform.platform : 'loading'} ·{' '}
           {formatRelative(draft.updatedAt)}
         </Text>
       </ScrollView>
@@ -809,7 +766,7 @@ function ActionsStep({
   return (
     <SettingsSection
       title="Actions & Tools"
-      description="Each action compiles to one fixed sandbox program. No host JavaScript is generated."
+      description="Each action declares MCP tool metadata. No code is generated or executed by the sandbox."
       action={
         <Text style={styles.count}>
           {draft.actions.length} action{draft.actions.length === 1 ? '' : 's'}
@@ -819,7 +776,7 @@ function ActionsStep({
       {draft.actions.length === 0 ? (
         <View style={styles.emptyInline}>
           <Text style={styles.emptyInlineText}>
-            No actions yet. Add one to expose a tool to agents and the testing playground.
+            No actions yet. Add one to declare MCP tool metadata for the manifest.
           </Text>
           <Button label="Add action" onPress={addAction} />
         </View>
@@ -860,88 +817,6 @@ function ActionsStep({
                 onChangeText={(value) => patchAction(action.id, { description: value })}
                 multiline
               />
-              <View style={styles.field}>
-                <Text style={styles.label}>Sandbox preset</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                  <View style={styles.chips}>
-                    {BUILDER_SANDBOX_PRESETS.map((preset) => {
-                      const selected = action.handler.preset === preset;
-                      return (
-                        <Pressable
-                          key={preset}
-                          accessibilityRole="button"
-                          accessibilityState={{ selected }}
-                          onPress={() =>
-                            patchAction(action.id, {
-                              handler: { ...action.handler, preset },
-                            })
-                          }
-                          style={({ pressed }) => [
-                            styles.chip,
-                            selected && styles.chipSelected,
-                            pressed && styles.pressed,
-                          ]}
-                        >
-                          <Text style={[styles.chipText, selected && styles.chipTextSelected]}>
-                            {preset}
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-                </ScrollView>
-                <Text style={styles.hint}>
-                  {BUILDER_PRESET_LABELS[action.handler.preset as BuilderSandboxPreset]}
-                </Text>
-              </View>
-              {action.handler.preset === 'echo' ||
-              action.handler.preset === 'concat' ||
-              action.handler.preset === 'sum' ? (
-                <TextField
-                  label={action.handler.preset === 'sum' ? 'First number field' : 'Input field'}
-                  value={action.handler.field ?? ''}
-                  onChangeText={(value) =>
-                    patchAction(action.id, {
-                      handler: { ...action.handler, field: value },
-                    })
-                  }
-                  placeholder={action.handler.preset === 'sum' ? 'a' : 'value'}
-                />
-              ) : null}
-              {action.handler.preset === 'sum' ? (
-                <TextField
-                  label="Second number field"
-                  value={action.handler.fieldB ?? ''}
-                  onChangeText={(value) =>
-                    patchAction(action.id, {
-                      handler: { ...action.handler, fieldB: value },
-                    })
-                  }
-                  placeholder="b"
-                />
-              ) : null}
-              {action.handler.preset === 'concat' ? (
-                <TextField
-                  label="Prefix"
-                  value={action.handler.prefix ?? ''}
-                  onChangeText={(value) =>
-                    patchAction(action.id, {
-                      handler: { ...action.handler, prefix: value },
-                    })
-                  }
-                />
-              ) : null}
-              {action.handler.preset === 'constant' ? (
-                <TextField
-                  label="Constant value"
-                  value={String(action.handler.value ?? '')}
-                  onChangeText={(value) =>
-                    patchAction(action.id, {
-                      handler: { ...action.handler, value },
-                    })
-                  }
-                />
-              ) : null}
               <BuilderJsonField
                 label="Input schema (JSON)"
                 value={inputTexts[`${action.id}.inputSchema`] ?? JSON.stringify(action.inputSchema)}
@@ -1002,117 +877,6 @@ function ActionsStep({
       )}
     </SettingsSection>
   );
-}
-
-function TestingStep({
-  draft,
-  testActionId,
-  setTestActionId,
-  testInput,
-  setTestInput,
-  testResult,
-  testing,
-  onRun,
-  styles,
-}: {
-  draft: BuilderDraft;
-  testActionId: string;
-  setTestActionId: (value: string) => void;
-  testInput: string;
-  setTestInput: (value: string) => void;
-  testResult: BuilderRunResult | null;
-  testing: boolean;
-  onRun: () => void;
-  styles: StepStyles;
-}) {
-  const action = draft.actions.find((entry) => entry.id === testActionId) ?? null;
-
-  return (
-    <SettingsSection
-      title="Testing Playground"
-      description="Run a fixed sandbox program with fresh approval. Nothing is persisted as a grant."
-    >
-      <BuilderInfo>
-        {Platform.OS === 'android'
-          ? 'Sandbox execution is available on Android. Each run asks for approval again.'
-          : 'Testing runs only on Android. On this platform the sandbox fails closed without executing anything.'}
-      </BuilderInfo>
-      <View style={styles.field}>
-        <Text style={styles.label}>Action</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          <View style={styles.chips}>
-            {draft.actions.map((entry) => {
-              const selected = entry.id === testActionId;
-              return (
-                <Pressable
-                  key={entry.id}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected }}
-                  onPress={() => setTestActionId(entry.id)}
-                  style={({ pressed }) => [
-                    styles.chip,
-                    selected && styles.chipSelected,
-                    pressed && styles.pressed,
-                  ]}
-                >
-                  <Text style={[styles.chipText, selected && styles.chipTextSelected]}>
-                    {entry.name || entry.id}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        </ScrollView>
-      </View>
-      <BuilderJsonField
-        label="Test input (JSON)"
-        value={testInput}
-        onChange={setTestInput}
-        hint={action ? `Expected fields: ${Object.keys(effectiveProperties(action)).join(', ') || 'none'}` : 'Add an action first.'}
-        error={validateJsonHint(testInput)}
-      />
-      <Button
-        label={testing ? 'Running…' : 'Run in sandbox'}
-        onPress={onRun}
-        loading={testing}
-        disabled={!action || testing}
-      />
-      {testResult ? (
-        <View style={[styles.resultCard, testResult.ok ? styles.resultOk : styles.resultError]}>
-          <Text style={styles.resultTitle}>{testResult.ok ? 'Succeeded' : 'Failed'}</Text>
-          <Text style={styles.resultMeta}>
-            {testResult.durationMs} ms · {testResult.trace}
-          </Text>
-          {testResult.errors.map((message) => (
-            <Text key={message} style={styles.resultErrorText}>
-              {message}
-            </Text>
-          ))}
-          <Text style={styles.resultLabel}>Output</Text>
-          <Text style={styles.resultCode}>
-            {JSON.stringify(testResult.output ?? null, null, 2)}
-          </Text>
-          {testResult.logs.length > 0 ? (
-            <>
-              <Text style={styles.resultLabel}>Logs</Text>
-              {testResult.logs.map((line, index) => (
-                <Text key={`${index}-${line}`} style={styles.resultLog}>
-                  {line}
-                </Text>
-              ))}
-            </>
-          ) : null}
-        </View>
-      ) : null}
-    </SettingsSection>
-  );
-}
-
-function effectiveProperties(action: BuilderAction): Record<string, unknown> {
-  const properties = action.inputSchema.properties;
-  return properties && typeof properties === 'object' && !Array.isArray(properties)
-    ? (properties as Record<string, unknown>)
-    : {};
 }
 
 function SaveStep({

@@ -69,14 +69,25 @@ vi.mock('@/lib/mcp/settings', () => ({
 const mocks = vi.hoisted(() => ({
   initialize: vi.fn(),
   getSnapshot: vi.fn(),
-  execute: vi.fn(),
+  validateManifest: vi.fn(),
+  checkPermission: vi.fn(),
+  validatePath: vi.fn(),
+  validateNetwork: vi.fn(),
+  validateRequest: vi.fn(),
+  authorizeOperation: vi.fn(),
 }));
 
 vi.mock('@/lib/sandbox/manager', () => ({
   getMobileSandboxManager: () => ({
     initialize: mocks.initialize,
     getSnapshot: mocks.getSnapshot,
-    execute: mocks.execute,
+    validateManifest: mocks.validateManifest,
+    checkPermission: mocks.checkPermission,
+    validatePath: mocks.validatePath,
+    validateNetwork: mocks.validateNetwork,
+    validateRequest: mocks.validateRequest,
+    authorizeOperation: mocks.authorizeOperation,
+    onAudit: () => () => undefined,
   }),
 }));
 
@@ -100,28 +111,44 @@ async function enableSandbox() {
 
 const context = { db: {} as SQLiteDatabase, userId: 7 };
 
+const audit = {
+  id: 'audit-1',
+  at: 1,
+  pluginId: 'local.test.plugin',
+  operation: 'manifest.validate',
+  decision: 'allow',
+  reasonCode: 'valid',
+  permission: null,
+  resourceHash: null,
+  bytes: 0,
+  durationMs: 0,
+  policyVersion: 2,
+};
+
 describe('ORBIT Sandbox native plugin', () => {
-  it('is Android-only and declares the existing execution permission', () => {
+  it('is Android-only and declares read-only sandbox inspection', () => {
     const manifest = NATIVE_PLUGIN_MANIFESTS.find(
       (entry) => entry.pluginId === SANDBOX_PLUGIN_ID
     )!;
 
     expect(manifest.platformSupport).toEqual(['android']);
-    expect(manifest.permissions).toEqual(['ai.invoke', 'sandbox.execute']);
+    expect(manifest.permissions).toEqual(['ai.invoke', 'sandbox.inspect']);
+    expect(manifest.version).toBe('2.0.0');
   });
 
-  it('exposes sandbox policy from the existing manager without executing', async () => {
+  it('exposes the security policy without executing anything', async () => {
     const { harness } = await enableSandbox();
     mocks.initialize.mockResolvedValue({
-      coreVersion: '0.1.0',
-      policyVersion: 1,
+      coreVersion: '0.2.0',
+      policyVersion: 2,
       isolation: 'android-isolated-process',
-      executionFormat: 'deterministic-json-program',
-      allowedOperations: ['add', 'concat', 'return'],
-      limits: { maxInstructions: 256, maxOutputBytes: 16_384, maxValueBytes: 8_192 },
+      securityCapabilities: ['manifest-validation', 'permission-enforcement'],
+      allowedOperations: ['file.read', 'file.stat', 'network.request'],
+      permissions: ['files.read', 'sandbox.inspect'],
+      execution: false,
+      limits: { maxFileBytes: 262144, approvalTtlSeconds: 300 },
     });
     mocks.getSnapshot.mockReturnValue({ sessions: [], busy: 0 });
-    mocks.execute.mockClear();
 
     const tool = harness.toolHost.tools.get(
       'plugin__orbit_builtin_sandbox__sandbox_policy'
@@ -130,78 +157,137 @@ describe('ORBIT Sandbox native plugin', () => {
 
     expect(result).toMatchObject({
       ok: true,
-      policyVersion: 1,
+      policyVersion: 2,
+      execution: false,
       isolation: 'android-isolated-process',
       sessionCount: 0,
       busy: 0,
     });
-    expect(mocks.execute).not.toHaveBeenCalled();
   });
 
-  it('runs only reviewed data-only programs with explicit approval', async () => {
-    const { harness, confirmSensitiveTool } = await enableSandbox();
-    mocks.execute.mockResolvedValue({
-      ok: true,
-      outputs: { result: 9 },
-      instructionsExecuted: 5,
-      errors: [],
-      policyVersion: 1,
+  it('rejects a policy that still advertises execution', async () => {
+    const { harness } = await enableSandbox();
+    mocks.initialize.mockResolvedValue({
+      coreVersion: '0.2.0',
+      policyVersion: 2,
+      isolation: 'android-isolated-process',
+      securityCapabilities: [],
+      allowedOperations: [],
+      permissions: [],
+      execution: true,
+      limits: {},
     });
 
     const tool = harness.toolHost.tools.get(
-      'plugin__orbit_builtin_sandbox__sandbox_compute'
+      'plugin__orbit_builtin_sandbox__sandbox_policy'
+    );
+    const result = JSON.parse((await tool!.execute(context, {})).content);
+    expect(result).toMatchObject({ ok: false });
+  });
+
+  it('validates manifests and rejects execution-shaped declarations', async () => {
+    const { harness, confirmSensitiveTool } = await enableSandbox();
+    mocks.validateManifest.mockResolvedValue({
+      ok: false,
+      errors: ['Manifest field "program" is not allowed.'],
+      policyVersion: 2,
+      audit: { ...audit, decision: 'deny', reasonCode: 'invalid_manifest' },
+    });
+
+    const tool = harness.toolHost.tools.get(
+      'plugin__orbit_builtin_sandbox__sandbox_validate_manifest'
     );
     const result = JSON.parse(
-      (await tool!.execute(context, { operation: 'add', left: 4, right: 5 })).content
+      (await tool!.execute(context, { manifest: { pluginId: 'x.y' } })).content
     );
 
     expect(result).toMatchObject({
       ok: true,
-      operation: 'add',
-      outputs: { result: 9 },
+      validation: { ok: false },
     });
-    expect(mocks.execute).toHaveBeenCalledWith(
-      {
-        pluginId: SANDBOX_PLUGIN_ID,
-        version: '1.0.0',
-        program: {
-          version: 1,
-          instructions: [
-            { op: 'load', key: 'input', field: 'left' },
-            { op: 'load', key: 'input', field: 'right' },
-            { op: 'add' },
-            { op: 'emit', key: 'result' },
-            { op: 'return' },
-          ],
-        },
-      },
-      { left: 4, right: 5 }
-    );
-    expect(confirmSensitiveTool).toHaveBeenCalledWith(
-      expect.objectContaining({ toolName: 'sandbox_compute' })
-    );
+    expect(JSON.stringify(result)).toMatch(/program/);
+    expect(confirmSensitiveTool).not.toHaveBeenCalled();
   });
 
-  it('rejects raw instructions and fails closed when the bridge is unavailable', async () => {
+  it('validates paths and networks without touching either resource', async () => {
     const { harness } = await enableSandbox();
-    const tool = harness.toolHost.tools.get(
-      'plugin__orbit_builtin_sandbox__sandbox_compute'
-    )!;
-
-    const raw = await tool.execute(context, {
-      operation: 'echo',
-      value: 'x',
-      instructions: [{ op: 'push', value: 1 }],
+    mocks.validatePath.mockResolvedValue({
+      ok: false,
+      normalizedPath: null,
+      errors: ['path_traversal: Path traversal segments are not allowed.'],
+      policyVersion: 2,
+      audit: { ...audit, decision: 'deny', operation: 'path.validate' },
     });
-    expect(JSON.parse(raw.content)).toMatchObject({ ok: false });
+    mocks.validateNetwork.mockResolvedValue({
+      ok: true,
+      normalizedUrl: 'https://example.com/path',
+      errors: [],
+      policyVersion: 2,
+      audit,
+    });
 
-    mocks.execute.mockRejectedValueOnce(
+    const pathTool = harness.toolHost.tools.get(
+      'plugin__orbit_builtin_sandbox__sandbox_validate_path'
+    );
+    const networkTool = harness.toolHost.tools.get(
+      'plugin__orbit_builtin_sandbox__sandbox_validate_network'
+    );
+
+    const pathResult = JSON.parse(
+      (await pathTool!.execute(context, { path: '../secret' })).content
+    );
+    const networkResult = JSON.parse(
+      (await networkTool!.execute(context, { url: 'https://example.com/path' })).content
+    );
+
+    expect(pathResult.report.ok).toBe(false);
+    expect(pathResult.report.normalizedPath).toBeNull();
+    expect(networkResult.report.normalizedUrl).toBe('https://example.com/path');
+    expect(mocks.validatePath).toHaveBeenCalledWith('../secret');
+  });
+
+  it('authorizes operations without performing them and fails closed on bridge errors', async () => {
+    const { harness } = await enableSandbox();
+    mocks.authorizeOperation.mockResolvedValueOnce({
+      decision: 'deny',
+      operation: 'file.read',
+      permission: 'files.read',
+      normalizedResource: null,
+      reason: 'A fresh user approval is required for files.read.',
+      reasonCode: 'approval_required',
+      policyVersion: 2,
+      limits: {},
+      audit: { ...audit, decision: 'deny', reasonCode: 'approval_required' },
+    });
+
+    const tool = harness.toolHost.tools.get(
+      'plugin__orbit_builtin_sandbox__sandbox_authorize_operation'
+    );
+
+    const denied = JSON.parse(
+      (
+        await tool!.execute(context, {
+          manifest: { pluginId: 'local.test.plugin', version: '1.0.0' },
+          operation: 'file.read',
+          resource: { path: 'orbit/note.txt' },
+        })
+      ).content
+    );
+    expect(denied.decision.decision).toBe('deny');
+    expect(denied.decision.reasonCode).toBe('approval_required');
+
+    mocks.authorizeOperation.mockRejectedValueOnce(
       new Error('The ORBIT mobile sandbox is only available on Android.')
     );
-    const unavailable = await tool.execute(context, {
-      operation: 'echo',
-      value: 'x',
-    });
-    expect(JSON.parse(unavailable.content)).toMatchObject({ ok: false });
+    const unavailable = JSON.parse(
+      (
+        await tool!.execute(context, {
+          manifest: { pluginId: 'local.test.plugin', version: '1.0.0' },
+          operation: 'file.read',
+          resource: { path: 'orbit/note.txt' },
+        })
+      ).content
+    );
+    expect(unavailable).toMatchObject({ ok: false });
   });
 });

@@ -10,9 +10,10 @@ import android.os.Messenger
 import org.json.JSONObject
 
 /**
- * Android isolated-process service. It has no Android permissions of its own;
- * the only entry point is the Messenger/Binder Service API. All plugin policy
- * and execution is delegated to the Rust core.
+ * Android isolated-process service. It has no Android permissions of its own,
+ * no file access and no network access; the only entry point is the
+ * Messenger/Binder Service API. Every manifest, permission, approval, path,
+ * network and request decision is delegated to the data-only Rust core.
  */
 class OrbitSandboxService : Service() {
   private val inbox = Handler(Looper.getMainLooper()) { message ->

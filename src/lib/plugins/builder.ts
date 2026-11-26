@@ -4,16 +4,13 @@
  * A builder draft is an editor document. It is converted into the canonical
  * version-1 `PluginManifest` before validation, installation or export, so the
  * app still has exactly one runtime plugin format. Draft-only fields (tags,
- * action presets, validation rules, error handling, environment references)
- * never become executable code and are never part of the installed manifest.
+ * validation rules, error handling, environment references) never become
+ * executable code and are never part of the installed manifest.
  *
- * Every action compiles to a data-only SandboxProgramManifest. Builder-authored
- * plugins never provide `PluginImplementation` or `PluginToolDefinition.execute`;
- * the native Rust sandbox is the only execution surface.
+ * Actions are reviewed metadata only. Builder-authored plugins never provide
+ * `PluginImplementation` or `PluginToolDefinition.execute`, and the sandbox
+ * never executes guest code.
  */
-import type { SandboxInstruction, SandboxProgramManifest } from '@/lib/sandbox/types';
-
-import { validateJsonSchema } from './json-schema';
 import {
   PLUGIN_ID_PATTERN,
   RESERVED_PLUGIN_ID_PREFIXES,
@@ -28,9 +25,7 @@ import {
   type PluginCategory,
   type PluginManifest,
   type PluginPermission,
-  type PluginSdkToolResult,
   type PluginSettingField,
-  type PluginToolDefinition,
 } from './types';
 
 export const BUILDER_DRAFT_VERSION = 1;
@@ -51,32 +46,12 @@ export const BUILDER_ICON_CHOICES = [
   'bar-chart-outline',
 ] as const;
 
-export const BUILDER_SANDBOX_PRESETS = ['echo', 'sum', 'concat', 'constant'] as const;
-export type BuilderSandboxPreset = (typeof BUILDER_SANDBOX_PRESETS)[number];
-
-export const BUILDER_PRESET_LABELS: Record<BuilderSandboxPreset, string> = {
-  echo: 'Return a selected input field',
-  sum: 'Add two numeric input fields',
-  concat: 'Join a prefix with an input field',
-  constant: 'Return a fixed value',
-};
-
 export type BuilderValidationRule = {
   field: string;
   required?: boolean;
   minLength?: number;
   maxLength?: number;
   pattern?: string;
-};
-
-export type BuilderActionHandler = {
-  /** Data-only program compiled by the builder; never user-supplied JS. */
-  kind: 'sandbox';
-  preset: BuilderSandboxPreset;
-  field?: string;
-  fieldB?: string;
-  prefix?: string;
-  value?: string | number | boolean | null;
 };
 
 export type BuilderAction = {
@@ -86,7 +61,6 @@ export type BuilderAction = {
   inputSchema: Record<string, unknown>;
   outputSchema: Record<string, unknown>;
   validationRules: BuilderValidationRule[];
-  handler: BuilderActionHandler;
   errorHandling: {
     onError: 'fail' | 'empty';
     fallbackMessage: string;
@@ -144,28 +118,6 @@ export type BuilderValidation = {
   warnings: string[];
 };
 
-export type SandboxToolExecutor = (
-  manifest: SandboxProgramManifest,
-  input: Record<string, unknown>,
-  context: { signal?: AbortSignal; log: (message: string, detail?: unknown) => void }
-) => Promise<PluginSdkToolResult>;
-
-export type BuilderRuntimeOptions = {
-  executor?: SandboxToolExecutor;
-  hasPermission?: (permission: PluginPermission) => boolean;
-  now?: () => number;
-};
-
-export type BuilderRunResult = {
-  ok: boolean;
-  output: unknown;
-  errors: string[];
-  logs: string[];
-  trace: string;
-  durationMs: number;
-  retryable: boolean;
-};
-
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -182,10 +134,6 @@ function slugify(value: string): string {
 
 function unique<T>(values: T[]): T[] {
   return values.filter((value, index) => values.indexOf(value) === index);
-}
-
-function isPrimitive(value: unknown): boolean {
-  return value === null || ['string', 'number', 'boolean'].includes(typeof value);
 }
 
 export function createEmptyDraft(now = Date.now()): BuilderDraft {
@@ -222,7 +170,6 @@ export function createBuilderAction(index: number): BuilderAction {
     inputSchema: { type: 'object', properties: {} },
     outputSchema: { type: 'object', properties: {} },
     validationRules: [],
-    handler: { kind: 'sandbox', preset: 'echo', field: 'value' },
     errorHandling: { onError: 'fail', fallbackMessage: '', retryable: false },
     permissions: [],
     requiresApproval: false,
@@ -302,14 +249,6 @@ export function effectiveInputSchema(action: BuilderAction): Record<string, unkn
   }
 
   return { ...action.inputSchema, type: 'object', properties, required };
-}
-
-export function requiredActionPermissions(action: BuilderAction): PluginPermission[] {
-  return unique<PluginPermission>([
-    'ai.invoke',
-    'sandbox.execute',
-    ...action.permissions,
-  ]);
 }
 
 export function validateDraft(draft: BuilderDraft): BuilderValidation {
@@ -433,16 +372,6 @@ export function validateDraft(draft: BuilderDraft): BuilderValidation {
     ) {
       errors.push(`Action "${action.id}" timeout must be between 1s and 60s.`);
     }
-
-    const handler = action.handler;
-
-    if (!BUILDER_SANDBOX_PRESETS.includes(handler.preset)) {
-      errors.push(`Action "${action.id}" has an unsupported sandbox preset.`);
-    }
-
-    if (handler.value !== undefined && !isPrimitive(handler.value)) {
-      errors.push(`Action "${action.id}" constant must be a primitive value.`);
-    }
   }
 
   if (draft.actions.length === 0) {
@@ -454,57 +383,6 @@ export function validateDraft(draft: BuilderDraft): BuilderValidation {
   }
 
   return { ok: errors.length === 0, errors, warnings };
-}
-
-/** Every action becomes a fixed, data-only program interpreted by Rust. */
-export function buildSandboxProgram(
-  draft: BuilderDraft,
-  action: BuilderAction
-): SandboxProgramManifest {
-  const handler = action.handler;
-  let instructions: SandboxInstruction[];
-
-  switch (handler.preset) {
-    case 'sum':
-      instructions = [
-        { op: 'load', key: 'input', field: handler.field || 'a' },
-        { op: 'load', key: 'input', field: handler.fieldB || 'b' },
-        { op: 'add' },
-        { op: 'emit', key: 'sum' },
-        { op: 'return' },
-      ];
-      break;
-    case 'concat':
-      instructions = [
-        { op: 'push', value: handler.prefix ?? '' },
-        { op: 'load', key: 'input', field: handler.field || 'value' },
-        { op: 'concat' },
-        { op: 'emit', key: 'text' },
-        { op: 'return' },
-      ];
-      break;
-    case 'constant':
-      instructions = [
-        { op: 'push', value: handler.value ?? null },
-        { op: 'emit', key: 'value' },
-        { op: 'return' },
-      ];
-      break;
-    case 'echo':
-    default:
-      instructions = [
-        { op: 'load', key: 'input', field: handler.field || 'value' },
-        { op: 'emit', key: 'result' },
-        { op: 'return' },
-      ];
-      break;
-  }
-
-  return {
-    pluginId: draft.pluginId,
-    version: draft.version,
-    program: { version: 1, instructions },
-  };
 }
 
 /** Converts draft-only settings into the canonical v1 plugin manifest. */
@@ -523,7 +401,6 @@ export function buildManifest(draft: BuilderDraft): PluginManifest {
       ? (['ui.contribute'] as PluginPermission[])
       : []),
     ...(draft.actions.length > 0 ? (['ai.invoke'] as PluginPermission[]) : []),
-    ...(draft.actions.length > 0 ? (['sandbox.execute'] as PluginPermission[]) : []),
     ...(draft.integrations.some((entry) => entry.startsWith('mcp:'))
       ? (['mcp.connect'] as PluginPermission[])
       : []),
@@ -618,159 +495,4 @@ export function validateAndBuild(
   }
 
   return { ok: true, errors: [], warnings, manifest };
-}
-
-function sanitizeError(error: unknown, input: Record<string, unknown>): string {
-  let message = error instanceof Error && error.message ? error.message : 'Action failed.';
-
-  const collect = (value: unknown): void => {
-    if (typeof value === 'string' && value.length >= 2) {
-      message = message.split(value).join('[redacted]');
-      return;
-    }
-
-    if (Array.isArray(value)) {
-      value.forEach(collect);
-      return;
-    }
-
-    if (isPlainObject(value)) {
-      Object.values(value).forEach(collect);
-    }
-  };
-
-  collect(input);
-
-  return message.slice(0, 300);
-}
-
-/** Runs one action through validation, permissions and the isolated sandbox. */
-export async function runBuilderAction(
-  draft: BuilderDraft,
-  actionId: string,
-  input: Record<string, unknown>,
-  options: BuilderRuntimeOptions = {}
-): Promise<BuilderRunResult> {
-  const now = options.now ?? Date.now;
-  const started = now();
-  const action = draft.actions.find((entry) => entry.id === actionId);
-  const logs: string[] = [];
-
-  if (!action) {
-    return {
-      ok: false,
-      output: undefined,
-      errors: [`Action "${actionId}" was not found.`],
-      logs,
-      trace: 'Builder · unknown action',
-      durationMs: 0,
-      retryable: false,
-    };
-  }
-
-  const trace = `Builder · ${draft.pluginId}: ${action.id}`;
-  const required = requiredActionPermissions(action);
-  const missing = options.hasPermission
-    ? required.filter((permission) => !options.hasPermission?.(permission))
-    : required;
-
-  if (missing.length > 0) {
-    return {
-      ok: false,
-      output: action.errorHandling.onError === 'empty' ? null : undefined,
-      errors: [`Missing permission: ${missing.join(', ')}.`],
-      logs: [`${trace} blocked by permissions.`],
-      trace,
-      durationMs: 0,
-      retryable: false,
-    };
-  }
-
-  const validation = validateJsonSchema(input, effectiveInputSchema(action));
-
-  if (!validation.ok) {
-    return {
-      ok: false,
-      output: action.errorHandling.onError === 'empty' ? null : undefined,
-      errors: validation.errors,
-      logs: [`${trace} rejected invalid input.`],
-      trace,
-      durationMs: 0,
-      retryable: false,
-    };
-  }
-
-  if (!options.executor) {
-    return {
-      ok: false,
-      output: action.errorHandling.onError === 'empty' ? null : undefined,
-      errors: ['Sandbox execution is unavailable. Action tests require Android.'],
-      logs: [`${trace} blocked: no sandbox executor.`],
-      trace,
-      durationMs: 0,
-      retryable: false,
-    };
-  }
-
-  try {
-    logs.push(`${trace} submitted a data-only sandbox program.`);
-
-    const result = await options.executor(buildSandboxProgram(draft, action), input, {
-      signal: undefined,
-      log: (message) => logs.push(message.slice(0, 200)),
-    });
-
-    let output: unknown;
-
-    try {
-      output = JSON.parse(result.content) as unknown;
-    } catch {
-      output = { text: result.content };
-    }
-
-    const outputValidation = validateJsonSchema(output, action.outputSchema);
-
-    if (!outputValidation.ok) {
-      throw new Error(`Output failed validation: ${outputValidation.errors.join(' ')}`);
-    }
-
-    logs.push(`${trace} succeeded.`);
-
-    return {
-      ok: true,
-      output,
-      errors: [],
-      logs,
-      trace,
-      durationMs: Math.max(0, now() - started),
-      retryable: false,
-    };
-  } catch (error) {
-    const message = sanitizeError(error, input);
-    logs.push(`${trace} failed: ${message}`);
-
-    return {
-      ok: false,
-      output: action.errorHandling.onError === 'empty' ? null : undefined,
-      errors: [message],
-      logs,
-      trace,
-      durationMs: Math.max(0, now() - started),
-      retryable: action.errorHandling.retryable,
-    };
-  }
-}
-
-/** Definitions for `platform.registry.registerTool()`: program-only, no host code. */
-export function buildToolDefinitions(draft: BuilderDraft): PluginToolDefinition[] {
-  return draft.actions.map((action) => ({
-    name: action.id,
-    description: action.description,
-    parameters: effectiveInputSchema(action) as PluginToolDefinition['parameters'],
-    outputSchema: action.outputSchema,
-    permissions: requiredActionPermissions(action),
-    requiresApproval: action.requiresApproval,
-    timeoutMs: action.timeoutMs,
-    program: buildSandboxProgram(draft, action),
-  }));
 }

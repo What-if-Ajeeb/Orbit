@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { MobileSandboxManager } from '../manager';
-import { EXAMPLE_SANDBOX_MANIFEST, EXAMPLE_SANDBOX_INPUT } from '../programs';
 import {
   SandboxApprovalDeniedError,
   SandboxBridgeError,
+  SandboxOperationDeniedError,
   type SandboxTransport,
 } from '../types';
 
@@ -12,107 +12,254 @@ function response<T>(id: string, result: T): string {
   return JSON.stringify({ id, ok: true, result });
 }
 
+const audit = {
+  id: 'audit-1',
+  at: 1,
+  pluginId: 'local.reader',
+  operation: 'file.read',
+  decision: 'allow',
+  reasonCode: 'allowed',
+  permission: 'files.read',
+  resourceHash: 'abc',
+  bytes: 2,
+  durationMs: 1,
+  policyVersion: 2,
+};
+
+const description = {
+  coreVersion: '0.2.0',
+  policyVersion: 2,
+  isolation: 'android-isolated-process',
+  securityCapabilities: ['manifest-validation'],
+  allowedOperations: ['file.read', 'file.stat', 'network.request'],
+  permissions: ['files.read', 'sandbox.inspect'],
+  execution: false as const,
+  limits: {
+    maxEnvelopeBytes: 65536,
+    maxFileBytes: 262144,
+    maxPathBytes: 1024,
+    maxNetworkUrlBytes: 2048,
+    maxRequestFields: 32,
+    approvalTtlSeconds: 300,
+  },
+};
+
 function makeTransport(overrides: Partial<SandboxTransport> = {}): SandboxTransport {
   return {
     async describe() {
-      return response('1', {
-        coreVersion: '0.1.0',
-        policyVersion: 1,
-        isolation: 'android-isolated-process',
-        executionFormat: 'deterministic-json-program',
-        allowedOperations: ['add', 'return'],
-        limits: { maxInstructions: 256, maxOutputBytes: 16384, maxValueBytes: 8192 },
-      });
+      return response('1', description);
     },
     async validateManifest() {
-      return response('2', { ok: true, errors: [], policyVersion: 1 });
-    },
-    async execute() {
-      return response('3', {
+      return response('2', {
         ok: true,
-        outputs: { greeting: 'hello orbit', doubled: 42 },
-        instructionsExecuted: 9,
         errors: [],
-        policyVersion: 1,
+        policyVersion: 2,
+        audit,
+      });
+    },
+    async checkPermission() {
+      return response('3', {
+        allowed: true,
+        permission: 'files.read',
+        declared: true,
+        granted: true,
+        approvalRequired: true,
+        reason: 'files.read is declared, granted and approved.',
+        reasonCode: 'allowed',
+        policyVersion: 2,
+        audit,
+      });
+    },
+    async validatePath() {
+      return response('4', {
+        ok: true,
+        normalizedPath: 'orbit/note.txt',
+        errors: [],
+        policyVersion: 2,
+        audit,
+      });
+    },
+    async validateNetwork() {
+      return response('5', {
+        ok: true,
+        normalizedUrl: 'https://example.com',
+        errors: [],
+        policyVersion: 2,
+        audit,
+      });
+    },
+    async validateRequest() {
+      return response('6', { ok: true, errors: [], policyVersion: 2, audit });
+    },
+    async authorizeOperation() {
+      return response('7', {
+        decision: 'allow',
+        operation: 'file.read',
+        permission: 'files.read',
+        normalizedResource: 'orbit/note.txt',
+        reason: 'Policy allowed the operation.',
+        reasonCode: 'allowed',
+        policyVersion: 2,
+        limits: description.limits,
+        audit,
+      });
+    },
+    async readFile() {
+      return response('8', {
+        decision: 'allow',
+        operation: 'file.read',
+        permission: 'files.read',
+        normalizedResource: 'orbit/note.txt',
+        path: 'orbit/note.txt',
+        content: 'hello',
+        bytesRead: 5,
+        reason: 'Policy allowed the read.',
+        reasonCode: 'allowed',
+        policyVersion: 2,
+        limits: description.limits,
+        audit,
       });
     },
     async shutdown() {
-      return response('4', { shutdown: true });
+      return response('9', { shutdown: true });
     },
     ...overrides,
   };
 }
 
+const manifest = {
+  pluginId: 'local.reader',
+  version: '1.0.0',
+  permissions: ['files.read' as const, 'sandbox.inspect' as const],
+};
+
 describe('MobileSandboxManager', () => {
-  it('validates, requests approval, then executes a data-only program', async () => {
+  it('describes a security-only policy', async () => {
+    const manager = new MobileSandboxManager({ transport: makeTransport() });
+    const result = await manager.initialize();
+
+    expect(result.execution).toBe(false);
+    expect(result.allowedOperations).toContain('file.read');
+    expect(result.allowedOperations).not.toContain('push');
+  });
+
+  it('emits audit records for validation decisions', async () => {
     const transport = makeTransport();
-    const validate = vi.spyOn(transport, 'validateManifest');
-    const execute = vi.spyOn(transport, 'execute');
+    const manager = new MobileSandboxManager({ transport });
+    const onAudit = vi.fn();
+    manager.onAudit(onAudit);
+
+    await manager.validateManifest(manifest);
+    await manager.validatePath('orbit/note.txt');
+
+    expect(onAudit).toHaveBeenCalledTimes(2);
+    expect(onAudit).toHaveBeenCalledWith(audit);
+  });
+
+  it('requests fresh approval evidence before a mediated read', async () => {
+    const transport = makeTransport();
+    const readFile = vi.spyOn(transport, 'readFile');
     const requestApproval = vi.fn(async () => true);
-    const manager = new MobileSandboxManager({ transport, requestApproval, now: () => 1000 });
+    const manager = new MobileSandboxManager({
+      transport,
+      requestApproval,
+      now: () => 1_000,
+    });
+    await manager.initialize();
 
-    const result = await manager.execute(EXAMPLE_SANDBOX_MANIFEST, EXAMPLE_SANDBOX_INPUT);
+    const approval = await manager.requestOperationApproval({
+      pluginId: 'local.reader',
+      trustLevel: 'local',
+      permission: 'files.read',
+      reason: 'Read a note.',
+    });
+    expect(approval).toEqual({
+      permission: 'files.read',
+      grantedAt: 1_000,
+      expiresAt: 301_000,
+      requestId: 'sandbox-approval-1000',
+    });
 
-    expect(result.outputs).toEqual({ greeting: 'hello orbit', doubled: 42 });
-    expect(validate).toHaveBeenCalledOnce();
-    expect(execute).toHaveBeenCalledOnce();
+    const result = await manager.readFile({
+      pluginId: 'local.reader',
+      manifest,
+      path: 'orbit/note.txt',
+      grantedPermissions: ['files.read'],
+      approval,
+    });
+
+    expect(result.content).toBe('hello');
+    expect(readFile).toHaveBeenCalledOnce();
+    expect(JSON.parse(readFile.mock.calls[0][0])).toMatchObject({
+      pluginId: 'local.reader',
+      path: 'orbit/note.txt',
+      approval,
+    });
     expect(requestApproval).toHaveBeenCalledWith(
       expect.objectContaining({
-        pluginId: 'orbit.example.sandbox',
-        permissions: ['sandbox.execute'],
-        trustLevel: 'untrusted',
+        pluginId: 'local.reader',
+        permissions: ['files.read'],
+        trustLevel: 'local',
       })
     );
 
     const session = manager.getSnapshot().sessions[0];
-    expect(session.status).toBe('completed');
-    expect(session.outputs).toEqual(result.outputs);
-
-    const sent = JSON.parse(execute.mock.calls[0][0]) as {
-      manifest: typeof EXAMPLE_SANDBOX_MANIFEST;
-      input: typeof EXAMPLE_SANDBOX_INPUT;
-    };
-    expect(sent.manifest).toEqual(EXAMPLE_SANDBOX_MANIFEST);
-    expect(sent.input).toEqual(EXAMPLE_SANDBOX_INPUT);
+    expect(session.status).toBe('allowed');
+    expect(session.operation).toBe('file.read');
   });
 
-  it('never calls native execute when approval is denied', async () => {
+  it('never calls native readFile when approval is denied', async () => {
     const transport = makeTransport();
-    const execute = vi.spyOn(transport, 'execute');
-    const manager = new MobileSandboxManager({ transport, requestApproval: async () => false });
+    const readFile = vi.spyOn(transport, 'readFile');
+    const manager = new MobileSandboxManager({
+      transport,
+      requestApproval: async () => false,
+    });
 
     await expect(
-      manager.execute(EXAMPLE_SANDBOX_MANIFEST, EXAMPLE_SANDBOX_INPUT)
+      manager.requestOperationApproval({
+        pluginId: 'local.reader',
+        trustLevel: 'local',
+        permission: 'files.read',
+        reason: 'Read a note.',
+      })
     ).rejects.toBeInstanceOf(SandboxApprovalDeniedError);
-    expect(execute).not.toHaveBeenCalled();
+    expect(readFile).not.toHaveBeenCalled();
   });
 
-  it('stops when Rust validation rejects the manifest', async () => {
+  it('throws a structured error when Rust denies an operation', async () => {
     const transport = makeTransport({
-      async validateManifest() {
-        return response('2', {
-          ok: false,
-          errors: ['Instruction 0 uses disallowed op: fetch'],
-          policyVersion: 1,
+      async readFile() {
+        return response('8', {
+          decision: 'deny',
+          operation: 'file.read',
+          permission: 'files.read',
+          normalizedResource: null,
+          reason: 'A fresh user approval is required for files.read.',
+          reasonCode: 'approval_required',
+          policyVersion: 2,
+          limits: description.limits,
+          audit: { ...audit, decision: 'deny', reasonCode: 'approval_required' },
         });
       },
     });
-    const execute = vi.spyOn(transport, 'execute');
-    const requestApproval = vi.fn(async () => true);
-    const manager = new MobileSandboxManager({ transport, requestApproval });
+    const manager = new MobileSandboxManager({ transport });
 
-    await expect(manager.execute(EXAMPLE_SANDBOX_MANIFEST)).rejects.toBeInstanceOf(
-      SandboxBridgeError
-    );
-    expect(requestApproval).not.toHaveBeenCalled();
-    expect(execute).not.toHaveBeenCalled();
+    await expect(
+      manager.readFile({
+        pluginId: 'local.reader',
+        manifest,
+        path: 'orbit/note.txt',
+        grantedPermissions: ['files.read'],
+      })
+    ).rejects.toBeInstanceOf(SandboxOperationDeniedError);
   });
 
   it('records a failed session when the native bridge rejects the call', async () => {
     const transport = makeTransport({
-      async execute() {
+      async authorizeOperation() {
         return JSON.stringify({
-          id: '3',
+          id: '7',
           ok: false,
           result: null,
           error: { code: 'native_failure', message: 'Native core failed.' },
@@ -121,14 +268,20 @@ describe('MobileSandboxManager', () => {
     });
     const manager = new MobileSandboxManager({
       transport,
-      requestApproval: async () => true,
       now: () => 5000,
     });
 
-    await expect(manager.execute(EXAMPLE_SANDBOX_MANIFEST)).rejects.toThrow('Native core failed.');
+    await expect(
+      manager.authorizeOperation({
+        manifest,
+        operation: 'file.read',
+        grantedPermissions: ['files.read'],
+        resource: { path: 'orbit/note.txt' },
+      })
+    ).rejects.toBeInstanceOf(SandboxBridgeError);
     expect(manager.getSnapshot().sessions[0]).toMatchObject({
       status: 'failed',
-      errors: ['Native core failed.'],
+      reasonCode: 'bridge_failure',
       finishedAt: 5000,
     });
   });

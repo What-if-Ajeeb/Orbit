@@ -178,30 +178,27 @@ disabled, untrusted declarative records; legacy executable code is never loaded.
 ## Android mobile sandbox (Android only)
 
 The separate [`MOBILE_SANDBOX.md`](MOBILE_SANDBOX.md) subsystem adds an Android-only
-process boundary for **data-only deterministic programs**, not arbitrary plugin
-code. A local Expo Module binds an `android:isolatedProcess="true"` service. Rust in
-that service validates the manifest and interprets a fixed instruction set; it has
-no file, network, permission, JavaScript, or native-code APIs. Kotlin only performs
-binding, message correlation, and timeouts.
+security and isolation boundary. A local Expo Module binds an
+`android:isolatedProcess="true"` service. Rust in that service makes every policy
+decision; it has no file, network, permission, approval, JavaScript, native-code,
+or execution APIs. Kotlin in the app process binds the service, correlates
+messages, enforces timeouts, and performs the bounded file read only after Rust
+allows it. The isolated service itself has no file or network access.
 
-Every run requires an explicit `sandbox.execute` approval through
-`PluginApprovalHost` with `trustLevel: 'untrusted'`. A denial, timeout, missing
-native library, bind failure, or panic fails closed. The existing plugin platform
-still never loads downloaded JavaScript or legacy hook code.
+Sensitive operations require fresh approval evidence from `PluginApprovalHost`;
+saved grants are never enough. A denial, timeout, missing native library, bind
+failure, or panic fails closed. The existing plugin platform still never loads
+downloaded JavaScript or legacy hook code.
 
-A reviewed built-in tool may supply a data-only `program` on its
-`PluginToolDefinition`. The sandbox is then the tool body: the same registry,
-namespacing, schema checks, timeouts and permission assertions still apply, and
-only the execution of the tool body moves into the isolated process. The
-diagnostics plugin's `sandbox_echo` tool is the small reference implementation;
-`orbit.builtin.sandbox` exposes `sandbox_policy` and `sandbox_compute` with fixed,
-reviewed instruction sequences and rejects raw instructions. There is no
-`sandbox` manifest entry kind and no dynamic code loader. MCP tools keep their
+Security capabilities are exposed only through the existing Plugin Registry and
+the reviewed `orbit.builtin.sandbox` plugin. Its tools validate manifests,
+permissions, approvals, paths, URLs and request envelopes, and return structured
+audit records. Program-backed tool definitions are rejected. MCP tools keep their
 host-side network bridge because the Rust core has no network API.
 
-This is a process boundary plus a bounded interpreter. It is **not** a claim of
-complete isolation from the Android kernel, Binder, or a device compromise, and it
-must not be used to justify running arbitrary third-party native or JavaScript code.
+This is a policy plus process boundary. It is **not** a claim of complete
+isolation from the Android kernel, Binder, or a device compromise, and it must not
+be used to justify running arbitrary third-party native or JavaScript code.
 
 ## Native plugin boundaries
 
@@ -223,8 +220,9 @@ approval host:
   and Buddy reads do not create a starter buddy.
 - MCP is read-only introspection plus an approved re-sync of the existing mirror;
   it does not add a transport, tool gate or synthetic plugin store.
-- Sandbox is Android-only and data-only. Its manifest does not support iOS/web,
-  and unavailable security checks fail closed.
+- Sandbox is Android-only and security-only. Its manifest does not support
+  iOS/web, its capabilities are read-only policy checks and mediated app-private
+  file reads, and unavailable security checks fail closed.
 
 ## Plugin Builder
 
@@ -236,12 +234,12 @@ registry and approval host.
 - Drafts are normalized on every load and save. Unknown fields, unsupported
   enums, reserved ids and secret values are dropped or rejected before the data
   reaches any runtime seam.
-- Builder actions compile only to fixed sandbox presets. The generated tool
-  definitions never contain `execute`, host callbacks or code strings; a
-  defensive check in `registerBuilderTools()` refuses any definition that
-  unexpectedly contains host code.
-- Install, enable and playground test each require explicit approval. No grant
-  is auto-approved, and the playground approval is never persisted as a grant.
+- Builder actions remain inert MCP tool metadata. The installed manifest never
+  contains `execute`, host callbacks, code strings, programs, instructions or
+  presets; the registry refuses any program-backed tool definition.
+- Install and enable each require explicit approval. No grant is auto-approved.
+  Legacy drafts and manifests containing execution-shaped fields or the retired
+  `sandbox.execute` permission are normalized and disabled until reviewed.
 - Secret environment entries are references only. Values are written with
   `expo-secure-store` (`WHEN_UNLOCKED`) and are never stored in drafts, manifests
   or logs. Error strings and execution logs pass through the existing secret
@@ -256,7 +254,7 @@ registry and approval host.
 
 - Plugin containment is application-level for declarative plugins, not a sandbox
   around arbitrary native or JavaScript code. The Android mobile sandbox is a
-  bounded, data-only execution path for tools that explicitly declare a program.
+  policy and mediation boundary; it never executes guest code.
 - Triple-dot identifiers are namespaces, not verified publisher identities.
 - `publisher.verified` is advisory metadata. Trust levels do not grant
   permissions, but they do gate which entry-point kinds and plugin ids may be
