@@ -5,7 +5,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SidebarContent } from '@/components/AppSidebar';
 import { useTabletLayout } from '@/context/tablet-layout';
 import { useStyles, type AppTheme } from '@/context/theme';
-import { spacing } from '@/theme';
+import { layout as themeLayout, spacing } from '@/theme';
+
+const COLLAPSED_RAIL_WIDTH = themeLayout.touchTarget + 8 + spacing.sm * 2;
 
 /** Always-visible navigation rail/panel for landscape tablets. */
 export function TabletSidebar() {
@@ -15,10 +17,12 @@ export function TabletSidebar() {
 
   return (
     <View
+      testID="tablet-sidebar"
       style={[
         styles.sidebar,
+        sidebarCollapsed && styles.sidebarRail,
         {
-          width: layout.sidebarWidth,
+          width: sidebarCollapsed ? COLLAPSED_RAIL_WIDTH : layout.sidebarWidth,
           paddingTop: insets.top,
           paddingBottom: Math.max(insets.bottom, spacing.md),
         },
@@ -41,5 +45,8 @@ const makeStyles = ({ colors }: AppTheme) =>
       borderRightWidth: StyleSheet.hairlineWidth,
       borderRightColor: colors.border,
       paddingHorizontal: spacing.md,
+    },
+    sidebarRail: {
+      paddingHorizontal: spacing.sm,
     },
   });
