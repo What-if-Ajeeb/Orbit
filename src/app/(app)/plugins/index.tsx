@@ -272,6 +272,31 @@ export default function PluginsScreen() {
           <Stat label="Updates" value={updates} />
         </GlassView>
 
+        <GlassView style={styles.builderCard}>
+          <View style={styles.builderIconWrap}>
+            <Ionicons name="hammer-outline" size={22} color={colors.accent} />
+          </View>
+          <View style={styles.builderText}>
+            <Text style={styles.builderTitle}>Build your own plugin</Text>
+            <Text style={styles.builderDescription}>
+              Create a safe, declarative plugin with guided steps and test it in the sandbox.
+            </Text>
+          </View>
+          <View style={styles.builderActions}>
+            <Button
+              label="My Plugins"
+              variant="secondary"
+              onPress={() => router.navigate('/plugins/my-plugins' as Href)}
+              style={styles.builderButton}
+            />
+            <Button
+              label="Create Plugin"
+              onPress={() => router.push('/plugins/builder' as Href)}
+              style={styles.builderButton}
+            />
+          </View>
+        </GlassView>
+
         {!snapshot.ready && !bootError ? (
           <View style={styles.banner}>
             <ActivityIndicator size="small" color={colors.accent} />
@@ -522,6 +547,45 @@ const makeStyles = ({ colors }: AppTheme) =>
       color: colors.textMuted,
       ...typography.caption,
       fontWeight: '600',
+    },
+    builderCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      borderRadius: radius.lg,
+      padding: spacing.sm + 2,
+      flexWrap: 'wrap',
+    },
+    builderIconWrap: {
+      width: 42,
+      height: 42,
+      borderRadius: 12,
+      backgroundColor: colors.accentSoft,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    builderText: {
+      flex: 1,
+      minWidth: 160,
+      gap: 2,
+    },
+    builderTitle: {
+      color: colors.text,
+      ...typography.body,
+      fontWeight: '600',
+    },
+    builderDescription: {
+      color: colors.textMuted,
+      ...typography.caption,
+    },
+    builderActions: {
+      flexDirection: 'row',
+      gap: spacing.sm,
+      flexWrap: 'wrap',
+    },
+    builderButton: {
+      minHeight: layout.touchTarget - 4,
+      paddingHorizontal: spacing.md,
     },
     banner: {
       flexDirection: 'row',

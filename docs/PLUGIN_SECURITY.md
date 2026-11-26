@@ -200,6 +200,32 @@ This is a process boundary plus a bounded interpreter. It is **not** a claim of
 complete isolation from the Android kernel, Binder, or a device compromise, and it
 must not be used to justify running arbitrary third-party native or JavaScript code.
 
+## Plugin Builder
+
+The in-app builder does not introduce a second runtime, registry, permission
+manager, event bus or persistence layer. It compiles editor drafts into the same
+version-1 manifests validated by `validateManifest()` and drives the canonical
+registry and approval host.
+
+- Drafts are normalized on every load and save. Unknown fields, unsupported
+  enums, reserved ids and secret values are dropped or rejected before the data
+  reaches any runtime seam.
+- Builder actions compile only to fixed sandbox presets. The generated tool
+  definitions never contain `execute`, host callbacks or code strings; a
+  defensive check in `registerBuilderTools()` refuses any definition that
+  unexpectedly contains host code.
+- Install, enable and playground test each require explicit approval. No grant
+  is auto-approved, and the playground approval is never persisted as a grant.
+- Secret environment entries are references only. Values are written with
+  `expo-secure-store` (`WHEN_UNLOCKED`) and are never stored in drafts, manifests
+  or logs. Error strings and execution logs pass through the existing secret
+  redaction helper.
+- Marketplace preparation is local only: a validated draft can be marked ready
+  for review and exported, but the builder never publishes, submits or promotes
+  a plugin.
+- The five core Cordis plugins remain managed by the harness and cannot be
+  disabled, uninstalled or replaced through builder flows.
+
 ## Current limitations
 
 - Plugin containment is application-level for declarative plugins, not a sandbox

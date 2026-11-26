@@ -17,6 +17,7 @@ import {
   registerBuiltinImplementations,
 } from './builtins';
 import { registerBundledCatalog } from './catalog';
+import { registerBuilderTools, restoreBuilderTools } from './builder-service';
 import { PluginEventBus } from './events';
 import { syncMcpPluginRecords, mcpPluginAllowsTool, type McpPluginSyncResult } from './mcp-bridge';
 import { PluginPermissionManager } from './permissions';
@@ -121,6 +122,7 @@ export class PluginPlatformRuntime {
   private readonly listeners = new Set<() => void>();
   private readonly db: SQLiteDatabase;
   private readonly logger: (message: string, detail?: unknown) => void;
+  private builderToolsSyncing = false;
 
   constructor(options: PluginPlatformOptions) {
     this.db = options.db;
@@ -176,6 +178,7 @@ export class PluginPlatformRuntime {
       this.snapshot = null;
       this.snapshotVersion += 1;
       this.emitChange();
+      this.scheduleBuilderToolsSync();
     });
 
     // Install the gate before bootstrap finishes. Until MCP records are synced,
@@ -193,6 +196,24 @@ export class PluginPlatformRuntime {
         this.logger('Plugin platform listener failed.', error);
       }
     }
+  }
+
+  /**
+   * Reattaches local builder tools whenever a builder plugin starts, including
+   * when it is enabled from the regular Plugin Manager path. Registration is
+   * idempotent and overlapping syncs are skipped.
+   */
+  private scheduleBuilderToolsSync(): void {
+    if (!this.ready || this.builderToolsSyncing) return;
+
+    this.builderToolsSyncing = true;
+    void registerBuilderTools(this)
+      .catch((error: unknown) => {
+        this.logger('Could not sync builder tools.', error);
+      })
+      .finally(() => {
+        this.builderToolsSyncing = false;
+      });
   }
 
   subscribe = (listener: () => void): (() => void) => {
@@ -256,6 +277,7 @@ export class PluginPlatformRuntime {
       await this.syncMcpServers(servers);
 
       await this.resumePlugins(resumable);
+      await restoreBuilderTools(this);
 
       this.ready = true;
       this.bootstrapMs = Date.now() - started;

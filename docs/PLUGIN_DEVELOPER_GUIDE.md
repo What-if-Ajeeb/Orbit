@@ -80,6 +80,43 @@ auto-approve permissions and has no "Approve all" control. Updates require
 approval for added permissions and roll back on failure. Revoking a permission
 stops an active plugin.
 
+## Plugin Builder
+
+**ORBIT → Plugins → Create Plugin** opens an in-app builder under the Plugins
+screen; it is not a separate top-level destination. The guided flow has five
+steps: **Basic Info**, **Configuration**, **Actions & Tools**, **Testing** and
+**Save & Install**. **My Plugins** lists drafts and locally installed plugins.
+
+Builder drafts are editor documents, not a second plugin format. They are
+normalized on every load/save through `PluginPersistence.getMeta()`/`setMeta()`
+and compiled to the same version-1 `PluginManifest` used by every other plugin.
+Drafts can be saved, edited, duplicated, deleted, exported and marked locally as
+ready for review. There is no automatic publishing.
+
+Builder-authored plugins are strictly declarative and data-only:
+
+- every action compiles to a fixed `SandboxProgramManifest` preset (`echo`,
+  `sum`, `concat` or `constant`) interpreted by the isolated Android sandbox;
+- no `PluginImplementation`, `PluginToolDefinition.execute`, `eval`,
+  `new Function`, dynamic import, hook or host JavaScript is ever generated;
+- editor-only fields (tags, presets, validation rules, error handling,
+  environment references) never appear in the installed manifest and are never
+  executed;
+- environment entries are references only — secret values live in
+  `expo-secure-store`, never in the draft, manifest or logs.
+
+Installation asks for explicit approval and never auto-grants permissions.
+Enabling uses the same approval host. Each Testing Playground run asks for fresh
+approval and executes only through `createSandboxToolExecutor()`; on non-Android
+platforms the sandbox fails closed. To install updated builder changes, increase
+the draft version first. Revoke a permission or uninstall from **My Plugins** or
+the plugin detail screen; drafts are retained after uninstall.
+
+Implementation references: `src/lib/plugins/builder.ts`,
+`src/lib/plugins/builder-store.ts`, `src/lib/plugins/builder-service.ts`,
+`src/lib/plugins/permissions.ts`, `src/lib/sandbox/` and
+`src/app/(app)/plugins/{builder,my-plugins}.tsx`.
+
 ## Tools from a plugin
 
 For a reviewed built-in implementation, register tools through the narrow SDK
