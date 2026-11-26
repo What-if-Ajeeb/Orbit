@@ -19,6 +19,7 @@ import { ScreenHeader } from '@/components/ScreenHeader';
 import { SettingsSection } from '@/components/SettingsSection';
 import { SidebarButton } from '@/components/SidebarButton';
 import { StatusPill, type StatusTone } from '@/components/StatusPill';
+import { PinPluginButton } from '@/components/plugins/PinPluginButton';
 import { usePluginPlatform, usePluginPlatformError, usePluginSnapshot } from '@/context/plugins';
 import { useSidebar } from '@/context/sidebar';
 import { useAppTheme, useStyles, type AppTheme } from '@/context/theme';
@@ -425,7 +426,15 @@ export default function PluginsScreen() {
                       </View>
                     </Pressable>
 
-                    <View style={styles.actionColumn}>{primaryAction(summary)}</View>
+                    <View style={styles.actionColumn}>
+                      {!summary.legacy && INSTALLED_STATUSES.has(summary.status) ? (
+                        <PinPluginButton
+                          pluginId={pluginId}
+                          label={summary.manifest.name}
+                        />
+                      ) : null}
+                      {primaryAction(summary)}
+                    </View>
                   </GlassView>
                 );
               })}
@@ -643,6 +652,7 @@ const makeStyles = ({ colors }: AppTheme) =>
     actionColumn: {
       minWidth: 88,
       alignItems: 'flex-end',
+      gap: spacing.xs,
     },
     actionButton: {
       minHeight: layout.touchTarget - 4,

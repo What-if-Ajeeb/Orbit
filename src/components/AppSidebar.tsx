@@ -14,10 +14,13 @@ import {
   Text,
   useWindowDimensions,
   View,
+  type StyleProp,
+  type ViewStyle,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Brand } from '@/components/Brand';
+import { PinnedPluginTree } from '@/components/plugins/PinnedPluginTree';
 import { useSession } from '@/context/auth';
 import { usePluginSnapshot } from '@/context/plugins';
 import { useSidebar } from '@/context/sidebar';
@@ -30,6 +33,18 @@ type NavItem = {
   href: Href;
   icon: keyof typeof Ionicons.glyphMap;
   activeIcon: keyof typeof Ionicons.glyphMap;
+};
+
+type SidebarVariant = 'overlay' | 'persistent';
+
+type SidebarContentProps = {
+  variant?: SidebarVariant;
+  collapsed?: boolean;
+  active?: boolean;
+  onCollapse?: () => void;
+  onNavigate: (href: Href) => void;
+  onAccountSwitched?: () => void;
+  style?: StyleProp<ViewStyle>;
 };
 
 /** The six destinations from the ORBIT sidebar reference. */
@@ -57,7 +72,7 @@ export const PRIMARY_NAV_ITEMS: NavItem[] = [
   { label: 'Settings', href: '/settings', icon: 'settings-outline', activeIcon: 'settings' },
 ];
 
-const RECENT_LIMIT = 8;
+const RECENT_LIMIT = 6;
 
 export function getInitials(name: string): string {
   return name
@@ -97,23 +112,337 @@ function navIcon(name: string): keyof typeof Ionicons.glyphMap {
     : 'extension-puzzle-outline';
 }
 
-export function AppSidebar() {
+/**
+ * Shared sidebar contents. The overlay drawer and the persistent tablet sidebar
+ * render the same destinations, pinned plugins, recents and account footer.
+ */
+export function SidebarContent({
+  variant = 'overlay',
+  collapsed = false,
+  active = true,
+  onCollapse,
+  onNavigate,
+  onAccountSwitched,
+  style,
+}: SidebarContentProps) {
   const { colors } = useAppTheme();
   const styles = useStyles(makeStyles);
-  const { isOpen, open, close } = useSidebar();
   const { user, accounts, switchAccount } = useSession();
   const db = useSQLiteContext();
+  const pathname = usePathname();
+  const snapshot = usePluginSnapshot();
+  const [recents, setRecents] = useState<Conversation[]>([]);
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const userId = user?.id;
+  const navigation = snapshot.navigation ?? [];
+
+  useEffect(() => {
+    if (!active || userId === undefined) {
+      return;
+    }
+
+    let mounted = true;
+
+    void (async () => {
+      try {
+        const list = await getChatStore(db).listConversations(userId);
+
+        if (mounted) {
+          setRecents(list.filter((item) => item.messageCount > 0).slice(0, RECENT_LIMIT));
+        }
+      } catch (loadError) {
+        console.warn('Could not load recent chats.', loadError);
+      }
+    })();
+
+    return () => {
+      mounted = false;
+    };
+  }, [active, db, userId]);
+
+  if (!user) {
+    return null;
+  }
+
+  function navigate(href: Href) {
+    onNavigate(href);
+  }
+
+  async function selectAccount(nextUserId: number) {
+    setAccountMenuOpen(false);
+
+    if (nextUserId === userId) {
+      onAccountSwitched?.();
+      return;
+    }
+
+    try {
+      await switchAccount(nextUserId);
+      onAccountSwitched?.();
+      router.replace('/');
+    } catch (switchError) {
+      const message =
+        switchError instanceof Error ? switchError.message : 'The account could not be switched.';
+      Alert.alert('Account switch failed', message);
+    }
+  }
+
+  function renderNavRow(item: NavItem) {
+    const activeItem = isNavActive(pathname, item.href);
+
+    return (
+      <Pressable
+        key={item.label}
+        accessibilityRole="button"
+        accessibilityLabel={collapsed ? item.label : undefined}
+        accessibilityState={{ selected: activeItem }}
+        onPress={() => navigate(item.href)}
+        style={({ pressed }) => [
+          collapsed ? styles.navItemRail : styles.navItem,
+          activeItem && styles.navItemActive,
+          pressed && styles.pressed,
+        ]}
+      >
+        <Ionicons
+          name={activeItem ? item.activeIcon : item.icon}
+          size={22}
+          color={activeItem ? colors.accent : colors.textMuted}
+        />
+        {!collapsed ? (
+          <Text
+            numberOfLines={1}
+            style={[styles.navLabel, activeItem && styles.navLabelActive]}
+          >
+            {item.label}
+          </Text>
+        ) : null}
+        {activeItem && !collapsed ? <View style={styles.activeMark} /> : null}
+      </Pressable>
+    );
+  }
+
+  const visibleAccounts = accounts.length > 0 ? accounts : [user];
+  const canSwitchAccount = visibleAccounts.length > 1;
+
+  return (
+    <View style={[styles.content, collapsed && styles.contentRail, style]}>
+      <View style={[styles.headerRow, collapsed && styles.headerRowRail]}>
+        <Brand size={30} />
+        {!collapsed ? (
+          <Text accessibilityRole="header" style={styles.wordmark}>
+            ORBIT
+          </Text>
+        ) : null}
+        {onCollapse ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            hitSlop={8}
+            onPress={onCollapse}
+            style={({ pressed }) => [styles.collapseButton, pressed && styles.pressed]}
+          >
+            <Ionicons
+              name={collapsed ? 'chevron-forward' : 'chevron-back'}
+              size={20}
+              color={colors.textMuted}
+            />
+          </Pressable>
+        ) : null}
+      </View>
+
+      <ScrollView
+        style={styles.navScroll}
+        contentContainerStyle={styles.navContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {!collapsed ? <Text style={styles.primaryLabel}>WORKSPACE</Text> : null}
+        {PRIMARY_NAV_ITEMS.map(renderNavRow)}
+
+        <View style={styles.divider} />
+
+        <PinnedPluginTree collapsed={collapsed} onNavigate={navigate} />
+
+        {!collapsed ? (
+          <>
+            <View style={styles.divider} />
+
+            <View style={styles.sectionBlock}>
+              <Text style={styles.sectionLabel}>Recents</Text>
+              {recents.length === 0 ? (
+                <Text style={styles.recentEmpty}>Your conversations will show up here.</Text>
+              ) : (
+                recents.map((chat) => (
+                  <Pressable
+                    key={chat.id}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Open chat ${chat.title}`}
+                    onPress={() => navigate(chatLink({ c: chat.id }))}
+                    style={({ pressed }) => [styles.recentRow, pressed && styles.pressed]}
+                  >
+                    <Ionicons name="chatbubble-outline" size={18} color={colors.textMuted} />
+                    <Text numberOfLines={1} style={styles.recentTitle}>
+                      {chat.title}
+                    </Text>
+                  </Pressable>
+                ))
+              )}
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Open chat history"
+                onPress={() => navigate('/conversations' as Href)}
+                style={({ pressed }) => [styles.recentRow, pressed && styles.pressed]}
+              >
+                <Ionicons name="library-outline" size={18} color={colors.textMuted} />
+                <Text style={styles.recentTitle}>All conversations</Text>
+              </Pressable>
+            </View>
+
+            {variant === 'overlay' && navigation.length > 0 ? (
+              <>
+                <View style={styles.divider} />
+                <View style={styles.sectionBlock}>
+                  <Text style={styles.sectionLabel}>Plugin apps</Text>
+                  {navigation.map((entry) => {
+                    const activeItem = pathname.startsWith(`/plugin/${entry.pluginId}`);
+
+                    return (
+                      <Pressable
+                        key={`${entry.pluginId}:${entry.id}`}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: activeItem }}
+                        onPress={() => navigate(entry.path as Href)}
+                        style={({ pressed }) => [
+                          styles.navItemCompact,
+                          activeItem && styles.navItemActive,
+                          pressed && styles.pressed,
+                        ]}
+                      >
+                        <Ionicons
+                          name={navIcon(entry.icon)}
+                          size={20}
+                          color={activeItem ? colors.accent : colors.textMuted}
+                        />
+                        <Text
+                          numberOfLines={1}
+                          style={[
+                            styles.navLabel,
+                            styles.navLabelCompact,
+                            activeItem && styles.navLabelActive,
+                          ]}
+                        >
+                          {entry.label}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </>
+            ) : null}
+
+            {accountMenuOpen ? (
+              <View style={styles.accountMenu}>
+                <Text style={styles.sectionLabel}>Accounts on this device</Text>
+                {visibleAccounts.map((account) => {
+                  const activeAccount = account.id === userId;
+
+                  return (
+                    <Pressable
+                      key={account.id}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: activeAccount }}
+                      onPress={() => void selectAccount(account.id)}
+                      style={({ pressed }) => [styles.accountRow, pressed && styles.pressed]}
+                    >
+                      <View style={[styles.smallAvatar, activeAccount && styles.smallAvatarActive]}>
+                        <Text style={styles.smallAvatarText}>
+                          {getInitials(account.name) || 'O'}
+                        </Text>
+                      </View>
+                      <View style={styles.accountText}>
+                        <Text numberOfLines={1} style={styles.accountName}>
+                          {account.name}
+                        </Text>
+                        <Text numberOfLines={1} style={styles.accountEmail}>
+                          {account.email}
+                        </Text>
+                      </View>
+                      {activeAccount ? (
+                        <Ionicons name="checkmark" size={18} color={colors.accent} />
+                      ) : null}
+                    </Pressable>
+                  );
+                })}
+              </View>
+            ) : null}
+          </>
+        ) : null}
+      </ScrollView>
+
+      <View style={[styles.bottomBar, collapsed && styles.bottomBarRail]}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={canSwitchAccount ? 'Switch account' : 'Account settings'}
+          accessibilityState={canSwitchAccount ? { expanded: accountMenuOpen } : undefined}
+          onPress={() => {
+            if (!canSwitchAccount) {
+              onNavigate('/settings/account' as Href);
+              return;
+            }
+
+            setAccountMenuOpen((value) => !value);
+          }}
+          style={({ pressed }) => [
+            styles.bottomUser,
+            collapsed && styles.bottomUserRail,
+            accountMenuOpen && styles.bottomUserActive,
+            pressed && styles.pressed,
+          ]}
+        >
+          <View style={styles.avatar}>
+            <Text style={styles.avatarText}>{getInitials(user.name) || 'O'}</Text>
+          </View>
+          {!collapsed ? (
+            <View style={styles.bottomUserText}>
+              <Text numberOfLines={1} style={styles.bottomUserName}>
+                {user.name}
+              </Text>
+              <Text numberOfLines={1} style={styles.bottomUserHint}>
+                {canSwitchAccount ? 'Switch account' : 'Account settings'}
+              </Text>
+            </View>
+          ) : null}
+        </Pressable>
+
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Start a new chat"
+          onPress={() => navigate(chatLink({ n: 1 }))}
+          style={({ pressed }) => [
+            styles.newChat,
+            collapsed && styles.newChatRail,
+            pressed && styles.pressed,
+          ]}
+        >
+          <Ionicons name="add" size={20} color={colors.onInverse} />
+          {!collapsed ? <Text style={styles.newChatText}>New chat</Text> : null}
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+/** Phone and tablet-portrait overlay drawer. */
+export function AppSidebar() {
+  const styles = useStyles(makeStyles);
+  const { isOpen, open, close } = useSidebar();
+  const { user } = useSession();
   const insets = useSafeAreaInsets();
   const pathname = usePathname();
   const { width } = useWindowDimensions();
-  const { navigation } = usePluginSnapshot();
   const [progress] = useState(() => new Animated.Value(0));
   const [dragX] = useState(() => new Animated.Value(0));
-  const [recents, setRecents] = useState<Conversation[]>([]);
-  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
 
   const panelWidth = Math.min(width * 0.86, 340);
-  const userId = user?.id;
 
   useEffect(() => {
     Animated.timing(progress, {
@@ -123,30 +452,6 @@ export function AppSidebar() {
       useNativeDriver: true,
     }).start();
   }, [isOpen, progress]);
-
-  useEffect(() => {
-    if (!isOpen || userId === undefined) {
-      return;
-    }
-
-    let active = true;
-
-    void (async () => {
-      try {
-        const list = await getChatStore(db).listConversations(userId);
-
-        if (active) {
-          setRecents(list.filter((item) => item.messageCount > 0).slice(0, RECENT_LIMIT));
-        }
-      } catch (loadError) {
-        console.warn('Could not load recent chats.', loadError);
-      }
-    })();
-
-    return () => {
-      active = false;
-    };
-  }, [db, isOpen, userId]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -228,68 +533,16 @@ export function AppSidebar() {
     return null;
   }
 
-  function navigate(href: Href) {
-    close();
-    router.navigate(href);
-  }
-
-  async function selectAccount(nextUserId: number) {
-    setAccountMenuOpen(false);
-
-    if (nextUserId === userId) {
-      close();
-      return;
-    }
-
-    try {
-      await switchAccount(nextUserId);
-      close();
-      router.replace('/');
-    } catch (switchError) {
-      const message =
-        switchError instanceof Error ? switchError.message : 'The account could not be switched.';
-      Alert.alert('Account switch failed', message);
-    }
-  }
-
   const backdropOpacity = progress.interpolate({ inputRange: [0, 1], outputRange: [0, 1] });
   const translateX = progress.interpolate({
     inputRange: [0, 1],
     outputRange: [-panelWidth - 24, 0],
   });
   const panelTranslateX = Animated.add(translateX, dragX);
-  const visibleAccounts = accounts.length > 0 ? accounts : [user];
-  const canSwitchAccount = visibleAccounts.length > 1;
 
-  function renderNavRow(item: NavItem) {
-    const active = isNavActive(pathname, item.href);
-
-    return (
-      <Pressable
-        key={item.label}
-        accessibilityRole="button"
-        accessibilityState={{ selected: active }}
-        onPress={() => navigate(item.href)}
-        style={({ pressed }) => [
-          styles.navItem,
-          active && styles.navItemActive,
-          pressed && styles.pressed,
-        ]}
-      >
-        <Ionicons
-          name={active ? item.activeIcon : item.icon}
-          size={22}
-          color={active ? colors.accent : colors.textMuted}
-        />
-        <Text
-          numberOfLines={1}
-          style={[styles.navLabel, active && styles.navLabelActive]}
-        >
-          {item.label}
-        </Text>
-        {active ? <View style={styles.activeMark} /> : null}
-      </Pressable>
-    );
+  function navigate(href: Href) {
+    close();
+    router.navigate(href);
   }
 
   return (
@@ -335,173 +588,12 @@ export function AppSidebar() {
         ]}
         {...closeResponder.panHandlers}
       >
-        <View style={styles.headerRow}>
-          <Brand size={30} />
-          <Text accessibilityRole="header" style={styles.wordmark}>
-            ORBIT
-          </Text>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Collapse sidebar"
-            hitSlop={8}
-            onPress={close}
-            style={({ pressed }) => [styles.collapseButton, pressed && styles.pressed]}
-          >
-            <Ionicons name="chevron-back" size={20} color={colors.textMuted} />
-          </Pressable>
-        </View>
-
-        <ScrollView
-          style={styles.navScroll}
-          contentContainerStyle={styles.navContent}
-          showsVerticalScrollIndicator={false}
-        >
-          <Text style={styles.primaryLabel}>WORKSPACE</Text>
-          {PRIMARY_NAV_ITEMS.map((item) => renderNavRow(item))}
-
-          {navigation.length > 0 ? (
-            <>
-              <View style={styles.divider} />
-              <View style={styles.sectionBlock}>
-                <Text style={styles.sectionLabel}>Plugin apps</Text>
-                {navigation.map((entry) => {
-                  const active = pathname.startsWith(`/plugin/${entry.pluginId}`);
-
-                  return (
-                    <Pressable
-                      key={`${entry.pluginId}:${entry.id}`}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected: active }}
-                      onPress={() => navigate(entry.path as Href)}
-                      style={({ pressed }) => [
-                        styles.navItem,
-                        styles.navItemCompact,
-                        active && styles.navItemActive,
-                        pressed && styles.pressed,
-                      ]}
-                    >
-                      <Ionicons
-                        name={navIcon(entry.icon)}
-                        size={20}
-                        color={active ? colors.accent : colors.textMuted}
-                      />
-                      <Text
-                        numberOfLines={1}
-                        style={[
-                          styles.navLabel,
-                          styles.navLabelCompact,
-                          active && styles.navLabelActive,
-                        ]}
-                      >
-                        {entry.label}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-            </>
-          ) : null}
-
-          <View style={styles.divider} />
-
-          <View style={styles.sectionBlock}>
-            <Text style={styles.sectionLabel}>Recents</Text>
-            {recents.length === 0 ? (
-              <Text style={styles.recentEmpty}>Your conversations will show up here.</Text>
-            ) : (
-              recents.map((chat) => (
-                <Pressable
-                  key={chat.id}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Open chat ${chat.title}`}
-                  onPress={() => navigate(chatLink({ c: chat.id }))}
-                  style={({ pressed }) => [styles.recentRow, pressed && styles.pressed]}
-                >
-                  <Ionicons name="chatbubble-outline" size={18} color={colors.textMuted} />
-                  <Text numberOfLines={1} style={styles.recentTitle}>
-                    {chat.title}
-                  </Text>
-                </Pressable>
-              ))
-            )}
-          </View>
-
-          {accountMenuOpen ? (
-            <View style={styles.accountMenu}>
-              <Text style={styles.sectionLabel}>Accounts on this device</Text>
-              {visibleAccounts.map((account) => {
-                const active = account.id === userId;
-
-                return (
-                  <Pressable
-                    key={account.id}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: active }}
-                    onPress={() => void selectAccount(account.id)}
-                    style={({ pressed }) => [styles.accountRow, pressed && styles.pressed]}
-                  >
-                    <View style={[styles.smallAvatar, active && styles.smallAvatarActive]}>
-                      <Text style={styles.smallAvatarText}>{getInitials(account.name) || 'O'}</Text>
-                    </View>
-                    <View style={styles.accountText}>
-                      <Text numberOfLines={1} style={styles.accountName}>
-                        {account.name}
-                      </Text>
-                      <Text numberOfLines={1} style={styles.accountEmail}>
-                        {account.email}
-                      </Text>
-                    </View>
-                    {active ? <Ionicons name="checkmark" size={18} color={colors.accent} /> : null}
-                  </Pressable>
-                );
-              })}
-            </View>
-          ) : null}
-        </ScrollView>
-
-        <View style={styles.bottomBar}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={canSwitchAccount ? 'Switch account' : 'Account settings'}
-            accessibilityState={canSwitchAccount ? { expanded: accountMenuOpen } : undefined}
-            onPress={() => {
-              if (!canSwitchAccount) {
-                close();
-                router.navigate('/settings/account' as Href);
-                return;
-              }
-
-              setAccountMenuOpen((value) => !value);
-            }}
-            style={({ pressed }) => [
-              styles.bottomUser,
-              accountMenuOpen && styles.bottomUserActive,
-              pressed && styles.pressed,
-            ]}
-          >
-            <View style={styles.avatar}>
-              <Text style={styles.avatarText}>{getInitials(user.name) || 'O'}</Text>
-            </View>
-            <View style={styles.bottomUserText}>
-              <Text numberOfLines={1} style={styles.bottomUserName}>
-                {user.name}
-              </Text>
-              <Text numberOfLines={1} style={styles.bottomUserHint}>
-                {canSwitchAccount ? 'Switch account' : 'Account settings'}
-              </Text>
-            </View>
-          </Pressable>
-
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Start a new chat"
-            onPress={() => navigate(chatLink({ n: 1 }))}
-            style={({ pressed }) => [styles.newChat, pressed && styles.pressed]}
-          >
-            <Ionicons name="add" size={20} color={colors.onInverse} />
-            <Text style={styles.newChatText}>New chat</Text>
-          </Pressable>
-        </View>
+        <SidebarContent
+          active={isOpen}
+          onCollapse={close}
+          onNavigate={navigate}
+          onAccountSwitched={close}
+        />
       </Animated.View>
     </Animated.View>
   );
@@ -554,12 +646,23 @@ const makeStyles = ({ colors }: AppTheme) =>
       borderRightColor: colors.border,
       paddingHorizontal: spacing.md,
     },
+    content: {
+      flex: 1,
+    },
+    contentRail: {
+      alignItems: 'center',
+    },
     headerRow: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: spacing.sm,
       paddingHorizontal: spacing.xs,
       paddingBottom: spacing.md,
+    },
+    headerRowRail: {
+      flexDirection: 'column',
+      gap: spacing.sm,
+      paddingHorizontal: 0,
     },
     wordmark: {
       flex: 1,
@@ -604,6 +707,13 @@ const makeStyles = ({ colors }: AppTheme) =>
     navItemCompact: {
       minHeight: layout.touchTarget,
       paddingLeft: spacing.lg,
+    },
+    navItemRail: {
+      width: layout.touchTarget + 8,
+      minHeight: layout.touchTarget + 4,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderRadius: radius.md,
     },
     navItemActive: {
       backgroundColor: colors.accentSoft,
@@ -710,6 +820,9 @@ const makeStyles = ({ colors }: AppTheme) =>
       borderTopWidth: StyleSheet.hairlineWidth,
       borderTopColor: colors.border,
     },
+    bottomBarRail: {
+      alignItems: 'center',
+    },
     bottomUser: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -717,6 +830,9 @@ const makeStyles = ({ colors }: AppTheme) =>
       minHeight: layout.touchTarget + 8,
       paddingHorizontal: spacing.sm,
       borderRadius: radius.md,
+    },
+    bottomUserRail: {
+      paddingHorizontal: 0,
     },
     bottomUserActive: {
       backgroundColor: colors.accentSoft,
@@ -755,6 +871,10 @@ const makeStyles = ({ colors }: AppTheme) =>
       minHeight: layout.touchTarget + 4,
       borderRadius: radius.pill,
       backgroundColor: colors.inverse,
+    },
+    newChatRail: {
+      width: layout.touchTarget,
+      paddingHorizontal: 0,
     },
     newChatText: {
       color: colors.onInverse,

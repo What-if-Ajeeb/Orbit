@@ -5,11 +5,15 @@ import { useSQLiteContext } from 'expo-sqlite';
 
 import { AppSidebar } from '@/components/AppSidebar';
 import { BottomNavigation } from '@/components/BottomNavigation';
+import { OrientationController } from '@/components/OrientationController';
 import { PermissionHost } from '@/components/permissions/PermissionHost';
 import { PluginApprovalHost } from '@/components/plugins/PluginApprovalHost';
+import { TabletShell } from '@/components/TabletShell';
 import { BottomNavigationProvider } from '@/context/bottom-navigation';
+import { PinnedPluginsProvider } from '@/context/pinned-plugins';
 import { SidebarProvider } from '@/context/sidebar';
 import { PluginPlatformProvider } from '@/context/plugins';
+import { TabletLayoutProvider, useTabletLayout } from '@/context/tablet-layout';
 import { useAppTheme, useStyles, type AppTheme } from '@/context/theme';
 import { setOrbitDb } from '@/lib/harness/plugins/orbit-session';
 import { layout, spacing } from '@/theme';
@@ -77,10 +81,11 @@ function SafetyLifecycle() {
   return null;
 }
 
-export default function AppLayout() {
+function AppLayoutContent() {
   const { colors } = useAppTheme();
   const styles = useStyles(makeStyles);
   const db = useSQLiteContext();
+  const { layout: responsive } = useTabletLayout();
 
   useEffect(() => {
     setOrbitDb(db);
@@ -88,59 +93,76 @@ export default function AppLayout() {
   }, [db]);
 
   return (
+    <View style={styles.root}>
+      <OrientationController />
+      <NotificationRedirect />
+      <SafetyLifecycle />
+
+      <TabletShell>
+        <Stack
+          screenOptions={{
+            headerShown: false,
+            contentStyle: {
+              backgroundColor: colors.background,
+              paddingBottom: responsive.showBottomNav
+                ? layout.touchTarget + spacing.md
+                : 0,
+            },
+            animation: 'slide_from_right',
+          }}
+        >
+          <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="projects" />
+          <Stack.Screen name="artifact" />
+          <Stack.Screen name="agents/index" />
+          <Stack.Screen name="agents/[agentId]/index" />
+          <Stack.Screen name="agents/[agentId]/tools" />
+          <Stack.Screen name="conversations" />
+          <Stack.Screen name="connections" />
+          <Stack.Screen name="marketplace" />
+          <Stack.Screen name="tool-permissions" />
+          <Stack.Screen name="approvals" />
+          <Stack.Screen name="harness" />
+          <Stack.Screen name="permissions" />
+          <Stack.Screen name="events" />
+          <Stack.Screen name="telemetry" />
+          <Stack.Screen name="policy" />
+          <Stack.Screen name="plugins/index" />
+          <Stack.Screen name="plugins/[pluginId]" />
+          <Stack.Screen name="plugin/[pluginId]" />
+          <Stack.Screen name="settings/appearance" />
+          <Stack.Screen name="settings/ai-connection" />
+          <Stack.Screen name="settings/models" />
+          <Stack.Screen name="settings/memory" />
+          <Stack.Screen name="settings/mcp" />
+          <Stack.Screen name="settings/navigation" />
+          <Stack.Screen name="settings/notifications" />
+          <Stack.Screen name="settings/data" />
+          <Stack.Screen name="settings/account" />
+          <Stack.Screen name="buddy/tree" />
+          <Stack.Screen name="buddy/evolve" />
+          <Stack.Screen name="buddy/collection" />
+        </Stack>
+      </TabletShell>
+
+      {responsive.showBottomNav ? <BottomNavigation /> : null}
+      {!responsive.persistentSidebar ? <AppSidebar /> : null}
+      <PermissionHost />
+      <PluginApprovalHost />
+    </View>
+  );
+}
+
+export default function AppLayout() {
+  return (
     <PluginPlatformProvider>
       <BottomNavigationProvider>
         <SidebarProvider>
-          <View style={styles.root}>
-            <NotificationRedirect />
-            <SafetyLifecycle />
-            <Stack
-              screenOptions={{
-                headerShown: false,
-                contentStyle: {
-                  backgroundColor: colors.background,
-                  paddingBottom: layout.touchTarget + spacing.md,
-                },
-                animation: 'slide_from_right',
-              }}
-            >
-              <Stack.Screen name="(tabs)" />
-              <Stack.Screen name="projects" />
-              <Stack.Screen name="artifact" />
-              <Stack.Screen name="agents/index" />
-              <Stack.Screen name="agents/[agentId]/index" />
-              <Stack.Screen name="agents/[agentId]/tools" />
-              <Stack.Screen name="conversations" />
-              <Stack.Screen name="connections" />
-              <Stack.Screen name="marketplace" />
-              <Stack.Screen name="tool-permissions" />
-              <Stack.Screen name="approvals" />
-              <Stack.Screen name="harness" />
-              <Stack.Screen name="permissions" />
-              <Stack.Screen name="events" />
-              <Stack.Screen name="telemetry" />
-              <Stack.Screen name="policy" />
-              <Stack.Screen name="plugins/index" />
-              <Stack.Screen name="plugins/[pluginId]" />
-              <Stack.Screen name="plugin/[pluginId]" />
-              <Stack.Screen name="settings/appearance" />
-              <Stack.Screen name="settings/ai-connection" />
-              <Stack.Screen name="settings/models" />
-              <Stack.Screen name="settings/memory" />
-              <Stack.Screen name="settings/mcp" />
-              <Stack.Screen name="settings/navigation" />
-              <Stack.Screen name="settings/notifications" />
-              <Stack.Screen name="settings/data" />
-              <Stack.Screen name="settings/account" />
-              <Stack.Screen name="buddy/tree" />
-              <Stack.Screen name="buddy/evolve" />
-              <Stack.Screen name="buddy/collection" />
-            </Stack>
-            <BottomNavigation />
-            <AppSidebar />
-            <PermissionHost />
-            <PluginApprovalHost />
-          </View>
+          <PinnedPluginsProvider>
+            <TabletLayoutProvider>
+              <AppLayoutContent />
+            </TabletLayoutProvider>
+          </PinnedPluginsProvider>
         </SidebarProvider>
       </BottomNavigationProvider>
     </PluginPlatformProvider>

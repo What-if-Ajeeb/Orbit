@@ -3,10 +3,16 @@ import React from 'react';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 
 import { AgentChatView } from './AgentChatView';
+import { layout } from '@/theme';
 
 jest.setTimeout(30000);
 
 const mockStoredMessages: Record<string, unknown>[] = [];
+const mockTabletLayout = {
+  layout: {
+    isTablet: false,
+  },
+};
 
 const mockStore = {
   listConversations: jest.fn(async () => []),
@@ -108,6 +114,10 @@ jest.mock('@/context/sidebar', () => ({
   useSidebar: () => ({ open: jest.fn() }),
 }));
 
+jest.mock('@/context/tablet-layout', () => ({
+  useTabletLayout: () => mockTabletLayout,
+}));
+
 jest.mock('expo-sqlite', () => ({
   useSQLiteContext: () => ({}),
 }));
@@ -190,6 +200,7 @@ const AGENT = {
 describe('AgentChatView', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockTabletLayout.layout.isTablet = false;
     mockStoredMessages.length = 0;
     mockStore.listConversations.mockResolvedValue([]);
     mockStore.listMessages.mockImplementation(async () => mockStoredMessages.slice());
@@ -321,5 +332,64 @@ describe('AgentChatView', () => {
       history: { attachments?: { data: string }[] }[];
     };
     expect(input.history[input.history.length - 1]?.attachments?.[0]?.data).toBe('abc123');
+  });
+
+  it('sends a prepared message from the hardware keyboard', async () => {
+    const view = await render(<AgentChatView agent={AGENT} />);
+
+    await waitFor(() => expect(view.getByLabelText('Message Research Agent')).toBeTruthy());
+
+    await act(async () => {
+      fireEvent.changeText(view.getByLabelText('Message Research Agent'), 'Send with keyboard');
+    });
+    await waitFor(() =>
+      expect(view.getByLabelText('Send message').props.accessibilityState.disabled).toBe(false)
+    );
+
+    await act(async () => {
+      fireEvent(view.getByLabelText('Message Research Agent'), 'submitEditing');
+    });
+
+    await waitFor(() => expect(mockAgent.runAgent).toHaveBeenCalledTimes(1));
+    expect(view.getByLabelText('Attach an image')).toBeTruthy();
+    expect(view.getByLabelText('Voice input')).toBeTruthy();
+  });
+
+  it('caps the chat column on tablets while keeping the composer accessible', async () => {
+    mockTabletLayout.layout.isTablet = true;
+
+    const view = await render(<AgentChatView agent={AGENT} />);
+
+    await waitFor(() => expect(view.getByLabelText('Message Research Agent')).toBeTruthy());
+
+    const hasWideStyle = (node: unknown): boolean => {
+      if (!node || typeof node !== 'object') {
+        return false;
+      }
+
+      const element = node as {
+        props?: { contentContainerStyle?: unknown };
+        children?: unknown;
+      };
+      const value = element.props?.contentContainerStyle;
+      const styles = Array.isArray(value) ? value : [value];
+
+      if (
+        styles.some(
+          (style) =>
+            style !== null &&
+            typeof style === 'object' &&
+            'maxWidth' in style &&
+            style.maxWidth === layout.contentMaxWidth
+        )
+      ) {
+        return true;
+      }
+
+      return Array.isArray(element.children) && element.children.some(hasWideStyle);
+    };
+
+    expect(hasWideStyle(view.toJSON())).toBe(true);
+    expect(view.getByLabelText('Open chat history')).toBeTruthy();
   });
 });
