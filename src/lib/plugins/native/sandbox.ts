@@ -188,11 +188,12 @@ const APPROVAL_SCHEMA = {
   type: 'object',
   properties: {
     permission: { type: 'string', enum: [...SANDBOX_PERMISSIONS] },
+    resource: { type: 'string' },
     grantedAt: { type: 'number' },
     expiresAt: { type: 'number' },
     requestId: { type: 'string' },
   },
-  required: ['permission', 'grantedAt', 'expiresAt'],
+  required: ['permission', 'resource', 'grantedAt', 'expiresAt'],
   additionalProperties: false,
 };
 
@@ -261,6 +262,10 @@ function readApproval(
 
   return {
     permission: readPermission(approval, 'permission'),
+    resource: readString(approval, 'resource', {
+      required: true,
+      maxLength: 2_048,
+    })!,
     grantedAt: readNumber(approval, 'grantedAt', {
       required: true,
       min: 0,

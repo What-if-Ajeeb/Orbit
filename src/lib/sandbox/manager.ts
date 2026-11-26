@@ -284,15 +284,16 @@ export class MobileSandboxManager {
   }
 
   /**
-   * Asks the existing ORBIT approval host for a short-lived decision. The
-   * returned evidence is what Rust verifies; a grant alone is never enough for
-   * a sensitive file or network operation.
+   * Asks the existing ORBIT approval host for a short-lived decision bound to
+   * one exact resource. Rust verifies both the grant and the binding; neither a
+   * grant alone nor evidence for another path/URL can authorize an operation.
    */
   async requestOperationApproval(input: {
     pluginId: string;
     pluginName?: string;
     trustLevel: PluginTrustLevel;
     permission: SandboxPermission;
+    resource: string;
     reason: string;
     ttlSeconds?: number;
   }): Promise<SandboxApprovalEvidence> {
@@ -301,7 +302,7 @@ export class MobileSandboxManager {
       pluginName: input.pluginName ?? displayName(input.pluginId),
       trustLevel: input.trustLevel,
       permissions: [input.permission as PluginPermission],
-      reason: input.reason,
+      reason: `${input.reason} Target: ${input.resource}`,
     });
 
     if (!approved) {
@@ -315,6 +316,7 @@ export class MobileSandboxManager {
 
     return {
       permission: input.permission,
+      resource: input.resource,
       grantedAt,
       expiresAt: grantedAt + ttlSeconds * 1_000,
       requestId: `sandbox-approval-${grantedAt}`,

@@ -182,6 +182,11 @@ struct ApprovalEvidence {
     permission: String,
     granted_at: u64,
     expires_at: u64,
+    /// The exact resource this grant covers. Rust normalizes it with the same
+    /// path/URL rules as the operation before comparing, so a grant cannot be
+    /// replayed against another file or endpoint.
+    #[serde(default)]
+    resource: Option<String>,
     #[serde(default)]
     request_id: Option<String>,
 }
@@ -701,6 +706,56 @@ fn evaluate_approval(
     Ok(())
 }
 
+/// Checks that approval evidence is bound to the exact resource Rust authorized.
+/// This runs after operation-specific normalization so `./a//b` cannot be used
+/// to replay a grant for `a/b`, and a URL grant cannot be reused on another host.
+fn evaluate_approval_resource(
+    approval: Option<&ApprovalEvidence>,
+    operation: &str,
+    expected_resource: &str,
+    policy: &Policy,
+) -> Result<(), (&'static str, String)> {
+    let Some(approval) = approval else {
+        return Err((
+            "approval_required",
+            "A fresh user approval is required for this resource.".to_owned(),
+        ));
+    };
+
+    let Some(bound_resource) = approval.resource.as_deref() else {
+        return Err((
+            "approval_resource_required",
+            "Approval evidence must be bound to one resource.".to_owned(),
+        ));
+    };
+
+    let normalized_bound = match operation {
+        "file.read" | "file.stat" => validate_path_value(bound_resource, policy),
+        "network.request" => validate_network_value(bound_resource, policy),
+        _ => {
+            return Err((
+                "unsupported_operation",
+                format!("Unsupported sandbox operation: {operation}"),
+            ))
+        }
+    }
+    .map_err(|_| {
+        (
+            "approval_resource_invalid",
+            "Approval evidence is bound to an invalid resource.".to_owned(),
+        )
+    })?;
+
+    if normalized_bound != expected_resource {
+        return Err((
+            "approval_resource_mismatch",
+            "Approval evidence is bound to a different resource.".to_owned(),
+        ));
+    }
+
+    Ok(())
+}
+
 fn check_permission(params: &PermissionParams, policy: &Policy) -> PermissionDecision {
     let started = Instant::now();
     let now = params.now.unwrap_or_else(now_ms);
@@ -951,6 +1006,15 @@ fn authorize_operation(params: &AuthorizeParams, policy: &Policy) -> OperationDe
             )
         }
     };
+
+    if let Err((code, message)) = evaluate_approval_resource(
+        params.approval.as_ref(),
+        &params.operation,
+        &normalized_resource,
+        policy,
+    ) {
+        return deny(code, message);
+    }
 
     OperationDecision {
         decision: "allow".to_owned(),
