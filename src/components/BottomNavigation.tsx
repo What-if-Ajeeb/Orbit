@@ -8,6 +8,12 @@ import { useAppTheme, useStyles, type AppTheme } from '@/context/theme';
 import { isNavPathActive, type BottomNavSlot } from '@/lib/bottom-navigation';
 import { layout, radius, spacing, typography } from '@/theme';
 
+/** Shared with the app layout so main-screen content is never covered by the pill. */
+export const BOTTOM_NAV_PILL_HEIGHT = layout.touchTarget + spacing.xs * 2;
+export const BOTTOM_NAV_RESERVE = BOTTOM_NAV_PILL_HEIGHT + spacing.lg;
+
+const BOTTOM_NAV_MAX_WIDTH = 420;
+
 type BottomNavigationBarProps = {
   slots: readonly BottomNavSlot[];
   activePath: string | null;
@@ -21,7 +27,11 @@ function navIcon(icon: string): keyof typeof Ionicons.glyphMap {
     : 'extension-puzzle-outline';
 }
 
-/** Presentational bar, also reused by the Settings preview. Always three slots. */
+function activeIconFor(icon: string): string {
+  return icon.endsWith('-outline') ? icon.slice(0, -'-outline'.length) : icon;
+}
+
+/** Floating three-slot pill. Also reused, without positioning, by Settings preview. */
 export function BottomNavigationBar({
   slots,
   activePath,
@@ -34,53 +44,48 @@ export function BottomNavigationBar({
 
   return (
     <View
-      accessibilityRole="tablist"
+      pointerEvents={preview ? 'auto' : 'box-none'}
       style={[
-        styles.bar,
-        preview && styles.preview,
-        { paddingBottom: preview ? spacing.sm : Math.max(insets.bottom, spacing.sm) },
+        styles.container,
+        preview ? styles.previewContainer : styles.floatingContainer,
+        !preview && { bottom: Math.max(insets.bottom, spacing.sm) },
       ]}
     >
-      {slots.map((slot) => {
-        const active = activePath ? isNavPathActive(activePath, slot.destination.href) : false;
+      <View accessibilityRole="tablist" testID="bottom-navigation-pill" style={styles.pill}>
+        {slots.map((slot) => {
+          const active = activePath ? isNavPathActive(activePath, slot.destination.href) : false;
 
-        return (
-          <Pressable
-            key={slot.index}
-            accessibilityRole="tab"
-            accessibilityLabel={`Open ${slot.destination.label}`}
-            accessibilityState={{ selected: active }}
-            disabled={preview || !onSelect}
-            onPress={() => onSelect?.(slot)}
-            style={({ pressed }) => [
-              styles.slot,
-              pressed && !preview && styles.pressed,
-              active && styles.slotActive,
-            ]}
-          >
-            <Ionicons
-              name={navIcon(active ? activeIconFor(slot.destination.icon) : slot.destination.icon)}
-              size={20}
-              color={active ? colors.accent : colors.textMuted}
-            />
-            <Text
-              numberOfLines={1}
-              style={[styles.label, active && styles.labelActive]}
+          return (
+            <Pressable
+              key={slot.index}
+              accessibilityRole="tab"
+              accessibilityLabel={`Open ${slot.destination.label}`}
+              accessibilityState={{ selected: active }}
+              disabled={preview || !onSelect}
+              onPress={() => onSelect?.(slot)}
+              style={({ pressed }) => [
+                styles.slot,
+                pressed && !preview && styles.pressed,
+                active && styles.slotActive,
+              ]}
             >
-              {slot.destination.label}
-            </Text>
-          </Pressable>
-        );
-      })}
+              <Ionicons
+                name={navIcon(active ? activeIconFor(slot.destination.icon) : slot.destination.icon)}
+                size={20}
+                color={active ? colors.accent : colors.textMuted}
+              />
+              <Text numberOfLines={1} style={[styles.label, active && styles.labelActive]}>
+                {slot.destination.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
     </View>
   );
 }
 
-function activeIconFor(icon: string): string {
-  return icon.endsWith('-outline') ? icon.slice(0, -'-outline'.length) : icon;
-}
-
-/** The live bar mounted inside the authenticated app layout. */
+/** The live bar mounted by the shared navigation footer host. */
 export function BottomNavigation() {
   const { slots } = useBottomNavigation();
   const pathname = usePathname();
@@ -98,26 +103,31 @@ export function BottomNavigation() {
 
 const makeStyles = ({ colors, glass }: AppTheme) =>
   StyleSheet.create({
-    bar: {
-      position: 'absolute',
+    container: {
       left: 0,
       right: 0,
-      bottom: 0,
-      flexDirection: 'row',
-      alignItems: 'flex-end',
-      minHeight: layout.touchTarget + spacing.sm,
-      paddingTop: spacing.sm,
-      paddingHorizontal: spacing.sm,
-      backgroundColor: colors.surface,
-      borderTopWidth: StyleSheet.hairlineWidth,
-      borderTopColor: glass.border,
+      alignItems: 'center',
+      paddingHorizontal: spacing.lg,
     },
-    preview: {
-      position: 'relative',
-      borderRadius: radius.md,
+    floatingContainer: {
+      position: 'absolute',
+    },
+    previewContainer: {
+      width: '100%',
+    },
+    pill: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.xs,
+      width: '100%',
+      maxWidth: BOTTOM_NAV_MAX_WIDTH,
+      minHeight: BOTTOM_NAV_PILL_HEIGHT,
+      paddingHorizontal: spacing.xs,
+      paddingVertical: spacing.xs,
+      borderRadius: radius.pill,
       borderWidth: StyleSheet.hairlineWidth,
       borderColor: glass.border,
-      overflow: 'hidden',
+      backgroundColor: colors.surface,
     },
     slot: {
       flex: 1,
@@ -125,7 +135,7 @@ const makeStyles = ({ colors, glass }: AppTheme) =>
       alignItems: 'center',
       justifyContent: 'center',
       gap: 2,
-      borderRadius: radius.sm,
+      borderRadius: radius.md,
     },
     slotActive: {
       backgroundColor: colors.accentSoft,

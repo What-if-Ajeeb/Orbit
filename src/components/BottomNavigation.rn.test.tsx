@@ -2,7 +2,12 @@
 import React from 'react';
 import { act, fireEvent, render } from '@testing-library/react-native';
 
-import { BottomNavigation, BottomNavigationBar } from './BottomNavigation';
+import {
+  BOTTOM_NAV_PILL_HEIGHT,
+  BOTTOM_NAV_RESERVE,
+  BottomNavigation,
+  BottomNavigationBar,
+} from './BottomNavigation';
 
 const mockNavigate = jest.fn();
 const mockSlots = [
@@ -149,5 +154,18 @@ describe('BottomNavigation', () => {
     });
 
     expect(mockNavigate).toHaveBeenCalledWith('/workflows');
+  });
+
+  it('renders a floating pill lifted above the bottom safe area', async () => {
+    const view = await render(<BottomNavigation />);
+    const pill = view.getByTestId('bottom-navigation-pill');
+
+    expect(pill.props.style).toEqual(
+      expect.objectContaining({ minHeight: BOTTOM_NAV_PILL_HEIGHT })
+    );
+    expect(pill.parent?.props.style).toEqual(
+      expect.arrayContaining([expect.objectContaining({ bottom: 10 })])
+    );
+    expect(BOTTOM_NAV_RESERVE).toBeGreaterThan(BOTTOM_NAV_PILL_HEIGHT);
   });
 });
