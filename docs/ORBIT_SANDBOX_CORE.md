@@ -1,6 +1,6 @@
 # ORBIT Sandbox — System Design
 
-Status: **design-only**. Android only. No iOS. No standalone Sandbox UI.
+Status: **implemented for Android**. Android only. No iOS. No standalone Sandbox UI.
 ORBIT Sandbox invisible hai — ye ORBIT Agent aur Plugin Runtime ke peeche kaam
 karta hai.
 
@@ -30,7 +30,7 @@ ORBIT Sandbox — System Design
 | 1. ORBIT Agent / Plugin Runtime | Reviewed plugin ke through protected resource ke liye action request bhejta hai | File ya network direct access nahi karta |
 | 2. Rust Security Policy Core | Manifest, permission, approval, path/URL aur limits validate karke `allow` ya `deny` deta hai | File, network, process ya code execute nahi karta |
 | 3. Kotlin Android Enforcement Layer | Rust decision ke baad actual platform boundary enforce karti hai | Policy decide nahi karti |
-| 4. Approved Plugin Operation | Allowed / denied result aur audit record produce karta hai | Raw content ya code execution nahi karta |
+| 4. Approved Plugin Operation | Allowed / denied result, bounded read result aur audit record produce karta hai | Code execution nahi karta |
 
 ## Example: Agent kisi plugin se file read karna chahta hai
 
@@ -72,14 +72,16 @@ ORBIT Sandbox — System Design
 | Rust policy core | Isolated process | Manifest, permission, approval, path, URL validate karta hai |
 | Audit store | Main app / SQLite | Hash-only decision records save karta hai |
 
-## Active aur dormant surface
+## Active surface
 
-- Active surface read-only security tools hain: `sandbox_policy`,
+- Active security tools hain: `sandbox_policy`,
   `sandbox_validate_manifest`, `sandbox_check_permission`,
   `sandbox_validate_path`, `sandbox_validate_network`,
-  `sandbox_validate_request`, aur `sandbox_authorize_operation`.
-- Raw file-read mediation implemented hai, lekin kisi production agent tool se
-  expose nahi hai. Ye sirf reviewed host plugin ke liye dormant capability hai.
+  `sandbox_validate_request`, `sandbox_authorize_operation`, aur
+  `sandbox_read_file`.
+- `sandbox_read_file` reviewed `orbit.builtin.sandbox` plugin ke through hi
+  available hai. Har call `files.read` grant, fresh resource-bound approval,
+  Rust allow, aur Kotlin bounded app-private UTF-8 read require karti hai.
 - Agent ke paas `run_code`, `run_tests`, `bench_solution`, `sandbox_compute`,
   `sandbox_echo` ya koi bhi execution-shaped tool nahi hai.
 
