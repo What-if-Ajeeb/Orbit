@@ -3,7 +3,6 @@ import { SQLiteProvider, useSQLiteContext, type SQLiteDatabase } from 'expo-sqli
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 
-import { recoverAgentRuntimeOnStartup } from '@/lib/agent-runtime/scheduler';
 import { FatalErrorBoundary } from '@/components/FatalErrorBoundary';
 import { FatalErrorScreen } from '@/components/FatalErrorScreen';
 import { SessionProvider, useSession } from '@/context/auth';
@@ -21,7 +20,6 @@ import {
 } from '@/lib/diagnostics';
 import { HarnessProvider } from '@/lib/harness/spine/boot';
 import { configureNotifications } from '@/lib/notifications';
-import { disposeMobileSandboxManager } from '@/lib/sandbox/manager';
 
 void SplashScreen.preventAutoHideAsync();
 installGlobalDiagnostics();
@@ -81,8 +79,10 @@ function NotificationSetup() {
 
 /**
  * Importing the scheduler registers the Android background task at module scope.
- * This effect recovers interrupted work on foreground startup and keeps the
- * WorkManager worker registered for later app-closed periods.
+ * That graph is large (orchestrator, hermes, workflows, hybrid recovery). Loading
+ * it only after the session path is live keeps a failure there from killing first
+ * paint. The effect still recovers interrupted work and keeps the WorkManager
+ * worker registered for later app-closed periods.
  */
 function AgentRuntimeRecovery() {
   const db = useSQLiteContext();
@@ -90,9 +90,30 @@ function AgentRuntimeRecovery() {
   const userId = user?.id;
 
   useEffect(() => {
-    void recoverAgentRuntimeOnStartup(db, userId).catch((error: unknown) => {
-      reportDiagnostic('Agent recovery', error);
-    });
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        markStartupStage('Agent recovery import started');
+        const { recoverAgentRuntimeOnStartup } = await import(
+          '@/lib/agent-runtime/scheduler'
+        );
+        if (cancelled) return;
+        markStartupStage('Agent recovery running');
+        await recoverAgentRuntimeOnStartup(db, userId);
+        if (!cancelled) {
+          markStartupStage('Agent recovery complete');
+        }
+      } catch (error: unknown) {
+        if (!cancelled) {
+          reportDiagnostic('Agent recovery', error);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [db, userId]);
 
   return null;
@@ -101,9 +122,14 @@ function AgentRuntimeRecovery() {
 function SandboxLifecycle() {
   useEffect(() => {
     return () => {
-      void disposeMobileSandboxManager().catch(() => {
-        // The service may already be gone during shutdown; cleanup is best effort.
-      });
+      void (async () => {
+        try {
+          const { disposeMobileSandboxManager } = await import('@/lib/sandbox/manager');
+          await disposeMobileSandboxManager();
+        } catch {
+          // The service may already be gone during shutdown; cleanup is best effort.
+        }
+      })();
     };
   }, []);
 
