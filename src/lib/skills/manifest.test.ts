@@ -80,6 +80,20 @@ describe('declarative skill manifests', () => {
     expect(() => parseSkillManifest(withOutput)).toThrow(/capability.outputSchema must be an object/);
   });
 
+  it('accepts validated conditional fallback metadata', () => {
+    const parsed = parseSkillManifest({
+      ...validManifest,
+      fallbackForToolsets: ['files'],
+      fallbackForTools: ['sandbox_read_file'],
+    });
+
+    expect(parsed.fallbackForToolsets).toEqual(['files']);
+    expect(parsed.fallbackForTools).toEqual(['sandbox_read_file']);
+    expect(() =>
+      parseSkillManifest({ ...validManifest, fallbackForTools: ['bad tool'] })
+    ).toThrow(/Invalid identifier/);
+  });
+
   it('requires a real tool step and a supported schema version', () => {
     const withoutSteps = structuredClone(validManifest) as Record<string, unknown>;
     const capabilities = withoutSteps.capabilities as Record<string, unknown>[];

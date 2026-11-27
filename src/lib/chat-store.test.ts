@@ -26,6 +26,29 @@ type MessageRow = {
   created_at: number;
 };
 
+function likeToRegExp(pattern: string): RegExp {
+  let source = '';
+  for (let index = 0; index < pattern.length; index += 1) {
+    const character = pattern[index];
+    if (character === '\\' && index + 1 < pattern.length) {
+      const next = pattern[index + 1];
+      source += next.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      index += 1;
+      continue;
+    }
+    if (character === '%') {
+      source += '.*';
+      continue;
+    }
+    if (character === '_') {
+      source += '.';
+      continue;
+    }
+    source += character.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+  return new RegExp(`^${source}$`, 'i');
+}
+
 function makeDb() {
   const conversations: ConversationRow[] = [];
   const messages: MessageRow[] = [];
@@ -62,6 +85,30 @@ function makeDb() {
           .sort((a, b) => b.updated_at - a.updated_at || b.id - a.id)
           .slice(0, limit)
           .map(conversationRow);
+      }
+
+      if (sql.includes('content LIKE')) {
+        const userId = params[0] as number;
+        const conversationId = params[1] as number;
+        const limit = Number(params[params.length - 1] ?? 20);
+        const patterns = (params.slice(2, -1) as string[]).map(likeToRegExp);
+
+        return messages
+          .filter(
+            (message) =>
+              message.user_id === userId &&
+              message.conversation_id === conversationId &&
+              patterns.every((pattern) => pattern.test(message.content))
+          )
+          .sort((a, b) => b.id - a.id)
+          .slice(0, limit)
+          .map((message) => ({
+            id: message.id,
+            role: message.role,
+            content: message.content,
+            meta: message.meta,
+            created_at: message.created_at,
+          }));
       }
 
       const userId = params[0] as number;
@@ -258,5 +305,29 @@ describe('SQLite chat store', () => {
     await store.deleteConversation(1, conversation.id);
     expect(await store.getConversation(1, conversation.id)).toBeNull();
     expect(await store.listMessages(1, conversation.id)).toEqual([]);
+  });
+
+  it('searches messages with bounded, escaped keywords inside one conversation', async () => {
+    const db = makeDb();
+    const store = createSqliteChatStore(db);
+    const conversation = await store.createConversation(1, 'Search');
+    const other = await store.createConversation(1, 'Other');
+
+    await store.addMessage(1, conversation.id, 'user', 'Pay the electricity bill');
+    await store.addMessage(1, conversation.id, 'assistant', 'Reminder set for 100% of the bill');
+    await store.addMessage(1, other.id, 'user', 'Pay the electricity bill elsewhere');
+
+    const hits = await store.searchMessages(1, conversation.id, 'pay  bill', 10);
+    expect(hits.map((hit) => hit.content)).toEqual(['Pay the electricity bill']);
+
+    const billHits = await store.searchMessages(1, conversation.id, 'bill', 10);
+    expect(billHits.map((hit) => hit.content)).toEqual([
+      'Reminder set for 100% of the bill',
+      'Pay the electricity bill',
+    ]);
+
+    const escaped = await store.searchMessages(1, conversation.id, '100%');
+    expect(escaped.map((hit) => hit.content)).toEqual(['Reminder set for 100% of the bill']);
+    expect(await store.searchMessages(1, conversation.id, '')).toEqual([]);
   });
 });

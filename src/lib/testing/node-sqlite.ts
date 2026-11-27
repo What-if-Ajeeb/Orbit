@@ -20,8 +20,23 @@ const SCHEMA = `
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
     title TEXT NOT NULL DEFAULT '',
-    agent_id TEXT
+    agent_id TEXT,
+    created_at INTEGER NOT NULL DEFAULT 0,
+    updated_at INTEGER NOT NULL DEFAULT 0
   );
+
+  CREATE TABLE messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    role TEXT NOT NULL,
+    content TEXT NOT NULL,
+    meta TEXT,
+    created_at INTEGER NOT NULL,
+    conversation_id INTEGER
+  );
+
+  CREATE INDEX idx_messages_user_created ON messages (user_id, created_at);
+  CREATE INDEX idx_messages_conversation_created ON messages (conversation_id, id);
 
   CREATE TABLE workflows (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -174,6 +189,25 @@ const SCHEMA = `
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL,
     UNIQUE (user_id, agent_id, project_key, scope, key)
+  );
+
+  CREATE TABLE hermes_memory_writes (
+    id TEXT PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    agent_id TEXT NOT NULL DEFAULT 'master',
+    target TEXT NOT NULL,
+    action TEXT NOT NULL,
+    project_key TEXT NOT NULL DEFAULT '',
+    key TEXT NOT NULL,
+    value TEXT NOT NULL,
+    policy_version TEXT NOT NULL,
+    fingerprint TEXT NOT NULL,
+    source TEXT NOT NULL DEFAULT 'agent',
+    confidence REAL NOT NULL DEFAULT 1,
+    requested_at INTEGER NOT NULL,
+    resolved_at INTEGER,
+    applied_at INTEGER,
+    state TEXT NOT NULL DEFAULT 'pending'
   );
 
   CREATE TABLE skill_versions (

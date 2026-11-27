@@ -19,7 +19,7 @@ export type {
   ToolExecutionStatus,
 } from './chat-store';
 export type { ArtifactRef } from './artifacts/types';
-export { createSqliteChatStore } from './chat-store';
+export { createSqliteChatStore, escapeLikePattern } from './chat-store';
 
 /**
  * A chat store plugin owns conversation persistence. SQLite is registered as
@@ -159,6 +159,16 @@ export function listMessages(
   limit = 100
 ) {
   return getChatStore(db).listMessages(userId, conversationId, limit);
+}
+
+export function searchMessages(
+  db: SQLiteDatabase,
+  userId: number,
+  conversationId: number,
+  query: string,
+  limit = 20
+) {
+  return getChatStore(db).searchMessages(userId, conversationId, query, limit);
 }
 
 export function addMessage(

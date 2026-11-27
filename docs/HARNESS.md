@@ -440,8 +440,13 @@ never auto-approved.
 prompt tiers, provider route resolution, availability-filtered toolsets, and
 progressive skill disclosure. Small talk and acknowledgements are answered by
 the deterministic path even when a provider is configured, so ordinary
-conversation never spends a model call. The full design and rollout plan is in
-[`HERMES_STYLE_ARCHITECTURE.md`](HERMES_STYLE_ARCHITECTURE.md).
+conversation never spends a model call.
+
+Phase 2 adds a char-bounded `agent`/`user` memory snapshot (redacted and
+injection-filtered), v18 staged memory writes that only a user-approved exact
+fingerprint can apply, bounded `LIKE`-based session recall, and data-only skill
+bundles/fallbacks. Bundles never become callable tools. The full design and
+rollout plan is in [`HERMES_STYLE_ARCHITECTURE.md`](HERMES_STYLE_ARCHITECTURE.md).
 
 ## File map
 

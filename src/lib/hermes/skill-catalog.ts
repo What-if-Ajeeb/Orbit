@@ -22,13 +22,39 @@ function requiredTools(manifest: SkillManifest): string[] {
  */
 export function visibleSkillManifests(
   manifests: SkillManifest[],
-  options: { availableTools?: ReadonlySet<string>; webSearchDisabled?: boolean } = {}
+  options: {
+    availableTools?: ReadonlySet<string>;
+    availableToolsets?: ReadonlySet<string>;
+    webSearchDisabled?: boolean;
+  } = {}
 ): SkillManifest[] {
   return manifests.filter((manifest) => {
     if (!manifest.enabled) return false;
     if (options.webSearchDisabled && manifest.id === WEB_SEARCH_SKILL_ID) return false;
-    if (!options.availableTools) return true;
-    return requiredTools(manifest).every((tool) => options.availableTools?.has(tool) === true);
+
+    // Required-tool gating comes first: a fallback is still a real skill with
+    // declarative steps and cannot be shown when those steps are unavailable.
+    if (
+      options.availableTools &&
+      !requiredTools(manifest).every((tool) => options.availableTools?.has(tool) === true)
+    ) {
+      return false;
+    }
+
+    // Conditional fallback: hide when a native/connected capability already
+    // covers the same work. Unknown availability never hides a skill.
+    if (manifest.fallbackForTools?.some((tool) => options.availableTools?.has(tool) === true)) {
+      return false;
+    }
+    if (
+      manifest.fallbackForToolsets?.some(
+        (toolset) => options.availableToolsets?.has(toolset) === true
+      )
+    ) {
+      return false;
+    }
+
+    return true;
   });
 }
 

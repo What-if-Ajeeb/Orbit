@@ -15,6 +15,7 @@ import { agentToolRegistry, listAgentTools } from '../ai/tools';
 import type { LlmAttachment, LlmMessage } from '../ai/types';
 import { getActiveBuddy } from '../buddy/store';
 import type { ToolExecutionEvent } from '../chat-store';
+import { getChatStore } from '../chat';
 import { buildCordisTools } from '../cordis-tools';
 import { EventStore } from '../events';
 import {
@@ -22,7 +23,9 @@ import {
   buildToolsets,
   isSmallTalk,
   resolveProviderRoute,
+  searchHermesSession,
   smallTalkReply,
+  type HermesSessionHit,
 } from '../hermes';
 import { HookEngine } from '../hooks';
 import { MemoryStore } from '../memory/store';
@@ -766,6 +769,20 @@ export async function runAgentTurn(input: RuntimeTurnInput): Promise<RuntimeTurn
             toolNames: toolDefinitions.map((definition) => definition.name),
           });
           const providerRoute = resolveProviderRoute(input.settings);
+          let sessionHits: HermesSessionHit[] = [];
+          if (conversationId) {
+            try {
+              sessionHits = await searchHermesSession({
+                store: getChatStore(db),
+                userId,
+                conversationId,
+                query: latestText,
+                limit: 6,
+              });
+            } catch (error) {
+              console.warn('Could not recall bounded session history.', error);
+            }
+          }
           const promptBundle = await buildHermesPromptBundle({
             db,
             userId,
@@ -781,8 +798,12 @@ export async function runAgentTurn(input: RuntimeTurnInput): Promise<RuntimeTurn
               .map((call) => `- ${call.toolName}: ${redactSecrets(call.content).slice(0, 500)}`),
             manifests,
             availableTools: new Set(toolDefinitions.map((definition) => definition.name)),
+            availableToolsets: new Set(
+              toolsets.filter((descriptor) => descriptor.available.length > 0).map((descriptor) => descriptor.id)
+            ),
             webSearchDisabled,
             toolsetIds: toolsets.map((descriptor) => descriptor.id),
+            sessionHits,
           });
           await recordHybridEvent(db, {
             traceId: trace.traceId,

@@ -12,8 +12,10 @@ export type HermesPromptTier =
   | 'identity'
   | 'toolsets'
   | 'skill-index'
+  | 'skill-bundles'
   | 'context'
   | 'memory'
+  | 'session-search'
   | 'volatile';
 
 export type HermesPromptBundle = {
@@ -52,4 +54,65 @@ export type SkillIndexEntry = {
   name: string;
   description: string;
   capabilities: { name: string; description: string }[];
+  /** Bundles are disclosure-only; they are never registered as callable tools. */
+  kind?: 'skill' | 'bundle';
+  skillIds?: string[];
+};
+
+export type HermesMemoryTarget = 'agent' | 'user';
+
+export type HermesMemoryEntry = {
+  target: HermesMemoryTarget;
+  key: string;
+  value: string;
+  updatedAt?: number;
+};
+
+/** Bounded, frozen-at-build snapshot of the two Hermes memory stores. */
+export type HermesMemorySnapshot = {
+  agent: HermesMemoryEntry[];
+  user: HermesMemoryEntry[];
+  chars: { agent: number; user: number };
+  limits: { agent: number; user: number };
+  omitted: { agent: number; user: number };
+  fingerprint: string;
+  frozenAt: number;
+};
+
+export type HermesMemoryAction = 'add' | 'patch' | 'remove';
+
+/**
+ * A staged memory mutation. It carries an exact operation fingerprint so an
+ * approval cannot be replayed after the key, value, target or policy changes.
+ */
+export type HermesStagedWrite = {
+  id: string;
+  target: HermesMemoryTarget;
+  action: HermesMemoryAction;
+  key: string;
+  value: string;
+  policyVersion: string;
+  fingerprint: string;
+  requestedAt: number;
+  status: 'pending' | 'approved' | 'denied' | 'applied' | 'expired' | 'invalidated';
+};
+
+export type HermesSessionHit = {
+  conversationId: number | null;
+  messageId: number;
+  role: string;
+  snippet: string;
+  createdAt: number | null;
+  score: number;
+};
+
+/** Data-only grouping of existing skill ids; never registers executable code. */
+export type HermesSkillBundle = {
+  schemaVersion: 1;
+  id: string;
+  name: string;
+  description: string;
+  version: string;
+  skills: string[];
+  instruction?: string;
 };

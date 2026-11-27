@@ -54,6 +54,10 @@ src/lib/hermes/                  # new, read-only architecture layer
   provider-runtime.ts            # provider/model → adapter route + system fallback
   toolsets.ts                    # tool grouping filtered by allowlist/grants
   skill-catalog.ts               # progressive disclosure + conditional visibility
+  skill-bundles.ts               # data-only bundle parsing/resolution
+  memory-budget.ts               # bounded, frozen agent/user snapshot
+  memory-write-store.ts          # exact-preview staged writes, approval-gated apply
+  session-search.ts              # bounded SQLite keyword recall
   index.ts                       # public surface
   hermes.test.ts                 # deterministic contract tests
 
@@ -117,15 +121,27 @@ registry with the agent allowlist and active grants. Each descriptor is a
 description of already-registered capabilities; it cannot register or run one.
 
 ### `SkillIndexEntry`
-`{ id, name, description, capabilities }`. Level 0 is the short index embedded
-in the prompt. Level 1 expands one skill; level 2 expands one capability's
-data-only steps. Skills whose required tools are unavailable, or whose web
-search capability is disabled, are hidden rather than executed.
+`{ id, name, description, capabilities, kind?, skillIds? }`. Level 0 is the short
+index embedded in the prompt. Level 1 expands one skill or disclosure-only
+bundle; level 2 expands one capability's data-only steps. Skills whose required
+tools are unavailable, whose web search capability is disabled, or whose
+`fallbackForTools` / `fallbackForToolsets` are already available are hidden
+rather than executed. Bundles are never registered or dispatched as tools.
 
-### Bounded memory (target)
+### Bounded memory
 Two capped stores, `agent` (environment/lessons) and `user` (preferences),
-with a frozen snapshot per session/turn and explicit staged writes. Memory text
-is redacted and scanned for injection before it can enter a prompt.
+with a frozen snapshot per turn and explicit staged writes. Memory text is
+redacted, secret-keyed entries are skipped, and injection-shaped values are
+rejected before they can enter a prompt. `agent_memory_writes` (v18) stores exact
+previews; only a user-approved, unmodified, unexpired stage can call
+`MemoryStore.remember()` / `forget()`. All transitions are written to the
+hash-chained audit ledger.
+
+### Session search
+`ChatStore.searchMessages()` uses bound `LIKE ... ESCAPE` parameters, at most
+four escaped terms, a 20-row cap and conversation/user scoping. Hermes wraps the
+rows into redacted, scored, character-bounded `HermesSessionHit` entries; no
+embeddings, model summaries or cloud calls are used.
 
 ## 6. Autonomy and security invariants
 
@@ -146,12 +162,14 @@ is redacted and scanned for injection before it can enter a prompt.
 
 - **Phase 0 — done:** hybrid controller, canonical states, approval ledger,
   v17 migration, sandbox/policy hardening, exhaustive local verification.
-- **Phase 1 — this change:** Hermes-shaped read-only layer (prompt tiers,
-  provider routes, toolsets, skill disclosure) plus deterministic deferral of
-  small talk so a configured provider is not called for greetings/acknowledges.
-- **Phase 2 — next:** char-budgeted `agent`/`user` memory snapshot with staged
-  writes and bounded SQLite session search; skill bundles and conditional
-  fallback skills; audit-visible learning proposals (deterministic, opt-in).
+- **Phase 1 — done:** Hermes-shaped read-only layer (prompt tiers, provider
+  routes, toolsets, skill disclosure) plus deterministic deferral of small talk
+  so a configured provider is not called for greetings/acknowledges.
+- **Phase 2 — this change:** char-budgeted `agent`/`user` snapshot frozen per
+  turn, exact-approved staged memory writes (v18), bounded SQLite session
+  search, disclosure-only skill bundles and conditional fallback skills. Audit
+  events cover staging, approval, denial and application. No learning loop
+  writes memory without the same exact approval.
 - **Phase 3 — later:** route-level provider fallback with explicit, redacted
   diagnostics; cron job skill attachment and delivery telemetry; richer
   harness snapshot of the Hermes layer. No iOS work in this plan.

@@ -60,10 +60,14 @@ export type SkillManifest = {
   version: string;
   enabled: boolean;
   autoLoad: boolean;
+  /** Hide this skill when any listed toolset is already available. */
+  fallbackForToolsets?: string[];
+  /** Hide this skill when any listed tool is already available. */
+  fallbackForTools?: string[];
   capabilities: SkillCapabilityManifest[];
 };
 
-function assertNoCodeFields(value: unknown, path: string): void {
+export function assertNoCodeFields(value: unknown, path: string): void {
   if (Array.isArray(value)) {
     value.forEach((entry, index) => assertNoCodeFields(entry, `${path}[${index}]`));
     return;
@@ -84,18 +88,35 @@ function assertNoCodeFields(value: unknown, path: string): void {
   }
 }
 
-function asObject(value: unknown, field: string): Record<string, unknown> {
+export function asObject(value: unknown, field: string): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new Error(`${field} must be an object.`);
   }
   return value as Record<string, unknown>;
 }
 
-function asString(value: unknown, field: string, max = 500): string {
+export function asString(value: unknown, field: string, max = 500): string {
   if (typeof value !== 'string' || !value.trim()) {
     throw new Error(`${field} must be a non-empty string.`);
   }
   return value.trim().slice(0, max);
+}
+
+function asStringList(value: unknown, field: string): string[] {
+  if (!Array.isArray(value) || value.length === 0 || value.length > 8) {
+    throw new Error(`${field} must contain between 1 and 8 identifiers.`);
+  }
+  const entries = value.map((entry, index) => {
+    const text = asString(entry, `${field}[${index}]`, 120);
+    if (!/^[a-zA-Z0-9_.-]+$/.test(text)) {
+      throw new Error(`Invalid identifier in ${field}: ${text}`);
+    }
+    return text;
+  });
+  if (new Set(entries).size !== entries.length) {
+    throw new Error(`${field} cannot contain duplicate identifiers.`);
+  }
+  return entries;
 }
 
 /** Strictly validates a declarative, data-only skill manifest. */
@@ -115,6 +136,8 @@ export function parseSkillManifest(raw: unknown): SkillManifest {
     'version',
     'enabled',
     'autoLoad',
+    'fallbackForToolsets',
+    'fallbackForTools',
     'capabilities',
   ]);
 
@@ -190,6 +213,12 @@ export function parseSkillManifest(raw: unknown): SkillManifest {
     version: asString(root.version, 'version', 32),
     enabled: root.enabled !== false,
     autoLoad: root.autoLoad === true,
+    ...(root.fallbackForToolsets
+      ? { fallbackForToolsets: asStringList(root.fallbackForToolsets, 'fallbackForToolsets') }
+      : {}),
+    ...(root.fallbackForTools
+      ? { fallbackForTools: asStringList(root.fallbackForTools, 'fallbackForTools') }
+      : {}),
     capabilities,
   };
 }
