@@ -4,6 +4,21 @@ import { runAgent } from './ai/agent';
 import { loadAiSettings } from './ai/settings';
 import { getChatStore } from './chat';
 import { MASTER_AGENT } from './permissions';
+import {
+  claimAgentTask,
+  createAgentTask,
+  createAgentTaskSchedule,
+  newAgentTaskId,
+  recoverInterruptedAgentTasks,
+  setAgentTaskScheduleEnabled,
+  updateAgentTaskStatus,
+} from './agent-runtime/task-manager';
+import type {
+  AgentBudget,
+  AgentTaskStatus,
+  AgentTaskVerification,
+  AgentTaskSchedule,
+} from './agent-runtime/types';
 
 export type RunStatus = 'running' | 'success' | 'failed';
 
@@ -28,6 +43,11 @@ export type WorkflowRun = {
   finishedAt: number | null;
   summary: string;
   traces: string[];
+  /** Durable orchestration links; older rows may not have them. */
+  agentTaskId: string | null;
+  scheduleId: string | null;
+  agentTaskStatus: AgentTaskStatus | null;
+  verification: AgentTaskVerification | null;
 };
 
 export const WORKFLOW_NAME_MAX = 60;
@@ -35,6 +55,7 @@ export const WORKFLOW_INSTRUCTION_MAX = 1000;
 
 /** A run that is still "running" after this long was interrupted (app closed). */
 const STALE_RUN_MS = 10 * 60 * 1000;
+const WORKFLOW_LEASE_MS = 10 * 60_000;
 
 type WorkflowRow = {
   id: number;
@@ -57,10 +78,31 @@ type RunRow = {
   finished_at: number | null;
   summary: string;
   traces: string;
+  agent_task_id: string | null;
+  schedule_id: string | null;
+  agent_task_status: string | null;
+  verification_json: string | null;
 };
 
 function toRunStatus(value: string | null): RunStatus | null {
   return value === 'running' || value === 'success' || value === 'failed' ? value : null;
+}
+
+function toAgentTaskStatus(value: string | null): AgentTaskStatus | null {
+  const valid: AgentTaskStatus[] = [
+    'queued',
+    'running',
+    'awaiting_approval',
+    'awaiting_tool',
+    'blocked',
+    'paused',
+    'needs_review',
+    'completed',
+    'failed',
+    'cancelled',
+    'unknown',
+  ];
+  return valid.includes(value as AgentTaskStatus) ? (value as AgentTaskStatus) : null;
 }
 
 function parseTraces(raw: string): string[] {
@@ -70,6 +112,16 @@ function parseTraces(raw: string): string[] {
     return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
   } catch {
     return [];
+  }
+}
+
+function parseVerification(raw: string | null): AgentTaskVerification | null {
+  if (!raw) return null;
+  try {
+    const value = JSON.parse(raw) as AgentTaskVerification;
+    return typeof value?.verified === 'boolean' && typeof value.reason === 'string' ? value : null;
+  } catch {
+    return null;
   }
 }
 
@@ -97,6 +149,10 @@ function mapRun(row: RunRow): WorkflowRun {
     finishedAt: row.finished_at,
     summary: row.summary,
     traces: parseTraces(row.traces),
+    agentTaskId: row.agent_task_id,
+    scheduleId: row.schedule_id,
+    agentTaskStatus: toAgentTaskStatus(row.agent_task_status),
+    verification: parseVerification(row.verification_json),
   };
 }
 
@@ -134,9 +190,12 @@ const WORKFLOW_SELECT = `
 
 const RUN_SELECT = `
   SELECT r.id, r.workflow_id, w.name AS workflow_name, r.conversation_id, r.status,
-    r.started_at, r.finished_at, r.summary, r.traces
+    r.started_at, r.finished_at, r.summary, r.traces,
+    r.agent_task_id, r.schedule_id,
+    t.status AS agent_task_status, t.verification_json
   FROM workflow_runs r
   JOIN workflows w ON w.id = r.workflow_id
+  LEFT JOIN agent_tasks t ON t.id = r.agent_task_id
 `;
 
 export class WorkflowStore {
@@ -200,13 +259,23 @@ export class WorkflowStore {
     return row ? mapRun(row) : null;
   }
 
-  async startRun(userId: number, workflowId: number, conversationId: number): Promise<number> {
+  async startRun(
+    userId: number,
+    workflowId: number,
+    conversationId: number,
+    agentTaskId: string | null = null,
+    scheduleId: string | null = null
+  ): Promise<number> {
     const result = await this.db.runAsync(
-      "INSERT INTO workflow_runs (user_id, workflow_id, conversation_id, status, started_at) VALUES (?, ?, ?, 'running', ?)",
+      `INSERT INTO workflow_runs (
+        user_id, workflow_id, conversation_id, status, started_at, agent_task_id, schedule_id
+      ) VALUES (?, ?, ?, 'running', ?, ?, ?)`,
       userId,
       workflowId,
       conversationId,
-      Date.now()
+      Date.now(),
+      agentTaskId,
+      scheduleId
     );
 
     return result.lastInsertRowId;
@@ -228,87 +297,233 @@ export class WorkflowStore {
     );
   }
 
-  /** Marks runs left "running" by a closed app as failed so they don't spin forever. */
-  async recoverStaleRuns(userId: number): Promise<void> {
+  /**
+   * Recovers from the durable task ledger, not from an in-memory Set. Task
+   * leases and verification state are the source of truth; legacy runs without
+   * a task id still use the old stale-time rule.
+   */
+  async recoverStaleRuns(userId?: number): Promise<number> {
     const now = Date.now();
+    await recoverInterruptedAgentTasks(this.db, { now, staleMs: STALE_RUN_MS });
 
-    await this.db.runAsync(
-      "UPDATE workflow_runs SET status = 'failed', finished_at = ?, summary = 'Interrupted — the app was closed before this run finished.' WHERE user_id = ? AND status = 'running' AND started_at < ?",
-      now,
-      userId,
-      now - STALE_RUN_MS
+    const scope = userId === undefined ? '' : 'AND r.user_id = ?';
+    const legacyScope = userId === undefined ? '' : 'AND user_id = ?';
+    const params = userId === undefined ? [] : [userId];
+    const interrupted = await this.db.getAllAsync<{
+      id: number;
+      error: string | null;
+      title: string;
+    }>(
+      `SELECT r.id, t.error, t.title
+       FROM workflow_runs r
+       JOIN agent_tasks t ON t.id = r.agent_task_id
+       WHERE r.status = 'running'
+         AND t.status IN ('needs_review', 'failed', 'cancelled', 'unknown')
+         ${scope}`,
+      ...params
     );
+
+    for (const row of interrupted) {
+      await this.db.runAsync(
+        `UPDATE workflow_runs
+         SET status = 'failed', finished_at = ?, summary = ?
+         WHERE id = ?`,
+        now,
+        `Interrupted before verification: ${row.error || row.title || 'the task ended early'}`,
+        row.id
+      );
+    }
+
+    const legacy = await this.db.runAsync(
+      `UPDATE workflow_runs
+       SET status = 'failed', finished_at = ?,
+           summary = 'Interrupted — the app was closed before this run finished.'
+       WHERE status = 'running' AND agent_task_id IS NULL AND started_at < ?
+         ${legacyScope}`,
+      now,
+      now - STALE_RUN_MS,
+      ...params
+    );
+
+    return interrupted.length + legacy.changes;
   }
 }
 
-const runningWorkflows = new Set<number>();
+export type WorkflowRunOptions = {
+  /** Deterministic key used by scheduler/background retries. */
+  idempotencyKey?: string;
+  scheduleId?: string | null;
+  conversationId?: number;
+  signal?: AbortSignal;
+  budget?: AgentBudget;
+};
 
-export function isWorkflowRunning(workflowId: number): boolean {
-  return runningWorkflows.has(workflowId);
+async function getWorkflow(
+  db: SQLiteDatabase,
+  userId: number,
+  workflowId: number
+): Promise<Workflow | null> {
+  const row = await db.getFirstAsync<WorkflowRow>(
+    `${WORKFLOW_SELECT} WHERE w.id = ? AND w.user_id = ?`,
+    workflowId,
+    userId
+  );
+  return row ? mapWorkflow(row) : null;
 }
 
 /**
- * Runs a workflow once through the same agent loop as chat, in its own
- * conversation so the transcript can be opened later. Tool calls still go
- * through the permission gate, so sensitive actions pause for approval.
+ * Runs a workflow once through the same durable orchestrator as chat. The
+ * workflow task, its run row and the child agent turn are all persisted, so an
+ * app restart can recover the run instead of silently losing it.
  */
 export async function runWorkflow(
   db: SQLiteDatabase,
   user: { id: number; name: string },
-  workflow: Pick<Workflow, 'id' | 'name' | 'instruction'>
+  workflow: Pick<Workflow, 'id' | 'name' | 'instruction'>,
+  options: WorkflowRunOptions = {}
 ): Promise<WorkflowRun> {
-  if (runningWorkflows.has(workflow.id)) {
+  const chat = getChatStore(db);
+  const store = new WorkflowStore(db);
+  const projectId = `workflow-${workflow.id}`;
+  const conversation =
+    options.conversationId !== undefined
+      ? await chat.getConversation(user.id, options.conversationId)
+      : null;
+  const targetConversation =
+    conversation ??
+    (await chat.createConversation(user.id, `Workflow: ${workflow.name}`, MASTER_AGENT.id));
+
+  const task = await createAgentTask(db, {
+    userId: user.id,
+    conversationId: targetConversation.id,
+    projectId,
+    kind: 'workflow',
+    title: `Workflow: ${workflow.name}`,
+    input: {
+      workflowId: workflow.id,
+      instruction: workflow.instruction,
+      conversationId: targetConversation.id,
+      scheduleId: options.scheduleId ?? null,
+    },
+    budget: options.budget,
+    idempotencyKey:
+      options.idempotencyKey ?? `workflow:${workflow.id}:${newAgentTaskId('run')}`,
+  });
+
+  const claimed = await claimAgentTask(db, task.id, `workflow_${task.id}`, WORKFLOW_LEASE_MS);
+
+  if (!claimed) {
     throw new Error('This workflow is already running.');
   }
 
-  runningWorkflows.add(workflow.id);
-
-  const store = new WorkflowStore(db);
-  const chat = getChatStore(db);
   let runId: number | null = null;
 
   try {
+    await chat.addMessage(user.id, targetConversation.id, 'user', workflow.instruction);
+    runId = await store.startRun(
+      user.id,
+      workflow.id,
+      targetConversation.id,
+      task.id,
+      options.scheduleId ?? null
+    );
+
     const settings = await loadAiSettings();
-    const conversation = await chat.createConversation(user.id, `Workflow: ${workflow.name}`);
-
-    await chat.addMessage(user.id, conversation.id, 'user', workflow.instruction);
-    runId = await store.startRun(user.id, workflow.id, conversation.id);
-
     const result = await runAgent({
       db,
       userId: user.id,
       userName: user.name,
       history: [{ role: 'user', content: workflow.instruction }],
       settings,
-      conversationId: conversation.id,
+      conversationId: targetConversation.id,
       agent: MASTER_AGENT,
-      projectId: `workflow-${workflow.id}`,
+      projectId,
       projectLabel: `Workflow: ${workflow.name}`,
+      parentTaskId: task.id,
+      signal: options.signal,
+      budget: options.budget,
     });
 
-    await chat.addMessage(user.id, conversation.id, 'assistant', result.reply, result.traces);
-    await store.finishRun(runId, 'success', result.reply, result.traces);
-  } catch (runError) {
-    if (runId === null) {
-      throw runError;
-    }
+    const completed = result.status === 'completed' && result.verification.verified;
+    const summary = completed
+      ? result.reply
+      : `Needs review — ${result.verification.reason || result.status}. ${result.reply}`.trim();
 
+    await chat.addMessage(user.id, targetConversation.id, 'assistant', result.reply, result.traces, result.artifacts, {
+      agentTaskId: result.taskId,
+      agentStatus: result.status,
+      agentVerified: result.verification.verified,
+      verification: result.verification,
+    });
+    await updateAgentTaskStatus(db, task.id, completed ? 'completed' : 'needs_review', {
+      phase: completed ? 'done' : 'verify',
+      result: { reply: result.reply, childTaskId: result.taskId },
+      verification: result.verification,
+      error: completed ? null : summary,
+      finishedAt: Date.now(),
+      leaseOwner: null,
+      leaseUntil: null,
+    });
+    await store.finishRun(runId, completed ? 'success' : 'failed', summary, result.traces);
+  } catch (runError) {
     const message = runError instanceof Error ? runError.message : 'The workflow failed.';
 
-    await store.finishRun(runId, 'failed', message, []);
-  } finally {
-    runningWorkflows.delete(workflow.id);
+    await updateAgentTaskStatus(db, task.id, 'needs_review', {
+      phase: 'verify',
+      verification: {
+        verified: false,
+        status: 'uncertain',
+        reason: message,
+        evidence: { interrupted: true, workflowId: workflow.id },
+      },
+      error: message,
+      finishedAt: Date.now(),
+      leaseOwner: null,
+      leaseUntil: null,
+    });
+
+    if (runId !== null) {
+      await store.finishRun(runId, 'failed', `Interrupted — ${message}`, []);
+      const finished = await store.getRun(user.id, runId);
+      if (finished) return finished;
+    }
+    throw runError;
   }
 
-  if (runId === null) {
-    throw new Error('The workflow could not be started.');
-  }
-
-  const finished = await store.getRun(user.id, runId);
-
+  const finished = await store.getRun(user.id, runId as number);
   if (!finished) {
     throw new Error('The run finished but could not be loaded.');
   }
 
   return finished;
+}
+
+/** Creates an idempotent schedule that the Android worker can execute. */
+export async function scheduleWorkflow(
+  db: SQLiteDatabase,
+  userId: number,
+  workflowId: number,
+  nextRunAt: number,
+  intervalMs: number | null = null
+): Promise<AgentTaskSchedule> {
+  const workflow = await getWorkflow(db, userId, workflowId);
+  if (!workflow) throw new Error('That workflow was not found.');
+
+  return createAgentTaskSchedule(db, {
+    userId,
+    ownerType: 'workflow',
+    ownerId: String(workflowId),
+    title: `Workflow: ${workflow.name}`,
+    input: { workflowId: workflow.id, instruction: workflow.instruction },
+    intervalMs,
+    nextRunAt,
+    idempotencyKey: `workflow:${workflowId}:${nextRunAt}`,
+  });
+}
+
+export async function cancelWorkflowSchedule(
+  db: SQLiteDatabase,
+  scheduleId: string
+): Promise<void> {
+  await setAgentTaskScheduleEnabled(db, scheduleId, false);
 }

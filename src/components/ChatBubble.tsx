@@ -133,6 +133,11 @@ export function ChatBubble({ message }: ChatBubbleProps) {
   const isUser = message.role === 'user';
   const attachments = message.attachments ?? [];
   const toolEvents = message.toolEvents ?? [];
+  const taskStatus = message.agentTaskId
+    ? message.agentVerified === true
+      ? 'verified'
+      : message.agentStatus?.replace(/_/g, ' ') || 'needs review'
+    : null;
   const actionIds = Array.from(
     new Set(
       toolEvents
@@ -172,6 +177,19 @@ export function ChatBubble({ message }: ChatBubbleProps) {
               <Text style={styles.traceText}>{trace}</Text>
             </View>
           ))}
+        </View>
+      ) : null}
+
+      {message.agentTaskId && taskStatus ? (
+        <View style={styles.taskRow}>
+          <Ionicons
+            name={message.agentVerified === true ? 'checkmark-circle-outline' : 'alert-circle-outline'}
+            size={12}
+            color={message.agentVerified === true ? colors.success : colors.textFaint}
+          />
+          <Text numberOfLines={1} style={styles.taskText}>
+            Task {message.agentTaskId} · {taskStatus}
+          </Text>
         </View>
       ) : null}
 
@@ -340,5 +358,17 @@ const makeStyles = ({ colors }: AppTheme) =>
   traceText: {
     color: colors.textMuted,
     fontSize: 12,
+  },
+  taskRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    maxWidth: '100%',
+    paddingLeft: 2,
+  },
+  taskText: {
+    flexShrink: 1,
+    color: colors.textFaint,
+    fontSize: 10,
   },
   });

@@ -2,6 +2,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { rewardChatMessage } from './buddy/rewards';
 import { isArtifactType, type ArtifactRef, type ArtifactType } from './artifacts/types';
+import type { AgentTaskVerification } from './agent-runtime/types';
 
 export type ChatRole = 'user' | 'assistant';
 
@@ -34,6 +35,11 @@ export type ChatMessageMeta = {
   attachments?: ChatAttachment[];
   toolEvents?: ToolExecutionEvent[];
   agentId?: string | null;
+  /** Durable task status attached to the assistant reply that produced it. */
+  agentTaskId?: string | null;
+  agentStatus?: string | null;
+  agentVerified?: boolean | null;
+  verification?: AgentTaskVerification | null;
   /** Legacy persistence fields kept here so meta payloads stay type-safe. */
   traces?: string[];
   artifacts?: ArtifactRef[];
@@ -193,6 +199,18 @@ function parseMeta(meta: string | null): Record<string, unknown> {
   }
 }
 
+function parseAgentVerification(meta: string | null): AgentTaskVerification | null {
+  const value = parseMeta(meta).verification;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+
+  const candidate = value as Record<string, unknown>;
+  if (typeof candidate.verified !== 'boolean' || typeof candidate.reason !== 'string') {
+    return null;
+  }
+
+  return candidate as unknown as AgentTaskVerification;
+}
+
 function parseAttachments(meta: string | null): ChatAttachment[] {
   const value = parseMeta(meta).attachments;
 
@@ -291,6 +309,10 @@ function toMessage(row: MessageRow): ChatMessage {
     attachments: parseAttachments(row.meta),
     toolEvents: parseToolEvents(row.meta),
     agentId,
+    agentTaskId: typeof meta.agentTaskId === 'string' ? meta.agentTaskId : null,
+    agentStatus: typeof meta.agentStatus === 'string' ? meta.agentStatus : null,
+    agentVerified: typeof meta.agentVerified === 'boolean' ? meta.agentVerified : null,
+    verification: parseAgentVerification(row.meta),
     createdAt: row.created_at,
   };
 }
@@ -419,6 +441,22 @@ export function createSqliteChatStore(db: SQLiteDatabase): ChatStore {
 
       if (extra.toolEvents && extra.toolEvents.length > 0) {
         metaPayload.toolEvents = extra.toolEvents;
+      }
+
+      if (extra.agentTaskId) {
+        metaPayload.agentTaskId = extra.agentTaskId;
+      }
+
+      if (extra.agentStatus) {
+        metaPayload.agentStatus = extra.agentStatus;
+      }
+
+      if (typeof extra.agentVerified === 'boolean') {
+        metaPayload.agentVerified = extra.agentVerified;
+      }
+
+      if (extra.verification) {
+        metaPayload.verification = extra.verification;
       }
 
       const agentId = extra.agentId ?? conversation.agentId;

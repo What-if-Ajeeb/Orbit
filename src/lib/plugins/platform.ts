@@ -10,6 +10,7 @@ import { loadMcpServers, type McpServerConfig } from '@/lib/mcp/settings';
 import { PluginStore, type PluginType } from '@/lib/plugin-store';
 
 import { getMobileSandboxManager } from '@/lib/sandbox/manager';
+import { installSandboxMcpFetch } from '@/lib/sandbox/mcp-fetch';
 
 import { pluginApprovalService } from './approvals';
 import {
@@ -193,6 +194,10 @@ export class PluginPlatformRuntime {
           this.logger('Could not persist sandbox audit.', error);
         });
     });
+
+    // Install the Android MCP fetch gate before the tool gate. The installer
+    // self-guards on Platform.OS, so iOS and web keep their original transport.
+    installSandboxMcpFetch();
 
     // Install the gate before bootstrap finishes. Until MCP records are synced,
     // the registry has no matching record and every tool call is denied.

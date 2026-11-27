@@ -76,6 +76,7 @@ const AUDIT_SCHEMA = {
     bytes: { type: 'number' },
     durationMs: { type: 'number' },
     policyVersion: { type: 'number' },
+    requestId: { type: ['string', 'null'] },
   },
   required: ['id', 'at', 'operation', 'decision', 'reasonCode', 'policyVersion'],
 };
@@ -188,6 +189,7 @@ const DECISION_OUTPUT_SCHEMA = nativeOutputSchema({
       reason: { type: 'string' },
       reasonCode: { type: 'string' },
       policyVersion: { type: 'number' },
+      approvalRequestId: { type: ['string', 'null'] },
       limits: LIMITS_SCHEMA,
       audit: AUDIT_SCHEMA,
     },
@@ -209,6 +211,7 @@ const FILE_READ_OUTPUT_SCHEMA = nativeOutputSchema({
       reason: { type: 'string' },
       reasonCode: { type: 'string' },
       policyVersion: { type: 'number' },
+      approvalRequestId: { type: ['string', 'null'] },
       limits: LIMITS_SCHEMA,
       audit: AUDIT_SCHEMA,
     },
@@ -336,7 +339,7 @@ const policyTool = nativeHostTool('sandbox_policy', {
 
     if (
       !description ||
-      description.policyVersion !== 2 ||
+      description.policyVersion !== 3 ||
       !description.isolation.includes('isolated') ||
       description.execution !== false
     ) {

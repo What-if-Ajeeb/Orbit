@@ -62,6 +62,10 @@ const DEFAULT_ALLOWED_TOOLS = [
   // the default allowlist so the enabled toggle works before the user edits
   // agent tools. Disabling the preference removes it from this agent's config.
   WEB_SEARCH_TOOL_NAME,
+  // Structured memory is part of the deterministic capability surface.
+  'memory_remember',
+  'memory_recall',
+  'memory_forget',
 ];
 
 function clampText(value: unknown, max: number): string {

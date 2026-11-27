@@ -1,5 +1,17 @@
+import { Platform } from 'react-native';
+
 import { toolFail, toolOk, type AgentTool } from './tool-registry';
 import { SafetyTrash } from '../safety/trash';
+import { authorizeSandboxPath } from '../sandbox/adapters';
+
+async function authorizeFileOperation(options: {
+  operation: 'file.delete' | 'file.write';
+  path: string;
+  toolName: string;
+}): Promise<void> {
+  if (Platform.OS !== 'android') return;
+  await authorizeSandboxPath(options);
+}
 
 function stringArg(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
@@ -47,6 +59,11 @@ const trashFileTool: AgentTool = {
     }
 
     try {
+      await authorizeFileOperation({
+        operation: 'file.delete',
+        path,
+        toolName: 'file_trash',
+      });
       const trash = new SafetyTrash(context.db);
       const item = await trash.trashPath({
         userId: context.userId,
@@ -88,6 +105,32 @@ const restoreFileTool: AgentTool = {
   timeoutMs: 20_000,
   async execute(context, args) {
     try {
+      const id = stringArg(args.trash_id);
+      const conditions = ['user_id = ?', "status = 'trashed'"];
+      const values: (string | number)[] = [context.userId];
+
+      if (id) {
+        conditions.push('id = ?');
+        values.push(id);
+      } else if (context.conversationId !== undefined) {
+        conditions.push('conversation_id = ?');
+        values.push(context.conversationId);
+      }
+
+      const row = await context.db.getFirstAsync(
+        `SELECT original_path FROM trash_items
+         WHERE ${conditions.join(' AND ')} ORDER BY deleted_at DESC LIMIT 1`,
+        ...values
+      ) as { original_path: string } | null;
+
+      if (row) {
+        await authorizeFileOperation({
+          operation: 'file.write',
+          path: row.original_path,
+          toolName: 'file_restore',
+        });
+      }
+
       const trash = new SafetyTrash(context.db);
       const item = await trash.restore({
         userId: context.userId,
@@ -95,7 +138,7 @@ const restoreFileTool: AgentTool = {
         agentId: context.agent?.id ?? 'agent',
         agentName: context.agent?.name,
         toolName: 'file_restore',
-        id: stringArg(args.trash_id) || undefined,
+        id: id || undefined,
       });
       return {
         content: toolOk({

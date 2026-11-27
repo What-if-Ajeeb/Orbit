@@ -1,8 +1,9 @@
 import { Stack, SplashScreen } from 'expo-router';
-import { SQLiteProvider, type SQLiteDatabase } from 'expo-sqlite';
+import { SQLiteProvider, useSQLiteContext, type SQLiteDatabase } from 'expo-sqlite';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 
+import { recoverAgentRuntimeOnStartup } from '@/lib/agent-runtime/scheduler';
 import { FatalErrorBoundary } from '@/components/FatalErrorBoundary';
 import { FatalErrorScreen } from '@/components/FatalErrorScreen';
 import { SessionProvider, useSession } from '@/context/auth';
@@ -46,6 +47,7 @@ export default function RootLayout() {
           <PaperThemeBridge>
             <SessionProvider>
               <NotificationSetup />
+              <AgentRuntimeRecovery />
               <SandboxLifecycle />
               <SplashController />
               <HarnessProvider>
@@ -73,6 +75,25 @@ function NotificationSetup() {
       reportDiagnostic('Notification setup', error);
     });
   }, []);
+
+  return null;
+}
+
+/**
+ * Importing the scheduler registers the Android background task at module scope.
+ * This effect recovers interrupted work on foreground startup and keeps the
+ * WorkManager worker registered for later app-closed periods.
+ */
+function AgentRuntimeRecovery() {
+  const db = useSQLiteContext();
+  const { user } = useSession();
+  const userId = user?.id;
+
+  useEffect(() => {
+    void recoverAgentRuntimeOnStartup(db, userId).catch((error: unknown) => {
+      reportDiagnostic('Agent recovery', error);
+    });
+  }, [db, userId]);
 
   return null;
 }

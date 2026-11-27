@@ -35,7 +35,7 @@ type FetchInitLike = {
   signal?: AbortSignal;
 };
 
-type FetchLike = (url: string, init: FetchInitLike) => Promise<FetchResponseLike>;
+export type FetchLike = (url: string, init: FetchInitLike) => Promise<FetchResponseLike>;
 
 type McpClientOptions = {
   fetchImpl?: FetchLike;

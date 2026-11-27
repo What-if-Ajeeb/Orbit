@@ -13,13 +13,15 @@ import type {
   RiskLevel,
 } from './types';
 
-type ClassifyInput = {
+export type ClassifyInput = {
   toolName: string;
   args: Record<string, unknown>;
   agent: AgentIdentity;
   projectId: string;
   projectLabel: string;
   devices?: PairedDeviceRecord[];
+  /** Stable version of the active policy rules, when supplied by the caller. */
+  policyVersion?: string;
 };
 
 const SAFE_TASK_TOOLS = new Set([
@@ -210,6 +212,27 @@ function fingerprintFor(input: ClassifyInput, scopeKey: string): string {
   return bytesToHex(sha256(utf8ToBytes(truncate(source, 8000))));
 }
 
+/**
+ * Full-input fingerprint for v2 approvals. Unlike v1 it never truncates the
+ * stable JSON, so arguments past the legacy 8000-byte cutoff still revoke a
+ * saved approval. `policyVersion` is included when the caller supplies it.
+ */
+export function fingerprintForV2(
+  input: ClassifyInput,
+  scopeKey: string,
+  policyVersion?: string
+): string {
+  const version = policyVersion ?? input.policyVersion;
+  const source = stableStringify({
+    tool: input.toolName,
+    project: input.projectId,
+    scope: scopeKey,
+    args: input.args,
+    ...(version ? { policyVersion: version } : {}),
+  });
+  return bytesToHex(sha256(utf8ToBytes(source)));
+}
+
 /** Returns the exact reason when an action needs a fresh critical confirmation. */
 function criticalMatch(args: Record<string, unknown>, toolName: string): CriticalMatch | null {
   for (const [kind, pattern] of CRITICAL_NAME_RULES) {
@@ -376,6 +399,7 @@ function makeAction(
   const freshConfirmation =
     risk === 'high' || risk === 'critical' || fields.freshConfirmation === true;
   const resourceKey = fields.resourceKey ?? fields.scopeKey;
+  const fingerprintV2 = fingerprintForV2(input, fields.scopeKey);
   const narrowable =
     fields.narrowable ?? (Boolean(fields.resourceKey) && !freshConfirmation);
   const external = fields.external ?? false;
@@ -403,6 +427,7 @@ function makeAction(
     scopeKey: fields.scopeKey,
     resourceKey,
     fingerprint: fingerprintFor(input, fields.scopeKey),
+    fingerprintV2,
     narrowable,
     freshConfirmation,
     reversible: fields.reversible ?? !freshConfirmation,

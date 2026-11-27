@@ -301,7 +301,38 @@ fn authorize_operation_allows_an_approved_file_read() {
         "orbit/notes/today.txt"
     );
     assert_eq!(response["result"]["audit"]["decision"], "allow");
-    assert_eq!(response["result"]["audit"]["policyVersion"], 2);
+    assert_eq!(response["result"]["audit"]["policyVersion"], 3);
+}
+
+#[test]
+fn authorize_operation_denies_replayed_approval_with_different_request_id() {
+    let now = 1_000_000u64;
+    let request = |request_id: &str| {
+        json!({
+            "manifest": manifest(),
+            "operation": "file.read",
+            "grantedPermissions": ["files.read"],
+            "approval": {
+                "permission": "files.read",
+                "resource": "orbit/replay/nonce.txt",
+                "grantedAt": now,
+                "expiresAt": now + 60_000,
+                "requestId": request_id
+            },
+            "resource": { "path": "orbit/replay/nonce.txt" },
+            "now": now
+        })
+    };
+
+    let first = call("authorizeOperation", request("approval-original"));
+    assert_eq!(first["result"]["decision"], "allow");
+    assert_eq!(first["result"]["approvalRequestId"], "approval-original");
+    assert_eq!(first["result"]["audit"]["requestId"], "approval-original");
+
+    let replayed = call("authorizeOperation", request("approval-replayed"));
+    assert_eq!(replayed["result"]["decision"], "deny");
+    assert_eq!(replayed["result"]["reasonCode"], "approval_request_replay");
+    assert_eq!(replayed["result"]["audit"]["decision"], "deny");
 }
 
 #[test]

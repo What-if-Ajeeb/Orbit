@@ -108,6 +108,20 @@ function parseStateList(value: string | null): string[] {
   return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : [];
 }
 
+/** v2 is stored on requests via metadata so legacy SQL rows keep working. */
+function requestFingerprintV2(request: PermissionRequestRecord | null): string | undefined {
+  if (!request) {
+    return undefined;
+  }
+
+  if (typeof request.fingerprintV2 === 'string' && request.fingerprintV2) {
+    return request.fingerprintV2;
+  }
+
+  const stored = request.metadata.fingerprintV2;
+  return typeof stored === 'string' && stored ? stored : undefined;
+}
+
 export class PermissionManager {
   private db: SQLiteDatabase | null = null;
   private store: PermissionStore | null = null;
@@ -313,6 +327,7 @@ export class PermissionManager {
       scopeKey: action.scopeKey,
       resourceKey: action.resourceKey,
       fingerprint: action.fingerprint,
+      fingerprintV2: action.fingerprintV2,
       freshConfirmation: action.freshConfirmation,
       reversible: action.reversible,
       external: action.external,
@@ -324,6 +339,7 @@ export class PermissionManager {
       resolvedAt: status === 'pending' ? null : now,
       metadata: {
         ...action.metadata,
+        ...(action.fingerprintV2 ? { fingerprintV2: action.fingerprintV2 } : {}),
         policyDecision: input.policy.decision,
         policyRuleId: input.policy.ruleId,
       },
@@ -349,6 +365,7 @@ export class PermissionManager {
       scopeKey: request.scopeKey,
       resourceKey: request.resourceKey,
       fingerprint: request.fingerprint,
+      fingerprintV2: requestFingerprintV2(request),
       projectId: request.projectId,
       conversationId: request.conversationId,
       freshConfirmation: request.freshConfirmation,
@@ -448,6 +465,7 @@ export class PermissionManager {
         tool: action.toolName,
         target: action.target.label,
         fingerprint: action.fingerprint,
+        ...(action.fingerprintV2 ? { fingerprintV2: action.fingerprintV2 } : {}),
         freshConfirmation: action.freshConfirmation,
         consequences: action.consequences.join(' | '),
       },
@@ -558,7 +576,14 @@ export class PermissionManager {
         now,
       });
 
-      if (existingGrant) {
+      const grantRequest = existingGrant?.requestId
+        ? await this.store.getRequest(existingGrant.requestId)
+        : null;
+      const grantFingerprintV2 = requestFingerprintV2(grantRequest);
+      const grantMatchesV2 =
+        !action.fingerprintV2 || !grantFingerprintV2 || grantFingerprintV2 === action.fingerprintV2;
+
+      if (existingGrant && grantMatchesV2) {
         const request = this.requestRecord(input, 'auto_approved', now, 'existing_grant');
         await this.store.insertRequest(request);
         await this.audit({
@@ -835,6 +860,7 @@ export class PermissionManager {
         scopeKey: request.scopeKey,
         resourceKey: request.resourceKey,
         fingerprint: request.fingerprint,
+        fingerprintV2: requestFingerprintV2(request),
         projectId: request.projectId,
         projectLabel: request.projectLabel,
         scope: 'once',
@@ -958,6 +984,7 @@ export class PermissionManager {
         scopeKey: request.scopeKey,
         resourceKey: request.resourceKey,
         fingerprint: request.fingerprint,
+        fingerprintV2: requestFingerprintV2(request),
         projectId: request.projectId,
         projectLabel: request.projectLabel,
         scope: isSaved ? 'persistent' : 'session',
@@ -1055,6 +1082,7 @@ export class PermissionManager {
       scopeKey: request.scopeKey,
       resourceKey: request.resourceKey,
       fingerprint: request.fingerprint,
+      fingerprintV2: requestFingerprintV2(request),
       projectId: request.projectId,
       projectLabel: request.projectLabel,
       scope: 'once',
@@ -1338,6 +1366,7 @@ export class PermissionManager {
       scopeKey: string;
       resourceKey: string;
       fingerprint: string;
+      fingerprintV2?: string;
       freshConfirmation: boolean;
       external: boolean;
       reversible: boolean;
@@ -1410,13 +1439,25 @@ export class PermissionManager {
       };
     }
 
+    const request = await this.store.getRequest(authorization.requestId);
+    const storedFingerprintV2 = requestFingerprintV2(request);
+    const useFingerprintV2 = Boolean(
+      expected.fingerprintV2 &&
+        authorization.fingerprintV2 &&
+        storedFingerprintV2 &&
+        authorization.fingerprintV2 === storedFingerprintV2
+    );
+    const fingerprintMatches = useFingerprintV2
+      ? authorization.fingerprintV2 === expected.fingerprintV2
+      : authorization.fingerprint === expected.fingerprint;
+
     if (
       authorization.agentId !== expected.agentId ||
       authorization.toolName !== expected.toolName ||
       authorization.category !== expected.category ||
       authorization.scopeKey !== expected.scopeKey ||
       authorization.resourceKey !== expected.resourceKey ||
-      authorization.fingerprint !== expected.fingerprint ||
+      !fingerprintMatches ||
       authorization.freshConfirmation !== expected.freshConfirmation ||
       authorization.external !== expected.external ||
       authorization.reversible !== expected.reversible
@@ -1439,8 +1480,6 @@ export class PermissionManager {
         message: 'The approval does not match this exact agent, tool, resource, and action.',
       };
     }
-
-    const request = await this.store.getRequest(authorization.requestId);
 
     if (
       !request ||
@@ -1469,7 +1508,9 @@ export class PermissionManager {
         grant.category !== authorization.category ||
         grant.scopeKey !== authorization.scopeKey ||
         grant.resourceKey !== authorization.resourceKey ||
-        grant.fingerprint !== authorization.fingerprint ||
+        (useFingerprintV2
+          ? (grant.fingerprintV2 ?? storedFingerprintV2) !== expected.fingerprintV2
+          : grant.fingerprint !== authorization.fingerprint) ||
         grant.projectId !== authorization.projectId ||
         (grant.scope !== 'once' && !grant.narrow) ||
         (grant.scope !== 'once' && grant.risk === 'critical') ||

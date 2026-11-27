@@ -7,7 +7,7 @@ export const DATABASE_NAME = 'orbit.db';
  * tasks and the agent conversation) lives in SQLite on the device.
  */
 export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
-  const DATABASE_VERSION = 15;
+  const DATABASE_VERSION = 17;
 
   const result = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
   let currentDbVersion = result?.user_version ?? 0;
@@ -903,6 +903,334 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
     `);
 
     currentDbVersion = 15;
+  }
+
+  // Autonomous Agent v16: durable orchestration state. The existing task list,
+  // workflows, skills and subagent definitions are preserved; these tables add
+  // recoverable turn/subagent state, scoped memory, versioned skill manifests,
+  // explicit delegation grants and persistent background triggers.
+  if (currentDbVersion === 15) {
+    await db.execAsync(`
+      CREATE TABLE IF NOT EXISTS agent_tasks (
+        id TEXT PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        conversation_id INTEGER,
+        project_id TEXT NOT NULL DEFAULT 'orbit-workspace',
+        parent_task_id TEXT,
+        subagent_id TEXT,
+        kind TEXT NOT NULL DEFAULT 'turn',
+        title TEXT NOT NULL DEFAULT '',
+        status TEXT NOT NULL DEFAULT 'queued',
+        phase TEXT NOT NULL DEFAULT 'system',
+        input_json TEXT NOT NULL DEFAULT '{}',
+        result_json TEXT,
+        verification_json TEXT,
+        error TEXT,
+        attempts INTEGER NOT NULL DEFAULT 0,
+        max_attempts INTEGER NOT NULL DEFAULT 2,
+        priority INTEGER NOT NULL DEFAULT 0,
+        idempotency_key TEXT,
+        lease_owner TEXT,
+        lease_until INTEGER,
+        budget_json TEXT NOT NULL DEFAULT '{}',
+        grants_json TEXT NOT NULL DEFAULT '[]',
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        started_at INTEGER,
+        finished_at INTEGER,
+        next_run_at INTEGER,
+        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+        FOREIGN KEY (conversation_id) REFERENCES conversations (id) ON DELETE SET NULL,
+        FOREIGN KEY (parent_task_id) REFERENCES agent_tasks (id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_agent_tasks_user_status
+        ON agent_tasks (user_id, status, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_agent_tasks_conversation
+        ON agent_tasks (user_id, conversation_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_agent_tasks_parent
+        ON agent_tasks (parent_task_id);
+      CREATE INDEX IF NOT EXISTS idx_agent_tasks_lease
+        ON agent_tasks (status, lease_until);
+      CREATE INDEX IF NOT EXISTS idx_agent_tasks_idempotency
+        ON agent_tasks (user_id, idempotency_key);
+
+      CREATE TABLE IF NOT EXISTS agent_task_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        task_id TEXT NOT NULL,
+        sequence INTEGER NOT NULL UNIQUE,
+        user_id INTEGER NOT NULL,
+        type TEXT NOT NULL,
+        payload TEXT NOT NULL DEFAULT '{}',
+        created_at INTEGER NOT NULL,
+        previous_hash TEXT NOT NULL DEFAULT '',
+        hash TEXT NOT NULL,
+        FOREIGN KEY (task_id) REFERENCES agent_tasks (id) ON DELETE CASCADE,
+        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_agent_task_events_task
+        ON agent_task_events (task_id, sequence);
+      CREATE INDEX IF NOT EXISTS idx_agent_task_events_user
+        ON agent_task_events (user_id, created_at DESC);
+
+      CREATE TABLE IF NOT EXISTS agent_task_attempts (
+        id TEXT PRIMARY KEY,
+        task_id TEXT NOT NULL,
+        attempt INTEGER NOT NULL,
+        tool_name TEXT NOT NULL,
+        status TEXT NOT NULL,
+        started_at INTEGER NOT NULL,
+        finished_at INTEGER,
+        duration_ms INTEGER NOT NULL DEFAULT 0,
+        error_code TEXT,
+        error TEXT,
+        verification TEXT,
+        metadata TEXT NOT NULL DEFAULT '{}',
+        FOREIGN KEY (task_id) REFERENCES agent_tasks (id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_agent_task_attempts_task
+        ON agent_task_attempts (task_id, attempt, started_at);
+
+      CREATE TABLE IF NOT EXISTS agent_task_schedules (
+        id TEXT PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        owner_type TEXT NOT NULL,
+        owner_id TEXT NOT NULL,
+        task_id TEXT,
+        title TEXT NOT NULL DEFAULT '',
+        input_json TEXT NOT NULL DEFAULT '{}',
+        enabled INTEGER NOT NULL DEFAULT 1,
+        interval_ms INTEGER,
+        next_run_at INTEGER NOT NULL,
+        last_run_at INTEGER,
+        lease_owner TEXT,
+        lease_until INTEGER,
+        idempotency_key TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+        FOREIGN KEY (task_id) REFERENCES agent_tasks (id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_agent_task_schedules_due
+        ON agent_task_schedules (enabled, next_run_at, lease_until);
+      CREATE INDEX IF NOT EXISTS idx_agent_task_schedules_owner
+        ON agent_task_schedules (user_id, owner_type, owner_id);
+
+      CREATE TABLE IF NOT EXISTS agent_memory (
+        id TEXT PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        agent_id TEXT NOT NULL DEFAULT 'master',
+        project_key TEXT NOT NULL DEFAULT '',
+        project_id TEXT,
+        scope TEXT NOT NULL DEFAULT 'agent',
+        key TEXT NOT NULL,
+        value TEXT NOT NULL,
+        source TEXT NOT NULL DEFAULT 'agent',
+        confidence REAL NOT NULL DEFAULT 1,
+        version INTEGER NOT NULL DEFAULT 1,
+        expires_at INTEGER,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+        UNIQUE (user_id, agent_id, project_key, scope, key)
+      );
+      CREATE INDEX IF NOT EXISTS idx_agent_memory_scope
+        ON agent_memory (user_id, agent_id, project_key, scope, updated_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_agent_memory_expiry
+        ON agent_memory (expires_at);
+
+      CREATE TABLE IF NOT EXISTS skill_versions (
+        skill_id TEXT NOT NULL,
+        version TEXT NOT NULL,
+        manifest TEXT NOT NULL,
+        manifest_hash TEXT NOT NULL,
+        source TEXT NOT NULL DEFAULT 'builtin',
+        created_at INTEGER NOT NULL,
+        PRIMARY KEY (skill_id, version),
+        FOREIGN KEY (skill_id) REFERENCES skills (id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_skill_versions_skill
+        ON skill_versions (skill_id, created_at DESC);
+
+      CREATE TABLE IF NOT EXISTS subagent_grants (
+        id TEXT PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        parent_task_id TEXT NOT NULL,
+        subagent_id TEXT NOT NULL,
+        tool_name TEXT NOT NULL,
+        category TEXT NOT NULL DEFAULT '',
+        resource_key TEXT NOT NULL DEFAULT '',
+        status TEXT NOT NULL DEFAULT 'active',
+        expires_at INTEGER,
+        created_at INTEGER NOT NULL,
+        revoked_at INTEGER,
+        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+        FOREIGN KEY (parent_task_id) REFERENCES agent_tasks (id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_subagent_grants_task
+        ON subagent_grants (parent_task_id, status);
+      CREATE INDEX IF NOT EXISTS idx_subagent_grants_tool
+        ON subagent_grants (user_id, subagent_id, tool_name, status);
+    `);
+
+    // Existing workflow history stays readable; each run can now point at its
+    // durable orchestration task and the schedule that triggered it.
+    const runColumns = await db.getAllAsync<{ name: string }>('PRAGMA table_info(workflow_runs)');
+    if (!runColumns.some((column) => column.name === 'agent_task_id')) {
+      await db.execAsync('ALTER TABLE workflow_runs ADD COLUMN agent_task_id TEXT');
+    }
+    if (!runColumns.some((column) => column.name === 'schedule_id')) {
+      await db.execAsync('ALTER TABLE workflow_runs ADD COLUMN schedule_id TEXT');
+    }
+    await db.execAsync(`
+      CREATE INDEX IF NOT EXISTS idx_workflow_runs_agent_task
+        ON workflow_runs (agent_task_id);
+      CREATE INDEX IF NOT EXISTS idx_workflow_runs_schedule
+        ON workflow_runs (schedule_id);
+    `);
+
+    currentDbVersion = 16;
+  }
+
+  // Hybrid Autonomous Agent v17: additive hybrid state, trace linkage and
+  // approval/audit/evaluation ledgers. Every v16 table and row is preserved.
+  if (currentDbVersion === 16) {
+    const taskColumns = await db.getAllAsync<{ name: string }>(
+      'PRAGMA table_info(agent_tasks)'
+    );
+    const eventColumns = await db.getAllAsync<{ name: string }>(
+      'PRAGMA table_info(agent_task_events)'
+    );
+    const attemptColumns = await db.getAllAsync<{ name: string }>(
+      'PRAGMA table_info(agent_task_attempts)'
+    );
+    const scheduleColumns = await db.getAllAsync<{ name: string }>(
+      'PRAGMA table_info(agent_task_schedules)'
+    );
+
+    await db.execAsync(`
+      CREATE TABLE IF NOT EXISTS agent_task_approvals (
+        id TEXT PRIMARY KEY,
+        task_id TEXT NOT NULL,
+        step_id TEXT NOT NULL,
+        user_id INTEGER NOT NULL,
+        permission_request_id TEXT,
+        binding TEXT NOT NULL,
+        state TEXT NOT NULL,
+        operation_fingerprint TEXT NOT NULL,
+        policy_version TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        resolved_at INTEGER,
+        FOREIGN KEY (task_id) REFERENCES agent_tasks (id) ON DELETE CASCADE,
+        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_agent_task_approvals_task
+        ON agent_task_approvals (task_id);
+      CREATE INDEX IF NOT EXISTS idx_agent_task_approvals_user_state
+        ON agent_task_approvals (user_id, state);
+
+      CREATE TABLE IF NOT EXISTS hybrid_audit_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        trace_id TEXT NOT NULL,
+        task_id TEXT,
+        user_id INTEGER,
+        source TEXT NOT NULL,
+        type TEXT NOT NULL,
+        payload TEXT NOT NULL DEFAULT '{}',
+        previous_hash TEXT NOT NULL DEFAULT '',
+        hash TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_hybrid_audit_trace_created
+        ON hybrid_audit_events (trace_id, created_at);
+      CREATE INDEX IF NOT EXISTS idx_hybrid_audit_created
+        ON hybrid_audit_events (created_at);
+
+      CREATE TABLE IF NOT EXISTS skill_evaluations (
+        id TEXT PRIMARY KEY,
+        skill_id TEXT NOT NULL,
+        version TEXT NOT NULL,
+        manifest_hash TEXT,
+        user_id INTEGER,
+        task_id TEXT,
+        success INTEGER NOT NULL,
+        score REAL NOT NULL,
+        detail TEXT NOT NULL DEFAULT '{}',
+        created_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_skill_evaluations_skill_version
+        ON skill_evaluations (skill_id, version);
+      CREATE INDEX IF NOT EXISTS idx_skill_evaluations_user_created
+        ON skill_evaluations (user_id, created_at DESC);
+    `);
+
+    if (!taskColumns.some((column) => column.name === 'hybrid_state')) {
+      await db.execAsync('ALTER TABLE agent_tasks ADD COLUMN hybrid_state TEXT');
+    }
+    if (!taskColumns.some((column) => column.name === 'trace_id')) {
+      await db.execAsync('ALTER TABLE agent_tasks ADD COLUMN trace_id TEXT');
+    }
+    if (!taskColumns.some((column) => column.name === 'plan_json')) {
+      await db.execAsync(
+        `ALTER TABLE agent_tasks ADD COLUMN plan_json TEXT NOT NULL DEFAULT '{}'`
+      );
+    }
+    if (!taskColumns.some((column) => column.name === 'risk_json')) {
+      await db.execAsync(
+        `ALTER TABLE agent_tasks ADD COLUMN risk_json TEXT NOT NULL DEFAULT '{}'`
+      );
+    }
+
+    if (!eventColumns.some((column) => column.name === 'trace_id')) {
+      await db.execAsync('ALTER TABLE agent_task_events ADD COLUMN trace_id TEXT');
+    }
+    if (!eventColumns.some((column) => column.name === 'hybrid_state')) {
+      await db.execAsync('ALTER TABLE agent_task_events ADD COLUMN hybrid_state TEXT');
+    }
+
+    if (!attemptColumns.some((column) => column.name === 'trace_id')) {
+      await db.execAsync('ALTER TABLE agent_task_attempts ADD COLUMN trace_id TEXT');
+    }
+    if (!attemptColumns.some((column) => column.name === 'step_id')) {
+      await db.execAsync('ALTER TABLE agent_task_attempts ADD COLUMN step_id TEXT');
+    }
+
+    if (!scheduleColumns.some((column) => column.name === 'trace_id')) {
+      await db.execAsync('ALTER TABLE agent_task_schedules ADD COLUMN trace_id TEXT');
+    }
+    if (!scheduleColumns.some((column) => column.name === 'attempt')) {
+      await db.execAsync(
+        'ALTER TABLE agent_task_schedules ADD COLUMN attempt INTEGER NOT NULL DEFAULT 0'
+      );
+    }
+    if (!scheduleColumns.some((column) => column.name === 'backoff_json')) {
+      await db.execAsync(
+        `ALTER TABLE agent_task_schedules ADD COLUMN backoff_json TEXT NOT NULL DEFAULT '{}'`
+      );
+    }
+
+    // Backfill also repairs a migration that added the columns but stopped
+    // before mapping legacy statuses. Unknown/NULL statuses become QUEUED.
+    await db.execAsync(`
+      UPDATE agent_tasks
+      SET hybrid_state = CASE status
+        WHEN 'queued' THEN 'QUEUED'
+        WHEN 'running' THEN 'RUNNING'
+        WHEN 'awaiting_approval' THEN 'WAITING_FOR_APPROVAL'
+        WHEN 'awaiting_tool' THEN 'WAITING_FOR_APPROVAL'
+        WHEN 'needs_review' THEN 'BLOCKED'
+        WHEN 'paused' THEN 'BLOCKED'
+        WHEN 'unknown' THEN 'BLOCKED'
+        WHEN 'blocked' THEN 'BLOCKED'
+        WHEN 'completed' THEN 'COMPLETED'
+        WHEN 'failed' THEN 'FAILED'
+        WHEN 'cancelled' THEN 'CANCELLED'
+        ELSE 'QUEUED'
+      END
+      WHERE hybrid_state IS NULL OR hybrid_state = '';
+    `);
+
+    currentDbVersion = 17;
   }
 
   if (currentDbVersion !== DATABASE_VERSION) {

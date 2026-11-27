@@ -64,6 +64,39 @@ export async function configureNotifications(): Promise<void> {
 }
 
 export type NotificationPermissionState = 'granted' | 'denied' | 'undetermined';
+export type ExactAlarmPermissionState = NotificationPermissionState;
+
+/** Checks Android 12+ exact-alarm access without changing any user setting. */
+export async function getExactAlarmPermission(): Promise<ExactAlarmPermissionState> {
+  if (Platform.OS !== 'android') return 'granted';
+
+  const Notifications = await getNotifications();
+  if (!Notifications) return 'denied';
+
+  try {
+    const permission = await Notifications.getExactAlarmPermissionsAsync();
+    if (permission.granted) return 'granted';
+    return permission.canAskAgain ? 'undetermined' : 'denied';
+  } catch {
+    return 'denied';
+  }
+}
+
+/** Opens Android settings only when the user explicitly asks for exact alarms. */
+export async function requestExactAlarmPermission(): Promise<boolean> {
+  if (Platform.OS !== 'android') return true;
+
+  const Notifications = await getNotifications();
+  if (!Notifications) return false;
+
+  try {
+    const result = await Notifications.requestExactAlarmPermissionsAsync();
+    return result.granted;
+  } catch (error) {
+    console.warn('Could not request exact alarm permission.', error);
+    return false;
+  }
+}
 
 export async function getNotificationPermission(): Promise<NotificationPermissionState> {
   const Notifications = await getNotifications();
@@ -146,6 +179,12 @@ export async function scheduleTaskReminder(task: Task): Promise<string | null> {
       return null;
     }
 
+    // SCHEDULE_EXACT_ALARM is declared, but Android 14+ denies it by default.
+    // Check the live state and fall back to best-effort delivery instead of
+    // pretending a reminder is exact when the OS will not allow it.
+    const exactAlarm = await getExactAlarmPermission();
+    const delivery = exactAlarm === 'granted' ? 'alarmClock' : 'bestEffort';
+
     return await Notifications.scheduleNotificationAsync({
       content: {
         title: task.title,
@@ -157,6 +196,7 @@ export async function scheduleTaskReminder(task: Task): Promise<string | null> {
         type: Notifications.SchedulableTriggerInputTypes.DATE,
         date: new Date(at),
         channelId: REMINDER_CHANNEL_ID,
+        delivery,
       },
     });
   } catch (error) {

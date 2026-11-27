@@ -412,6 +412,30 @@ These are product rules, not just implementation details:
 5. **Every capability is replaceable.** If a feature cannot be registered as a
    plugin, it does not belong in the harness.
 
+## Hybrid autonomous agent
+
+`src/lib/hybrid-agent/` owns the central turn loop. It follows
+SYSTEM-FIRST → AI-ON-Demand → RISK-Based Autonomy: a deterministic router and
+bounded planner run before any model call; AI may propose capabilities but never
+grants permission, changes policy, or bypasses the sandbox. Every capability —
+including declarative skill steps — terminates at `secureExecuteTool()` and the
+Android sandbox gate.
+
+Task state is canonical: `QUEUED`, `PLANNING`, `RUNNING`,
+`WAITING_FOR_APPROVAL`, `VERIFYING`, `COMPLETED`, `FAILED`, `CANCELLED`,
+`BLOCKED`. The v16 lowercase `status` column remains for compatibility; the
+chat screen shows the canonical state when present. A turn is `COMPLETED` only
+after a canonical `{ ok: true }` envelope (or a purely conversational reply).
+Timeouts, cancellations and interrupted work are `BLOCKED` / `needs_review`,
+never silently completed.
+
+Sensitive steps record an exact approval binding (operation fingerprint,
+parameters, plan step, resource/scope, policy version) in the v17
+`agent_task_approvals` ledger. Changed parameters or a changed policy version
+invalidate it. Startup/background recovery requeues only work with no recorded
+side effects; anything else is blocked for review and pending approvals are
+never auto-approved.
+
 ## File map
 
 ```text

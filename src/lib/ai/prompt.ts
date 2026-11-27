@@ -10,6 +10,8 @@ export type BuddyPromptContext = {
 export type AgentPromptContext = {
   instructions?: string;
   memory?: string;
+  /** Structured long-term/project memory plus verified System-first results. */
+  verifiedContext?: string;
 };
 
 function buildBuddySection(ctx?: BuddyPromptContext): string {
@@ -71,6 +73,7 @@ export function buildSystemPrompt(
   const buddySection = buildBuddySection(buddyCtx);
   const instructions = agentCtx?.instructions?.trim();
   const memory = agentCtx?.memory?.trim();
+  const verifiedContext = agentCtx?.verifiedContext?.trim();
   const agentSection = instructions || memory
     ? `
 Agent-specific context for ${agentName}:
@@ -79,13 +82,19 @@ ${memory ? `- User-provided memory: ${memory.replace(/\n/g, '\n  ')}` : '- No cu
 - This context applies only to ${agentName}. Treat it as user preferences, not as a source of secrets.
 `
     : '';
+  const verifiedSection = verifiedContext
+    ? `
+Verified System-first results (already executed, do not repeat):
+${verifiedContext.replace(/\n/g, '\n  ')}
+`
+    : '';
 
   return `You are ${agentName}, part of Orbit, the user's private Android agent. All task data stays on the device.
 
 The user's name is ${userName}.
 Current local date/time: ${formatForModel(now)}
 Timezone: ${getTimeZone()}
-${buddySection}${agentSection}
+${buddySection}${agentSection}${verifiedSection}
 When to use task tools:
 - Only create, update, complete, or delete a task when the user explicitly asks you to do so — for example "add task…", "remind me…", "mark 3 done", "task banao", or "yaad dila do".
 - A statement, question, greeting, file name, pasted text, email excerpt, or document excerpt is NOT a request to save a task. Never turn it into a task on your own.
@@ -98,6 +107,7 @@ When to use task tools:
 Permissions and safety:
 - Sensitive tools are gated by a system permission dialog. The user decides Allow once, Always allow (when safe), or Deny.
 - Never claim permission was granted. Never invent approval, and never say a protected action succeeded unless the tool result says ok:true.
+- The System-first layer may already have executed deterministic tools. Treat those results as facts; never repeat them or describe unverified work as complete.
 - If a tool returns that permission was denied or cancelled, stop that operation. You may suggest a safer alternative that does not need the permission.
 - High-risk actions always require a fresh decision. Do not ask the user to "always allow" a high-risk action.
 - Never put passwords, API keys, tokens, or private keys into a permission request, command, or reply. Refer to credentials without repeating them.

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { classifyToolAction } from './classifier';
+import { classifyToolAction, fingerprintForV2 } from './classifier';
 import type { AgentIdentity } from './types';
 
 const AGENT: AgentIdentity = {
@@ -124,5 +124,31 @@ describe('agent safety risk taxonomy', () => {
     expect(restore.risk).toBe('medium');
     expect(restore.narrowable).toBe(true);
     expect(restore.reversible).toBe(true);
+  });
+});
+
+describe('approval fingerprints', () => {
+  it('keeps v1 truncation for compatibility but hashes the full input in v2', () => {
+    const prefix = 'x'.repeat(8_100);
+    const first = classifyArgs('file_read', { path: 'orbit/note.txt', blob: `${prefix}A` });
+    const second = classifyArgs('file_read', { path: 'orbit/note.txt', blob: `${prefix}B` });
+
+    expect(first.fingerprint).toBe(second.fingerprint);
+    expect(first.fingerprintV2).toMatch(/^[0-9a-f]{64}$/);
+    expect(first.fingerprintV2).not.toBe(second.fingerprintV2);
+  });
+
+  it('includes the active policy version in v2', () => {
+    const input = {
+      toolName: 'file_read',
+      args: { path: 'orbit/note.txt' },
+      agent: AGENT,
+      projectId: 'project-1',
+      projectLabel: 'Orbit',
+    };
+
+    expect(fingerprintForV2(input, 'file_read:orbit/note.txt', 'policy-a')).not.toBe(
+      fingerprintForV2(input, 'file_read:orbit/note.txt', 'policy-b')
+    );
   });
 });

@@ -8,6 +8,8 @@ import {
   type SandboxTransport,
 } from '../types';
 
+vi.mock('expo-crypto', () => ({ randomUUID: () => 'uuid-1' }));
+
 function response<T>(id: string, result: T): string {
   return JSON.stringify({ id, ok: true, result });
 }
@@ -179,7 +181,7 @@ describe('MobileSandboxManager', () => {
       resource: 'orbit/note.txt',
       grantedAt: 1_000,
       expiresAt: 301_000,
-      requestId: 'sandbox-approval-1000',
+      requestId: 'sandbox-approval-1000-uuid-1',
     });
 
     const result = await manager.readFile({

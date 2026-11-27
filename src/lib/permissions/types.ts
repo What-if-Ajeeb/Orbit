@@ -139,6 +139,7 @@ export type PermissionRequestRecord = {
   scopeKey: string;
   resourceKey: string;
   fingerprint: string;
+  fingerprintV2?: string;
   freshConfirmation: boolean;
   reversible: boolean;
   external: boolean;
@@ -162,6 +163,7 @@ export type PermissionGrantRecord = {
   scopeKey: string;
   resourceKey: string;
   fingerprint: string;
+  fingerprintV2?: string;
   projectId: string;
   projectLabel: string;
   scope: PermissionGrantScope;
@@ -235,6 +237,7 @@ export type PermissionAuthorization = {
   scopeKey: string;
   resourceKey: string;
   fingerprint: string;
+  fingerprintV2?: string;
   projectId: string;
   conversationId: number | null;
   freshConfirmation: boolean;
@@ -265,6 +268,7 @@ export type PermissionDenialReason =
   | 'scope_mismatch'
   | 'android_permission_denied'
   | 'command_blocked'
+  | 'sandbox_denied'
   | 'execution_timeout'
   | 'execution_failed';
 
@@ -302,6 +306,7 @@ export type ClassifiedPermissionAction = {
   scopeKey: string;
   resourceKey: string;
   fingerprint: string;
+  fingerprintV2?: string;
   narrowable: boolean;
   freshConfirmation: boolean;
   reversible: boolean;

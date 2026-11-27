@@ -1,7 +1,7 @@
 import { useFocusEffect } from 'expo-router';
-import { Bell, BellRing, Settings, ShieldCheck } from 'lucide-react-native';
+import { Bell, BellRing, Clock, Settings, ShieldCheck } from 'lucide-react-native';
 import { useCallback, useState } from 'react';
-import { Linking, StyleSheet, Switch, Text, View } from 'react-native';
+import { Linking, Platform, StyleSheet, Switch, Text, View } from 'react-native';
 
 import { SettingsFeedback } from '@/components/settings/SettingsFeedback';
 import { SettingsGroup } from '@/components/settings/SettingsGroup';
@@ -9,14 +9,23 @@ import { SettingsRow } from '@/components/settings/SettingsRow';
 import { SettingsScreen } from '@/components/settings/SettingsScreen';
 import { useAppTheme, useStyles, type AppTheme } from '@/context/theme';
 import {
+  getExactAlarmPermission,
   getNotificationPermission,
+  requestExactAlarmPermission,
   requestNotificationPermission,
   sendTestReminder,
+  type ExactAlarmPermissionState,
   type NotificationPermissionState,
 } from '@/lib/notifications';
 import { spacing, typography } from '@/theme';
 
 const STATUS_LABEL: Record<NotificationPermissionState, string> = {
+  granted: 'Allowed',
+  denied: 'Blocked',
+  undetermined: 'Not set',
+};
+
+const EXACT_LABEL: Record<ExactAlarmPermissionState, string> = {
   granted: 'Allowed',
   denied: 'Blocked',
   undetermined: 'Not set',
@@ -38,6 +47,7 @@ export default function NotificationsSettingsScreen() {
   const { colors } = useAppTheme();
   const styles = useStyles(makeStyles);
   const [permission, setPermission] = useState<NotificationPermissionState>('undetermined');
+  const [exactAlarm, setExactAlarm] = useState<ExactAlarmPermissionState>('undetermined');
   const [loading, setLoading] = useState(true);
   const [testing, setTesting] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -48,10 +58,14 @@ export default function NotificationsSettingsScreen() {
       let active = true;
 
       void (async () => {
-        const next = await getNotificationPermission();
+        const [next, nextExact] = await Promise.all([
+          getNotificationPermission(),
+          getExactAlarmPermission(),
+        ]);
 
         if (active) {
           setPermission(next);
+          setExactAlarm(nextExact);
           setLoading(false);
         }
       })();
@@ -82,6 +96,22 @@ export default function NotificationsSettingsScreen() {
       setNotice('Notifications enabled. You will be reminded 15 minutes before a task is due.');
     } else {
       setError('Notifications are not allowed. Enable them in system settings.');
+    }
+  }
+
+  async function enableExactAlarms() {
+    setError(null);
+    setNotice(null);
+    const granted = await requestExactAlarmPermission();
+    const next = await getExactAlarmPermission();
+    setExactAlarm(next);
+
+    if (granted) {
+      setNotice('Exact alarms enabled. Reminders can be delivered at the selected time.');
+    } else {
+      setNotice(
+        'Exact alarms are off. Reminders will still be delivered, but Android may shift their timing.'
+      );
     }
   }
 
@@ -155,6 +185,23 @@ export default function NotificationsSettingsScreen() {
             disabled={testing}
             onPress={() => {
               void testReminder();
+            }}
+          />
+        ) : null}
+
+        {Platform.OS === 'android' && permission === 'granted' ? (
+          <SettingsRow
+            icon={Clock}
+            title="Exact alarm timing"
+            description={
+              exactAlarm === 'granted'
+                ? 'Reminders can trigger at the exact selected time.'
+                : 'Android may delay reminders to save power. Enable exact timing if you need a precise time.'
+            }
+            value={EXACT_LABEL[exactAlarm]}
+            showChevron={false}
+            onPress={() => {
+              void enableExactAlarms();
             }}
           />
         ) : null}
