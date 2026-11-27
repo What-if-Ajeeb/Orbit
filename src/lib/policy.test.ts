@@ -131,4 +131,23 @@ describe('policy engine persistence', () => {
 
     expect(policyEngine.getRule('policy.task.create')).toBeNull();
   });
+
+  it('derives a stable execution policy version from the active rules', () => {
+    const evaluated = policyEngine.evaluate('create_task', {});
+    const first = policyEngine.evaluatePolicyForExecution('create_task', {});
+    const second = policyEngine.evaluatePolicyForExecution('create_task', {});
+
+    expect(first).toMatchObject({
+      decision: evaluated.decision,
+      ruleId: evaluated.ruleId,
+      sandbox: evaluated.sandbox,
+    });
+    expect(first.policyVersion).toMatch(/^[0-9a-f]{64}$/);
+    expect(second.policyVersion).toBe(first.policyVersion);
+
+    policyEngine.updateRule('policy.task.create', { sandbox: { allowNetwork: false } });
+    expect(policyEngine.evaluatePolicyForExecution('create_task', {}).policyVersion).not.toBe(
+      first.policyVersion
+    );
+  });
 });

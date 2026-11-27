@@ -113,4 +113,34 @@ describe('scoped agent memory', () => {
     expect(forgotten).toBe(false);
     expect(await store.recall({ userId: 1, agentId: 'master' })).toHaveLength(1);
   });
+
+  it('accepts the new taxonomy scopes without changing the default scope', async () => {
+    db = createTestDatabase();
+    const store = new MemoryStore(db);
+
+    const implicit = await store.remember({
+      userId: 1,
+      key: 'implicit',
+      value: 'agent default',
+    });
+    expect(implicit.scope).toBe('agent');
+
+    for (const scope of ['working', 'session', 'long_term', 'task_history'] as const) {
+      const entry = await store.remember({
+        userId: 1,
+        agentId: 'master',
+        scope,
+        key: `key_${scope}`,
+        value: `value_${scope}`,
+      });
+      expect(entry.scope).toBe(scope);
+      expect((await store.recall({ userId: 1, agentId: 'master', scope }))[0]?.value).toBe(
+        `value_${scope}`
+      );
+    }
+
+    expect(
+      (await store.recall({ userId: 1, agentId: 'master' })).map((e) => e.key)
+    ).toEqual(expect.arrayContaining(['implicit', 'key_working', 'key_session', 'key_long_term', 'key_task_history']));
+  });
 });

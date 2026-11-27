@@ -7,7 +7,7 @@ export const DATABASE_NAME = 'orbit.db';
  * tasks and the agent conversation) lives in SQLite on the device.
  */
 export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
-  const DATABASE_VERSION = 16;
+  const DATABASE_VERSION = 17;
 
   const result = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
   let currentDbVersion = result?.user_version ?? 0;
@@ -1089,6 +1089,148 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
     `);
 
     currentDbVersion = 16;
+  }
+
+  // Hybrid Autonomous Agent v17: additive hybrid state, trace linkage and
+  // approval/audit/evaluation ledgers. Every v16 table and row is preserved.
+  if (currentDbVersion === 16) {
+    const taskColumns = await db.getAllAsync<{ name: string }>(
+      'PRAGMA table_info(agent_tasks)'
+    );
+    const eventColumns = await db.getAllAsync<{ name: string }>(
+      'PRAGMA table_info(agent_task_events)'
+    );
+    const attemptColumns = await db.getAllAsync<{ name: string }>(
+      'PRAGMA table_info(agent_task_attempts)'
+    );
+    const scheduleColumns = await db.getAllAsync<{ name: string }>(
+      'PRAGMA table_info(agent_task_schedules)'
+    );
+
+    await db.execAsync(`
+      CREATE TABLE IF NOT EXISTS agent_task_approvals (
+        id TEXT PRIMARY KEY,
+        task_id TEXT NOT NULL,
+        step_id TEXT NOT NULL,
+        user_id INTEGER NOT NULL,
+        permission_request_id TEXT,
+        binding TEXT NOT NULL,
+        state TEXT NOT NULL,
+        operation_fingerprint TEXT NOT NULL,
+        policy_version TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        resolved_at INTEGER,
+        FOREIGN KEY (task_id) REFERENCES agent_tasks (id) ON DELETE CASCADE,
+        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_agent_task_approvals_task
+        ON agent_task_approvals (task_id);
+      CREATE INDEX IF NOT EXISTS idx_agent_task_approvals_user_state
+        ON agent_task_approvals (user_id, state);
+
+      CREATE TABLE IF NOT EXISTS hybrid_audit_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        trace_id TEXT NOT NULL,
+        task_id TEXT,
+        user_id INTEGER,
+        source TEXT NOT NULL,
+        type TEXT NOT NULL,
+        payload TEXT NOT NULL DEFAULT '{}',
+        previous_hash TEXT NOT NULL DEFAULT '',
+        hash TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_hybrid_audit_trace_created
+        ON hybrid_audit_events (trace_id, created_at);
+      CREATE INDEX IF NOT EXISTS idx_hybrid_audit_created
+        ON hybrid_audit_events (created_at);
+
+      CREATE TABLE IF NOT EXISTS skill_evaluations (
+        id TEXT PRIMARY KEY,
+        skill_id TEXT NOT NULL,
+        version TEXT NOT NULL,
+        manifest_hash TEXT,
+        user_id INTEGER,
+        task_id TEXT,
+        success INTEGER NOT NULL,
+        score REAL NOT NULL,
+        detail TEXT NOT NULL DEFAULT '{}',
+        created_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_skill_evaluations_skill_version
+        ON skill_evaluations (skill_id, version);
+      CREATE INDEX IF NOT EXISTS idx_skill_evaluations_user_created
+        ON skill_evaluations (user_id, created_at DESC);
+    `);
+
+    if (!taskColumns.some((column) => column.name === 'hybrid_state')) {
+      await db.execAsync('ALTER TABLE agent_tasks ADD COLUMN hybrid_state TEXT');
+    }
+    if (!taskColumns.some((column) => column.name === 'trace_id')) {
+      await db.execAsync('ALTER TABLE agent_tasks ADD COLUMN trace_id TEXT');
+    }
+    if (!taskColumns.some((column) => column.name === 'plan_json')) {
+      await db.execAsync(
+        `ALTER TABLE agent_tasks ADD COLUMN plan_json TEXT NOT NULL DEFAULT '{}'`
+      );
+    }
+    if (!taskColumns.some((column) => column.name === 'risk_json')) {
+      await db.execAsync(
+        `ALTER TABLE agent_tasks ADD COLUMN risk_json TEXT NOT NULL DEFAULT '{}'`
+      );
+    }
+
+    if (!eventColumns.some((column) => column.name === 'trace_id')) {
+      await db.execAsync('ALTER TABLE agent_task_events ADD COLUMN trace_id TEXT');
+    }
+    if (!eventColumns.some((column) => column.name === 'hybrid_state')) {
+      await db.execAsync('ALTER TABLE agent_task_events ADD COLUMN hybrid_state TEXT');
+    }
+
+    if (!attemptColumns.some((column) => column.name === 'trace_id')) {
+      await db.execAsync('ALTER TABLE agent_task_attempts ADD COLUMN trace_id TEXT');
+    }
+    if (!attemptColumns.some((column) => column.name === 'step_id')) {
+      await db.execAsync('ALTER TABLE agent_task_attempts ADD COLUMN step_id TEXT');
+    }
+
+    if (!scheduleColumns.some((column) => column.name === 'trace_id')) {
+      await db.execAsync('ALTER TABLE agent_task_schedules ADD COLUMN trace_id TEXT');
+    }
+    if (!scheduleColumns.some((column) => column.name === 'attempt')) {
+      await db.execAsync(
+        'ALTER TABLE agent_task_schedules ADD COLUMN attempt INTEGER NOT NULL DEFAULT 0'
+      );
+    }
+    if (!scheduleColumns.some((column) => column.name === 'backoff_json')) {
+      await db.execAsync(
+        `ALTER TABLE agent_task_schedules ADD COLUMN backoff_json TEXT NOT NULL DEFAULT '{}'`
+      );
+    }
+
+    // Backfill also repairs a migration that added the columns but stopped
+    // before mapping legacy statuses. Unknown/NULL statuses become QUEUED.
+    await db.execAsync(`
+      UPDATE agent_tasks
+      SET hybrid_state = CASE status
+        WHEN 'queued' THEN 'QUEUED'
+        WHEN 'running' THEN 'RUNNING'
+        WHEN 'awaiting_approval' THEN 'WAITING_FOR_APPROVAL'
+        WHEN 'awaiting_tool' THEN 'WAITING_FOR_APPROVAL'
+        WHEN 'needs_review' THEN 'BLOCKED'
+        WHEN 'paused' THEN 'BLOCKED'
+        WHEN 'unknown' THEN 'BLOCKED'
+        WHEN 'blocked' THEN 'BLOCKED'
+        WHEN 'completed' THEN 'COMPLETED'
+        WHEN 'failed' THEN 'FAILED'
+        WHEN 'cancelled' THEN 'CANCELLED'
+        ELSE 'QUEUED'
+      END
+      WHERE hybrid_state IS NULL OR hybrid_state = '';
+    `);
+
+    currentDbVersion = 17;
   }
 
   if (currentDbVersion !== DATABASE_VERSION) {

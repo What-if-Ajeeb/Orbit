@@ -32,6 +32,7 @@ import { useAppTheme, useStyles, type AppTheme } from '@/context/theme';
 import { runAgent } from '@/lib/ai/agent';
 import { AgentTurnCancelledError } from '@/lib/agent-runtime/orchestrator';
 import type { AgentTaskStatus, AgentTaskVerification } from '@/lib/agent-runtime/types';
+import type { HybridTaskState } from '@/lib/hybrid-agent/types';
 import type { LlmAttachment } from '@/lib/ai/types';
 import { OllamaRequestError } from '@/lib/ai/ollama';
 import { isAiConfigured, loadAiSettings, type AiSettings } from '@/lib/ai/settings';
@@ -75,6 +76,7 @@ type RetryPayload = {
 type TaskNotice = {
   taskId: string;
   status: AgentTaskStatus;
+  hybridState?: HybridTaskState;
   verified: boolean;
   reason: string;
 };
@@ -106,6 +108,14 @@ function taskStatusLabel(status: AgentTaskStatus): string {
   if (status === 'cancelled') return 'cancelled';
   if (status === 'failed') return 'failed';
   return status.replace(/_/g, ' ');
+}
+
+function hybridStateLabel(state: HybridTaskState | undefined): string | null {
+  if (!state) return null;
+  return state
+    .toLowerCase()
+    .split('_')
+    .join(' ');
 }
 
 function looksOffline(error: unknown): boolean {
@@ -608,6 +618,7 @@ export function AgentChatView({
       setTaskNotice({
         taskId: result.taskId,
         status: turnStatus,
+        hybridState: result.hybridState,
         verified,
         reason: turnVerification.reason,
       });
@@ -645,6 +656,7 @@ export function AgentChatView({
         setTaskNotice({
           taskId,
           status: 'cancelled',
+          hybridState: events.length > 0 ? 'BLOCKED' : 'CANCELLED',
           verified: false,
           reason: 'Stopped before completion. No completion was verified.',
         });
@@ -1017,7 +1029,7 @@ export function AgentChatView({
             />
             <View style={styles.taskCopy}>
               <Text style={styles.taskTitle}>
-                Task {taskNotice.taskId} · {taskStatusLabel(taskNotice.status)}
+                Task {taskNotice.taskId} · {hybridStateLabel(taskNotice.hybridState) ?? taskStatusLabel(taskNotice.status)}
               </Text>
               <Text numberOfLines={2} style={styles.taskReason}>
                 {taskNotice.reason}

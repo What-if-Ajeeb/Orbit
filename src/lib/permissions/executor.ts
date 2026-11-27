@@ -1,7 +1,7 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { toolFail, type ToolExecution } from '../ai/tool-registry';
-import type { PolicyDecision } from '../policy';
+import type { PolicyDecision, SandboxConstraints } from '../policy';
 import type {
   AgentIdentity,
   ClassifiedPermissionAction,
@@ -78,6 +78,9 @@ type SecureToolInput = {
     decision: PolicyDecision;
     ruleId: string | null;
     reason?: string;
+    sandbox?: SandboxConstraints;
+    /** Stable digest of the policy rules used for this call. */
+    policyVersion?: string;
   };
   /** Tool-declared cooperative limit; the classifier default is used if absent. */
   timeoutMs?: number;
@@ -118,6 +121,124 @@ function commandFrom(args: JsonObject): string {
 function pathFrom(args: JsonObject): string {
   const value = args.cwd ?? args.path ?? args.file_path ?? args.directory ?? args.dir;
   return typeof value === 'string' ? value.trim() : '';
+}
+
+function stringValue(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function normalizePathPrefix(value: string): string {
+  return value.trim().replace(/\\/g, '/').toLowerCase().replace(/\/+$/, '');
+}
+
+function matchesPathPrefix(value: string, prefixes: string[]): boolean {
+  const normalized = normalizePathPrefix(value);
+  return prefixes.some((prefix) => {
+    const rule = normalizePathPrefix(prefix);
+    return Boolean(rule) && (normalized === rule || normalized.startsWith(`${rule}/`));
+  });
+}
+
+function matchesCommandPrefix(value: string, prefixes: string[]): boolean {
+  const normalized = value.trim().toLowerCase();
+  return prefixes.some((prefix) => {
+    const rule = prefix.trim().toLowerCase();
+    return Boolean(rule) && normalized.startsWith(rule);
+  });
+}
+
+function policyPathValues(args: JsonObject): string[] {
+  const values = [
+    args.path,
+    args.file_path,
+    args.filePath,
+    args.directory,
+    args.dir,
+    args.cwd,
+  ]
+    .map(stringValue)
+    .filter(Boolean);
+  return Array.from(new Set(values));
+}
+
+function policyCommandValues(args: JsonObject): string[] {
+  const values = [commandFrom(args)];
+  if (Array.isArray(args.commands)) {
+    values.push(...args.commands.map(stringValue));
+  }
+  return Array.from(new Set(values.filter(Boolean)));
+}
+
+function policyUsesNetwork(
+  input: SecureToolInput,
+  args: JsonObject,
+  action: ClassifiedPermissionAction
+): boolean {
+  const networkCategories = new Set([
+    'external_api',
+    'website_access',
+    'network_access',
+    'browser_automation',
+  ]);
+  const networkKeys = ['url', 'uri', 'href', 'link', 'website', 'endpoint', 'webhook'];
+
+  return (
+    networkCategories.has(action.category) ||
+    networkKeys.some((key) => /^https?:\/\//i.test(stringValue(args[key]))) ||
+    /^(?:mcp__|google_|web_|search_web|fetch_)/i.test(input.toolName)
+  );
+}
+
+/** Host-side policy sandbox constraints, evaluated after authorization but before execution. */
+function policySandboxViolation(
+  input: SecureToolInput,
+  args: JsonObject,
+  action: ClassifiedPermissionAction,
+  sandbox: SandboxConstraints
+): string | null {
+  const paths = policyPathValues(args);
+
+  for (const path of paths) {
+    const guarded = validatePath(path);
+    if (guarded) return guarded;
+    if (sandbox.deniedPaths?.length && matchesPathPrefix(path, sandbox.deniedPaths)) {
+      return 'The active policy denies this path.';
+    }
+    if (sandbox.allowedPaths?.length && !matchesPathPrefix(path, sandbox.allowedPaths)) {
+      return 'The active policy does not allow this path.';
+    }
+  }
+
+  if (sandbox.allowedPaths?.length && action.category.startsWith('file_') && paths.length === 0) {
+    return 'The active policy requires an allowed path for this file operation.';
+  }
+
+  const commands = policyCommandValues(args);
+
+  for (const command of commands) {
+    const blocked = blockedCommandReason(command);
+    if (blocked) return blocked;
+    if (sandbox.deniedCommands?.length && matchesCommandPrefix(command, sandbox.deniedCommands)) {
+      return 'The active policy denies this command.';
+    }
+    if (sandbox.allowedCommands?.length && !matchesCommandPrefix(command, sandbox.allowedCommands)) {
+      return 'The active policy does not allow this command.';
+    }
+  }
+
+  if (
+    sandbox.allowedCommands?.length &&
+    (action.category === 'computer_access' || action.category === 'terminal_commands') &&
+    commands.length === 0
+  ) {
+    return 'The active policy requires an allowed command for this operation.';
+  }
+
+  if (sandbox.allowNetwork === false && policyUsesNetwork(input, args, action)) {
+    return 'The active policy blocks network access for this operation.';
+  }
+
+  return null;
 }
 
 /** Aborts one execution when either the chat stop or emergency stop fires. */
@@ -233,6 +354,7 @@ export async function secureExecuteTool(input: SecureToolInput): Promise<SecureT
     projectId: input.projectId,
     projectLabel: input.projectLabel,
     devices,
+    policyVersion: input.policy.policyVersion,
   });
   pipeline.enter('classify', `category=${action.category} risk=${action.risk}`);
 
@@ -423,6 +545,37 @@ export async function secureExecuteTool(input: SecureToolInput): Promise<SecureT
     }
   }
 
+  const sandboxConstraints = input.policy.sandbox;
+
+  if (sandboxConstraints) {
+    const violation = policySandboxViolation(input, args, action, sandboxConstraints);
+
+    if (violation) {
+      const message = redactSecrets(violation);
+      await permissionManager.blockExecution(authorization, 'policy_denied', message);
+      await finishOperation('failed', message);
+      await permissionManager.recordActivity({
+        ...activityBase,
+        status: 'blocked',
+        error: message,
+        requestId: outcome.request.id,
+        grantId: authorization.grantId,
+        metadata: {
+          ...activityBase.metadata,
+          sandboxPolicyDenial: true,
+        },
+      });
+      return deniedResult(
+        input,
+        'policy_denied',
+        message,
+        outcome.request.id,
+        pipeline,
+        action
+      );
+    }
+  }
+
   if (input.sandboxGate) {
     try {
       await input.sandboxGate({
@@ -468,6 +621,7 @@ export async function secureExecuteTool(input: SecureToolInput): Promise<SecureT
     scopeKey: action.scopeKey,
     resourceKey: action.resourceKey,
     fingerprint: action.fingerprint,
+    fingerprintV2: action.fingerprintV2,
     freshConfirmation: action.freshConfirmation,
     external: action.external,
     reversible: action.reversible,

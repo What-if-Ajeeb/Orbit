@@ -63,6 +63,23 @@ describe('declarative skill manifests', () => {
     expect(() => parseSkillManifest(withFunctionValue)).toThrow(/execution-shaped/);
   });
 
+  it('accepts a data-only outputSchema and rejects a non-object schema', () => {
+    const withOutput = structuredClone(validManifest) as Record<string, unknown>;
+    const capabilities = withOutput.capabilities as Record<string, unknown>[];
+    capabilities[0]!.outputSchema = {
+      type: 'object',
+      properties: { answer: { type: 'string' } },
+      required: ['answer'],
+      additionalProperties: false,
+    };
+    expect(parseSkillManifest(withOutput).capabilities[0]?.outputSchema).toMatchObject({
+      required: ['answer'],
+    });
+
+    capabilities[0]!.outputSchema = 42;
+    expect(() => parseSkillManifest(withOutput)).toThrow(/capability.outputSchema must be an object/);
+  });
+
   it('requires a real tool step and a supported schema version', () => {
     const withoutSteps = structuredClone(validManifest) as Record<string, unknown>;
     const capabilities = withoutSteps.capabilities as Record<string, unknown>[];

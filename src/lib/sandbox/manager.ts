@@ -1,3 +1,5 @@
+import * as Crypto from 'expo-crypto';
+
 import { pluginApprovalService } from '@/lib/plugins/approvals';
 import type { PluginPermission, PluginTrustLevel } from '@/lib/plugins/types';
 
@@ -319,7 +321,9 @@ export class MobileSandboxManager {
       resource: input.resource,
       grantedAt,
       expiresAt: grantedAt + ttlSeconds * 1_000,
-      requestId: `sandbox-approval-${grantedAt}`,
+      // Rust requires this nonce to be non-empty and binds it to the audit
+      // record. A timestamp alone can collide for approvals in the same tick.
+      requestId: `sandbox-approval-${grantedAt}-${Crypto.randomUUID()}`,
     };
   }
 

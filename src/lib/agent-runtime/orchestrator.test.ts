@@ -21,6 +21,12 @@ const mocks = vi.hoisted(() => {
   return {
     config,
     secureExecuteTool: vi.fn(),
+    registry: {
+      get: (name: string) => ({ definition: { name }, timeoutMs: 1_000 }),
+      descriptors: () => [{ definition: { name: 'memory_remember' }, meta: {} }],
+      definitions: () => [],
+      register: () => undefined,
+    },
     routeDeterministically: vi.fn(() => ({
       kind: 'handled' as const,
       calls: [{ toolName: 'memory_remember', args: { key: 'fact', value: 'remembered' } }],
@@ -49,15 +55,12 @@ vi.mock('../ai/prompt', () => ({ buildSystemPrompt: () => 'system prompt' }));
 vi.mock('../ai/providers', () => ({ requestCompletion: vi.fn() }));
 vi.mock('../ai/settings', () => ({ isAiConfigured: () => false }));
 vi.mock('../ai/tools', () => ({
-  agentToolRegistry: {
-    get: (name: string) => ({ definition: { name }, timeoutMs: 1_000 }),
-    definitions: () => [],
-    register: () => undefined,
-  },
+  agentToolRegistry: mocks.registry,
   executeTool: vi.fn(),
   listAgentTools: () => [],
 }));
 vi.mock('../ai/tool-registry', () => ({
+  agentToolRegistry: mocks.registry,
   toolFail: (message: string) => JSON.stringify({ ok: false, error: message }),
 }));
 vi.mock('../buddy/store', () => ({ getActiveBuddy: async () => null }));
@@ -81,7 +84,15 @@ vi.mock('../memory/prompt', () => ({ buildMemoryPromptSection: async () => '' })
 vi.mock('../mcp/registry', () => ({ ensureMcpTools: mocks.noop }));
 vi.mock('../policy', () => ({
   policyEngine: {
-    evaluate: () => ({ decision: 'allow', ruleId: 'test', reason: 'allowed', ruleName: 'test' }),
+    evaluate: () => ({ decision: 'allow', ruleId: 'test', reason: 'allowed', ruleName: 'test', sandbox: {} }),
+    evaluatePolicyForExecution: () => ({
+      decision: 'allow',
+      ruleId: 'test',
+      reason: 'allowed',
+      ruleName: 'test',
+      sandbox: {},
+      policyVersion: 'test-policy',
+    }),
   },
 }));
 vi.mock('../permissions/agents', () => ({
@@ -166,10 +177,12 @@ describe('orchestrator completion rules', () => {
     const result = await runAgentTurn(turnInput());
     const task = await getAgentTask(db, result.taskId);
 
-    expect(result.status).toBe('needs_review');
+    // A definitive `{ ok: false }` envelope is a failed verification, not an
+    // uncertain one: the canonical state is FAILED (legacy `failed`).
+    expect(result.status).toBe('failed');
     expect(result.verification.verified).toBe(false);
     expect(result.verification.status).toBe('failed');
-    expect(task?.status).toBe('needs_review');
+    expect(task?.status).toBe('failed');
   });
 
   it('keeps the durable task in review when cancellation follows a successful action', async () => {

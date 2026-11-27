@@ -11,7 +11,9 @@
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Mutex, OnceLock};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 pub const CORE_VERSION: &str = "0.2.0";
@@ -22,6 +24,7 @@ const PLUGIN_ID_MAX_LEN: usize = 128;
 const VERSION_MAX_LEN: usize = 32;
 const MAX_SEGMENT_BYTES: usize = 255;
 const APPROVAL_CLOCK_SKEW_MS: u64 = 60_000;
+const APPROVAL_REQUEST_ID_MAX_LEN: usize = 120;
 
 const SECURITY_CAPABILITIES: [&str; 7] = [
     "manifest-validation",
@@ -97,6 +100,16 @@ const FORBIDDEN_FIELDS: [&str; 8] = [
 
 static AUDIT_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
+/// Binds one approval nonce to the exact approval envelope it first
+/// authorized. A replay that only swaps the nonce is denied; a genuinely fresh
+/// approval with a new issue time gets a different binding.
+struct ApprovalBinding {
+    request_id: String,
+    expires_at: u64,
+}
+
+static APPROVAL_BINDINGS: OnceLock<Mutex<HashMap<String, ApprovalBinding>>> = OnceLock::new();
+
 pub fn default_policy() -> Policy {
     Policy {
         version: POLICY_VERSION,
@@ -141,6 +154,8 @@ pub struct AuditRecord {
     pub bytes: usize,
     pub duration_ms: u64,
     pub policy_version: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub request_id: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -319,6 +334,7 @@ struct OperationDecision {
     reason: String,
     reason_code: String,
     policy_version: u32,
+    approval_request_id: Option<String>,
     limits: Limits,
     audit: AuditRecord,
 }
@@ -475,6 +491,7 @@ fn audit_record(
         bytes,
         duration_ms: started.elapsed().as_millis() as u64,
         policy_version: policy.version,
+        request_id: None,
     }
 }
 
@@ -695,7 +712,14 @@ fn evaluate_approval(
         ));
     }
 
-    let _ = approval.request_id.as_deref();
+    if let Some(request_id) = approval.request_id.as_deref() {
+        if request_id.trim().is_empty() || request_id.len() > APPROVAL_REQUEST_ID_MAX_LEN {
+            return Err((
+                "approval_request_invalid",
+                "Approval request id is missing or invalid.".to_owned(),
+            ));
+        }
+    }
 
     let ttl_ms = policy.approval_ttl_seconds.saturating_mul(1_000);
 
@@ -710,6 +734,60 @@ fn evaluate_approval(
     }
 
     Ok(())
+}
+
+/// Requires and binds a non-empty approval nonce for operation authorization.
+fn bind_approval_request_id(
+    approval: &ApprovalEvidence,
+    plugin_id: &str,
+    operation: &str,
+    resource: &str,
+    now: u64,
+) -> Result<String, (&'static str, String)> {
+    let request_id = approval
+        .request_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|id| !id.is_empty() && id.len() <= APPROVAL_REQUEST_ID_MAX_LEN)
+        .ok_or_else(|| {
+            (
+                "approval_request_required",
+                "Approval evidence must include a request id.".to_owned(),
+            )
+        })?;
+
+    // Include the issue window so a fresh approval for the same resource can
+    // replace an expired one, while mutating only the nonce on an existing
+    // approval stays denied.
+    let key = format!(
+        "{}|{}|{}|{}|{}|{}",
+        plugin_id,
+        operation,
+        approval.permission,
+        resource,
+        approval.granted_at,
+        approval.expires_at
+    );
+    let bindings = APPROVAL_BINDINGS.get_or_init(|| Mutex::new(HashMap::new()));
+    let mut bindings = bindings.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+
+    if let Some(existing) = bindings.get(&key) {
+        if existing.expires_at > now && existing.request_id != request_id {
+            return Err((
+                "approval_request_replay",
+                "Approval request id does not match the bound authorization.".to_owned(),
+            ));
+        }
+    }
+
+    bindings.insert(
+        key,
+        ApprovalBinding {
+            request_id: request_id.to_owned(),
+            expires_at: approval.expires_at,
+        },
+    );
+    Ok(request_id.to_owned())
 }
 
 /// Checks that approval evidence is bound to the exact resource Rust authorized.
@@ -927,6 +1005,7 @@ fn authorize_operation(params: &AuthorizeParams, policy: &Policy) -> OperationDe
         reason,
         reason_code: reason_code.to_owned(),
         policy_version: policy.version,
+        approval_request_id: None,
         limits: limits(policy),
         audit: audit_record(
             plugin_id,
@@ -1025,26 +1104,53 @@ fn authorize_operation(params: &AuthorizeParams, policy: &Policy) -> OperationDe
         return deny(code, message);
     }
 
+    // The request nonce is part of the approval envelope, not public metadata.
+    // A grant must not be replayed under a different user-visible request id.
+    let approval_request_id = match bind_approval_request_id(
+        params.approval.as_ref().expect("approval was evaluated"),
+        plugin_id,
+        &params.operation,
+        &normalized_resource,
+        now,
+    ) {
+        Ok(request_id) => request_id,
+        Err((code, message)) => {
+            let mut denied = deny(code, message);
+            denied.approval_request_id = params
+                .approval
+                .as_ref()
+                .and_then(|approval| approval.request_id.clone());
+            denied.audit.request_id = denied.approval_request_id.clone();
+            return denied;
+        }
+    };
+
+    let mut audit = audit_record(
+        plugin_id,
+        &params.operation,
+        "allow",
+        "allowed",
+        Some(permission),
+        Some(&normalized_resource),
+        0,
+        started,
+        policy,
+    );
+    audit.request_id = Some(approval_request_id.clone());
+
     OperationDecision {
         decision: "allow".to_owned(),
         operation: params.operation.clone(),
         permission: Some(permission.to_owned()),
         normalized_resource: Some(normalized_resource.clone()),
-        reason: format!("{permission} is declared, granted and approved."),
+        reason: format!(
+            "{permission} is declared, granted and approved for request {approval_request_id}."
+        ),
         reason_code: "allowed".to_owned(),
         policy_version: policy.version,
+        approval_request_id: Some(approval_request_id),
         limits: limits(policy),
-        audit: audit_record(
-            plugin_id,
-            &params.operation,
-            "allow",
-            "allowed",
-            Some(permission),
-            Some(&normalized_resource),
-            0,
-            started,
-            policy,
-        ),
+        audit,
     }
 }
 

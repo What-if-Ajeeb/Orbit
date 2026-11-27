@@ -2,17 +2,27 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { createTestDatabase, type TestDatabase } from '../testing/node-sqlite';
 
+import { hashChain } from './hash';
 import {
+  appendAgentTaskEvent,
+  appendHybridAuditEvent,
   claimAgentTask,
   claimDueAgentTaskSchedules,
   completeAgentTaskSchedule,
   createAgentTask,
+  createAgentTaskApproval,
   createAgentTaskSchedule,
   getAgentTask,
+  getAgentTaskApproval,
+  getAgentTaskSchedule,
   listAgentTaskEvents,
   listAgentTasks,
+  listHybridAuditEvents,
   recoverInterruptedAgentTasks,
+  recordAgentTaskAttempt,
+  updateAgentTaskApproval,
   updateAgentTaskStatus,
+  verifyHybridAuditChain,
 } from './task-manager';
 
 vi.mock('expo-crypto', () => {
@@ -140,5 +150,186 @@ describe('durable agent task ledger', () => {
 
     expect(updated.enabled).toBe(0);
     expect(updated.lease_owner).toBeNull();
+  });
+
+  it('persists hybrid task metadata on create and status updates', async () => {
+    db = createTestDatabase();
+    const task = await createAgentTask(db, {
+      userId: 1,
+      title: 'Hybrid run',
+      hybridState: 'PLANNING',
+      traceId: 'trace-hybrid',
+      plan: { goal: 'ship' },
+      risk: { level: 'low' },
+    });
+
+    expect(task.hybridState).toBe('PLANNING');
+    expect(task.traceId).toBe('trace-hybrid');
+    expect(task.plan).toEqual({ goal: 'ship' });
+    expect(task.risk).toEqual({ level: 'low' });
+
+    await updateAgentTaskStatus(db, task.id, 'running', {
+      hybridState: 'RUNNING',
+      traceId: 'trace-updated',
+      plan: { goal: 'ship', step: 2 },
+      risk: { level: 'medium' },
+    });
+
+    const updated = await getAgentTask(db, task.id);
+    expect(updated?.hybridState).toBe('RUNNING');
+    expect(updated?.traceId).toBe('trace-updated');
+    expect(updated?.plan).toEqual({ goal: 'ship', step: 2 });
+    expect(updated?.risk).toEqual({ level: 'medium' });
+  });
+
+  it('keeps the legacy event hash shape and stores hybrid event fields', async () => {
+    db = createTestDatabase();
+    const task = await createAgentTask(db, { userId: 1, title: 'Legacy hash' });
+    const created = (await listAgentTaskEvents(db, task.id))[0];
+    if (!created) throw new Error('The created event was not stored.');
+
+    expect(created.traceId).toBeUndefined();
+    expect(created.hybridState).toBeUndefined();
+    expect(created.hash).toBe(
+      hashChain({
+        taskId: task.id,
+        sequence: created.sequence,
+        type: 'task.created',
+        payload: { title: 'Legacy hash', kind: 'turn' },
+        createdAt: created.createdAt,
+        previousHash: '',
+      })
+    );
+
+    const hybrid = await appendAgentTaskEvent(db, {
+      taskId: task.id,
+      userId: 1,
+      type: 'hybrid.step',
+      payload: { step: 'plan' },
+      traceId: 'trace-hybrid',
+      hybridState: 'PLANNING',
+    });
+    expect(hybrid.traceId).toBe('trace-hybrid');
+    expect(hybrid.hybridState).toBe('PLANNING');
+    expect((await listAgentTaskEvents(db, task.id))[1]?.traceId).toBe('trace-hybrid');
+  });
+
+  it('records trace linkage on attempts and schedule retries', async () => {
+    db = createTestDatabase();
+    const task = await createAgentTask(db, { userId: 1, title: 'Attempted' });
+
+    const attempt = await recordAgentTaskAttempt(db, {
+      taskId: task.id,
+      attempt: 1,
+      toolName: 'echo',
+      status: 'success',
+      startedAt: 100,
+      traceId: 'trace-attempt',
+      stepId: 'step-2',
+    });
+    expect(attempt.traceId).toBe('trace-attempt');
+    expect(attempt.stepId).toBe('step-2');
+
+    const schedule = await createAgentTaskSchedule(db, {
+      userId: 1,
+      ownerType: 'agent_task',
+      ownerId: task.id,
+      taskId: task.id,
+      title: 'Retry',
+      nextRunAt: 100,
+      idempotencyKey: 'schedule:hybrid',
+      traceId: 'trace-schedule',
+    });
+    expect(schedule.traceId).toBe('trace-schedule');
+    expect(schedule.attempt).toBe(0);
+    expect(schedule.backoff).toEqual({});
+
+    await completeAgentTaskSchedule(db, schedule.id, {
+      completedAt: 200,
+      nextRunAt: 300,
+      attempt: 2,
+      backoff: { delayMs: 500 },
+    });
+
+    const row = await db.getFirstAsync<{ attempt: number; backoff_json: string }>(
+      'SELECT attempt, backoff_json FROM agent_task_schedules WHERE id = ?',
+      schedule.id
+    );
+    expect(row?.attempt).toBe(2);
+    expect(JSON.parse(row?.backoff_json ?? '{}')).toEqual({ delayMs: 500 });
+    expect((await getAgentTaskSchedule(db, schedule.id))?.backoff).toEqual({ delayMs: 500 });
+  });
+
+  it('stores and resolves approval bindings', async () => {
+    db = createTestDatabase();
+    await db.runAsync('INSERT OR IGNORE INTO users (id, name) VALUES (1, ?)', 'Test User');
+    const task = await createAgentTask(db, { userId: 1, title: 'Approval' });
+    const binding = {
+      taskId: task.id,
+      stepId: 'step-1',
+      toolName: 'files.read',
+      operationFingerprint: 'fp-1',
+      scopeKey: 'scope-1',
+      resourceKey: 'resource-1',
+      policyVersion: 'v1',
+      requestedAt: 10,
+    };
+
+    const approval = await createAgentTaskApproval(db, {
+      taskId: task.id,
+      stepId: 'step-1',
+      userId: 1,
+      binding,
+      operationFingerprint: 'fp-1',
+      policyVersion: 'v1',
+      createdAt: 10,
+    });
+    expect(approval.state).toBe('pending');
+    expect(JSON.parse(approval.binding)).toEqual(binding);
+    expect(approval.policyVersion).toBe('v1');
+
+    const resolved = await updateAgentTaskApproval(db, approval.id, {
+      state: 'approved',
+      resolvedAt: 20,
+    });
+    expect(resolved?.state).toBe('approved');
+    expect(resolved?.resolvedAt).toBe(20);
+    expect((await getAgentTaskApproval(db, approval.id))?.state).toBe('approved');
+  });
+
+  it('verifies and detects tampering in the hybrid audit chain', async () => {
+    db = createTestDatabase();
+    const task = await createAgentTask(db, { userId: 1, title: 'Audited hybrid' });
+
+    const first = await appendHybridAuditEvent(db, {
+      traceId: 'trace-audit',
+      taskId: task.id,
+      userId: 1,
+      source: 'planner',
+      type: 'plan.created',
+      payload: { steps: 2 },
+      createdAt: 100,
+    });
+    const second = await appendHybridAuditEvent(db, {
+      traceId: 'trace-audit',
+      taskId: task.id,
+      userId: 1,
+      source: 'executor',
+      type: 'step.done',
+      payload: { step: 1 },
+      createdAt: 101,
+    });
+    if (first.id === undefined) throw new Error('The audit event was not stored.');
+
+    expect(second.previousHash).toBe(first.hash);
+    const events = await listHybridAuditEvents(db, 'trace-audit');
+    expect(events.map((event) => event.type)).toEqual(['plan.created', 'step.done']);
+    expect(events[0]?.payload).toEqual({ steps: 2 });
+    expect(await verifyHybridAuditChain(db, 'trace-audit')).toBe(true);
+
+    db.raw
+      .prepare('UPDATE hybrid_audit_events SET payload = ? WHERE id = ?')
+      .run('{"steps":3}', first.id);
+    expect(await verifyHybridAuditChain(db, 'trace-audit')).toBe(false);
   });
 });

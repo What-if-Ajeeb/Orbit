@@ -3,7 +3,31 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { redactSecrets, truncate } from '../permissions/redact';
 
-export type MemoryScope = 'user' | 'agent' | 'project';
+export const MEMORY_SCOPES = [
+  'user',
+  'agent',
+  'project',
+  'working',
+  'session',
+  'long_term',
+  'task_history',
+] as const;
+
+export type MemoryScope = (typeof MEMORY_SCOPES)[number];
+
+/** Coarse lifetime class derived from a scope; no extra column is required. */
+export type MemoryKind = 'durable' | 'session' | 'working' | 'history';
+
+export function isMemoryScope(value: string): value is MemoryScope {
+  return (MEMORY_SCOPES as readonly string[]).includes(value);
+}
+
+export function memoryKindForScope(scope: MemoryScope): MemoryKind {
+  if (scope === 'working') return 'working';
+  if (scope === 'session') return 'session';
+  if (scope === 'task_history') return 'history';
+  return 'durable';
+}
 
 export type MemoryEntry = {
   id: string;
@@ -43,7 +67,7 @@ const COLUMNS = `id, user_id, agent_id, project_key, project_id, scope, key, val
 
 const KEY_MAX = 120;
 const VALUE_MAX = 4_000;
-const VALID_SCOPES: MemoryScope[] = ['user', 'agent', 'project'];
+const VALID_SCOPES: readonly MemoryScope[] = MEMORY_SCOPES;
 
 function normalizeKey(key: string): string {
   return key.trim().replace(/\s+/g, '_').slice(0, KEY_MAX);

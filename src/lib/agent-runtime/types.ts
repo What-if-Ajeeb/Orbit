@@ -4,6 +4,7 @@ import type { AgentIdentity } from '../permissions/types';
 import type { ToolExecutionEvent } from '../chat-store';
 import type { ArtifactRef } from '../artifacts/types';
 import type { LlmAttachment } from '../ai/types';
+import type { HybridTaskState } from '../hybrid-agent/types';
 
 export type AgentTaskKind = 'turn' | 'tool' | 'workflow' | 'subagent' | 'scheduled';
 
@@ -77,6 +78,10 @@ export type AgentTask = {
   startedAt: number | null;
   finishedAt: number | null;
   nextRunAt: number | null;
+  hybridState?: HybridTaskState;
+  traceId?: string;
+  plan?: Record<string, unknown>;
+  risk?: Record<string, unknown>;
 };
 
 export type AgentTaskEvent = {
@@ -89,6 +94,8 @@ export type AgentTaskEvent = {
   createdAt: number;
   previousHash: string;
   hash: string;
+  traceId?: string;
+  hybridState?: HybridTaskState;
 };
 
 export type AgentTaskAttempt = {
@@ -104,6 +111,8 @@ export type AgentTaskAttempt = {
   error: string | null;
   verification: AgentTaskVerification | null;
   metadata: Record<string, unknown>;
+  traceId?: string;
+  stepId?: string;
 };
 
 export type AgentTaskSchedule = {
@@ -123,6 +132,9 @@ export type AgentTaskSchedule = {
   idempotencyKey: string;
   createdAt: number;
   updatedAt: number;
+  traceId?: string;
+  attempt?: number;
+  backoff?: Record<string, unknown>;
 };
 
 export type RuntimeHistoryItem = {
@@ -161,6 +173,8 @@ export type RuntimeTurnResult = {
   mode: 'ai' | 'local' | 'system';
   taskId: string;
   status: AgentTaskStatus;
+  /** Canonical hybrid state; legacy `status` is kept for compatibility. */
+  hybridState?: HybridTaskState;
   verification: AgentTaskVerification;
 };
 

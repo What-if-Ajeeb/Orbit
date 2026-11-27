@@ -47,11 +47,22 @@ export async function loadSkillManifest(
   db: SQLiteDatabase,
   skillId: string
 ): Promise<SkillManifest | null> {
-  const row = (await db.getFirstAsync(
-    `SELECT manifest, manifest_hash FROM skill_versions
-     WHERE skill_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1`,
+  const skill = (await db.getFirstAsync(
+    'SELECT version FROM skills WHERE id = ?',
     skillId
-  )) as { manifest: string; manifest_hash: string } | null;
+  )) as { version: string } | null;
+  const row = skill?.version
+    ? ((await db.getFirstAsync(
+        `SELECT manifest, manifest_hash FROM skill_versions
+         WHERE skill_id = ? AND version = ?`,
+        skillId,
+        skill.version
+      )) as { manifest: string; manifest_hash: string } | null)
+    : ((await db.getFirstAsync(
+        `SELECT manifest, manifest_hash FROM skill_versions
+         WHERE skill_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1`,
+        skillId
+      )) as { manifest: string; manifest_hash: string } | null);
 
   if (!row) return null;
 
@@ -106,6 +117,95 @@ function isVerifiedEnvelope(content: string): boolean {
     return Boolean(parsed && typeof parsed === 'object' && (parsed as { ok?: unknown }).ok === true);
   } catch {
     return false;
+  }
+}
+
+const MAX_SCHEMA_DEPTH = 6;
+const MAX_SCHEMA_PROPERTIES = 50;
+
+/**
+ * Small, data-only outputSchema checker. Only `type`, `required`, `properties`,
+ * `enum` and `additionalProperties: false` are interpreted; every other keyword
+ * is ignored. It never executes anything supplied by a manifest.
+ */
+function validateOutputValue(
+  schema: unknown,
+  value: unknown,
+  path: string,
+  depth = 0
+): string | null {
+  if (!schema || typeof schema !== 'object' || Array.isArray(schema)) return null;
+  if (depth > MAX_SCHEMA_DEPTH) return `${path} exceeds the schema depth limit`;
+
+  const spec = schema as Record<string, unknown>;
+  if (typeof spec.type === 'string') {
+    const actual = Array.isArray(value) ? 'array' : value === null ? 'null' : typeof value;
+    const matches =
+      spec.type === 'integer'
+        ? actual === 'number' && Number.isInteger(value)
+        : spec.type === actual;
+    if (!matches) return `${path} expected ${spec.type}`;
+  }
+
+  if (Array.isArray(spec.enum) && !spec.enum.some((entry) => entry === value)) {
+    return `${path} is not an allowed value`;
+  }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+
+  const object = value as Record<string, unknown>;
+  const properties =
+    spec.properties && typeof spec.properties === 'object' && !Array.isArray(spec.properties)
+      ? (spec.properties as Record<string, unknown>)
+      : {};
+  const propertyNames = Object.keys(properties);
+
+  if (Array.isArray(spec.required)) {
+    for (const key of spec.required) {
+      if (typeof key === 'string' && !Object.prototype.hasOwnProperty.call(object, key)) {
+        return `${path}.${key} is required`;
+      }
+    }
+  }
+  if (spec.additionalProperties === false) {
+    for (const key of Object.keys(object)) {
+      if (!Object.prototype.hasOwnProperty.call(properties, key)) {
+        return `${path}.${key} is not allowed`;
+      }
+    }
+  }
+  if (propertyNames.length > MAX_SCHEMA_PROPERTIES) {
+    return `${path} declares too many properties`;
+  }
+  for (const key of propertyNames) {
+    if (Object.prototype.hasOwnProperty.call(object, key)) {
+      const issue = validateOutputValue(
+        properties[key],
+        object[key],
+        path === '$' ? `$.${key}` : `${path}.${key}`,
+        depth + 1
+      );
+      if (issue) return issue;
+    }
+  }
+  return null;
+}
+
+/** Accepts the aggregate output or a step result, so both can be contracted. */
+function validateOutputSchema(
+  schema: Record<string, unknown> | undefined,
+  candidates: Record<string, unknown>[]
+): string | null {
+  if (!schema) return null;
+  try {
+    const failures: string[] = [];
+    for (const candidate of candidates) {
+      const issue = validateOutputValue(schema, candidate, '$');
+      if (!issue) return null;
+      failures.push(issue);
+    }
+    return failures[0] ?? 'output did not match outputSchema';
+  } catch {
+    return 'outputSchema could not be evaluated safely';
   }
 }
 
@@ -233,11 +333,20 @@ export async function executeDeclarativeSkill(
       });
     }
 
+    const output: Record<string, unknown> = { steps: results };
+    const schemaIssue = validateOutputSchema(capability.outputSchema, [
+      output,
+      ...results.map((result) => result.result as Record<string, unknown>),
+    ]);
+    if (schemaIssue) {
+      return fail(`Skill ${skillId} output did not match outputSchema: ${schemaIssue}.`);
+    }
+
     return {
       skillId,
       capability: capabilityName,
       input,
-      output: { steps: results },
+      output,
       durationMs: Date.now() - start,
       success: true,
       timestamp: start,

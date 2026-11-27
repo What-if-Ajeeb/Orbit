@@ -32,6 +32,42 @@ describe('subagent capability grants', () => {
 
     expect(grants.map((grant) => grant.toolName)).toEqual(['list_tasks', 'artifact_read']);
     expect(await listSubagentGrants(db, 1, 'parent-1', 'researcher')).toHaveLength(2);
+    expect(grants.every((grant) => !grant.category && !grant.resourceKey)).toBe(true);
+  });
+
+  it('binds declared category and resourceKey to stored grants', async () => {
+    db = createTestDatabase();
+
+    const grants = await createSubagentGrants({
+      db,
+      userId: 1,
+      parentTaskId: 'parent-2',
+      subagentId: 'researcher',
+      declaredCapabilities: [
+        { toolName: 'artifact_read', category: 'files', resourceKey: 'doc-1' },
+        'list_tasks',
+      ],
+      declaredGrants: [{ toolName: 'list_tasks', category: 'tasks', resourceKey: 'task-9' }],
+      requestedTools: ['artifact_read', 'list_tasks'],
+    });
+
+    expect(grants.map((grant) => [grant.category, grant.resourceKey])).toEqual([
+      ['files', 'doc-1'],
+      ['tasks', 'task-9'],
+    ]);
+
+    const stored = await db.getAllAsync<{ tool_name: string; category: string; resource_key: string }>(
+      'SELECT tool_name, category, resource_key FROM subagent_grants WHERE parent_task_id = ? ORDER BY rowid ASC',
+      'parent-2'
+    );
+    expect(stored).toEqual([
+      { tool_name: 'artifact_read', category: 'files', resource_key: 'doc-1' },
+      { tool_name: 'list_tasks', category: 'tasks', resource_key: 'task-9' },
+    ]);
+    expect((await listSubagentGrants(db, 1, 'parent-2', 'researcher'))[0]).toMatchObject({
+      category: 'files',
+      resourceKey: 'doc-1',
+    });
   });
 
   it('rejects undeclared and unregistered tools', async () => {

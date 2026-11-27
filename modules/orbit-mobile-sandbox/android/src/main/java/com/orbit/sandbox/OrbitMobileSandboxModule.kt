@@ -20,7 +20,6 @@ import java.io.FileInputStream
 import java.nio.ByteBuffer
 import java.nio.charset.CodingErrorAction
 import java.nio.file.Files
-import java.security.MessageDigest
 import java.util.ArrayDeque
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
@@ -534,13 +533,17 @@ class OrbitMobileSandboxModule : Module() {
       .put("decision", decision)
       .put("reasonCode", reasonCode)
       .put("permission", permission ?: JSONObject.NULL)
-      .put("resourceHash", resource?.let { sha256(it) } ?: JSONObject.NULL)
+      .put("resourceHash", resource?.let { fnv1a64(it) } ?: JSONObject.NULL)
       .put("bytes", bytes)
       .put(
         "durationMs",
         (original?.optLong("durationMs", 0) ?: 0) + (System.currentTimeMillis() - started),
       )
-      .put("policyVersion", original?.optInt("policyVersion", 2) ?: 2)
+      .put("policyVersion", original?.optInt("policyVersion", 3) ?: 3)
+      .put(
+        "requestId",
+        original?.optString("requestId", "")?.takeIf { it.isNotEmpty() } ?: JSONObject.NULL,
+      )
   }
 
   private fun containsSymlink(root: File, relativePath: String): Boolean {
@@ -580,10 +583,14 @@ class OrbitMobileSandboxModule : Module() {
     }
   }
 
-  private fun sha256(value: String): String =
-    MessageDigest.getInstance("SHA-256")
-      .digest(value.toByteArray(Charsets.UTF_8))
-      .joinToString("") { "%02x".format(it) }
+  /** Matches the Rust core's FNV-1a64 so host and native audit hashes agree. */
+  private fun fnv1a64(value: String): String {
+    var hash = 0xCBF29CE484222325uL
+    for (byte in value.toByteArray(Charsets.UTF_8)) {
+      hash = (hash xor byte.toUByte().toULong()) * 0x100000001B3uL
+    }
+    return "%016x".format(hash.toLong())
+  }
 
   private class ReadDenied(val code: String, message: String) : Exception(message)
 }

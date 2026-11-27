@@ -1,6 +1,6 @@
 import { toolFail, toolOk, type AgentTool } from '../ai/tool-registry';
 import { redactSecrets } from '../permissions/redact';
-import { MemoryStore, type MemoryScope } from './store';
+import { isMemoryScope, MEMORY_SCOPES, MemoryStore, type MemoryScope } from './store';
 
 function stringArg(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
@@ -8,8 +8,13 @@ function stringArg(value: unknown): string {
 
 function scopeArg(value: unknown, hasProject: boolean): MemoryScope {
   const scope = stringArg(value);
-  if (scope === 'user' || scope === 'agent' || scope === 'project') return scope;
+  if (isMemoryScope(scope)) return scope;
   return hasProject ? 'project' : 'agent';
+}
+
+function optionalScopeArg(value: unknown): MemoryScope | undefined {
+  const scope = stringArg(value);
+  return isMemoryScope(scope) ? scope : undefined;
 }
 
 export const MEMORY_REMEMBER_TOOL_NAME = 'memory_remember';
@@ -21,13 +26,13 @@ const rememberTool: AgentTool = {
   definition: {
     name: MEMORY_REMEMBER_TOOL_NAME,
     description:
-      'Store a durable user, agent, or project memory. Use only for stable facts the user wants retained. Secrets are redacted.',
+      'Store a user, agent, project, session, long-term, task-history or working memory. Use only for facts the caller wants retained. Secrets are redacted.',
     parameters: {
       type: 'object',
       properties: {
         key: { type: 'string', description: 'Short stable key, e.g. preferred_language.' },
         value: { type: 'string', description: 'Fact to remember.' },
-        scope: { type: 'string', enum: ['user', 'agent', 'project'] },
+        scope: { type: 'string', enum: [...MEMORY_SCOPES] },
         project_id: { type: 'string' },
         source: { type: 'string' },
         confidence: { type: 'number' },
@@ -86,12 +91,12 @@ const recallTool: AgentTool = {
   meta: { source: 'builtin' },
   definition: {
     name: MEMORY_RECALL_TOOL_NAME,
-    description: 'Recall durable memories for this user, agent, and optionally a project scope.',
+    description: 'Recall memories for this user, agent, and optionally an explicit scope or project.',
     parameters: {
       type: 'object',
       properties: {
         key: { type: 'string' },
-        scope: { type: 'string', enum: ['user', 'agent', 'project'] },
+        scope: { type: 'string', enum: [...MEMORY_SCOPES] },
         project_id: { type: 'string' },
         limit: { type: 'number' },
       },
@@ -102,11 +107,7 @@ const recallTool: AgentTool = {
   async execute(context, args) {
     try {
       const projectId = stringArg(args.project_id);
-      const scopeValue = stringArg(args.scope);
-      const scope =
-        scopeValue === 'user' || scopeValue === 'agent' || scopeValue === 'project'
-          ? scopeValue
-          : undefined;
+      const scope = optionalScopeArg(args.scope);
       const entries = await new MemoryStore(context.db).recall({
         userId: context.userId,
         agentId: context.agent?.id ?? 'master',
@@ -141,12 +142,12 @@ const forgetTool: AgentTool = {
   meta: { source: 'builtin' },
   definition: {
     name: MEMORY_FORGET_TOOL_NAME,
-    description: 'Forget one durable memory by key and scope.',
+    description: 'Forget one memory by key and scope.',
     parameters: {
       type: 'object',
       properties: {
         key: { type: 'string' },
-        scope: { type: 'string', enum: ['user', 'agent', 'project'] },
+        scope: { type: 'string', enum: [...MEMORY_SCOPES] },
         project_id: { type: 'string' },
       },
       required: ['key'],
@@ -159,13 +160,8 @@ const forgetTool: AgentTool = {
     if (!key) return { content: toolFail('key is required.'), trace: '' };
 
     const projectId = stringArg(args.project_id);
-    const scopeValue = stringArg(args.scope);
-    const scope: MemoryScope =
-      scopeValue === 'user' || scopeValue === 'agent' || scopeValue === 'project'
-        ? scopeValue
-        : projectId
-          ? 'project'
-          : 'agent';
+    const explicitScope = optionalScopeArg(args.scope);
+    const scope: MemoryScope = explicitScope ?? (projectId ? 'project' : 'agent');
 
     try {
       const removed = await new MemoryStore(context.db).forget({

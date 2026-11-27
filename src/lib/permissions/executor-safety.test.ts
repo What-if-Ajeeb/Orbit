@@ -327,4 +327,91 @@ describe('secure executor safety', () => {
     expect(result.pipeline.denial).toBe('policy_denied');
     expect(result.pipeline.finalized).toBe(true);
   });
+
+  it('blocks a path denied by policy before execution or revalidation', async () => {
+    const action = classify('file_read', { path: 'orbit/secret.txt' });
+    const spies = allow(action);
+    const blockExecution = vi
+      .spyOn(permissionManager, 'blockExecution')
+      .mockResolvedValue(undefined);
+    const execute = vi.fn(async () => ({ content: '{"ok":true}', trace: 'read' }));
+
+    const result = await secureExecuteTool({
+      db: DB,
+      userId: 1,
+      agent: AGENT,
+      projectId: 'project-1',
+      projectLabel: 'Orbit',
+      toolName: action.toolName,
+      rawArguments: JSON.stringify({ path: 'orbit/secret.txt' }),
+      policy: {
+        decision: 'allow',
+        ruleId: 'policy.test',
+        sandbox: { deniedPaths: ['orbit/secret.txt'] },
+      },
+      execute,
+    });
+
+    expect(execute).not.toHaveBeenCalled();
+    expect(spies.beginExecution).not.toHaveBeenCalled();
+    expect(result.permission.reason).toBe('policy_denied');
+    expect(result.error).toMatch(/denies this path/);
+    expect(blockExecution).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'auth-1' }),
+      'policy_denied',
+      expect.any(String)
+    );
+  });
+
+  it('blocks a command outside the policy allowlist', async () => {
+    const action = classify('run_command', { command: 'echo hi' });
+    allow(action);
+    const execute = vi.fn(async () => ({ content: '{"ok":true}', trace: 'ran' }));
+
+    const result = await secureExecuteTool({
+      db: DB,
+      userId: 1,
+      agent: AGENT,
+      projectId: 'project-1',
+      projectLabel: 'Orbit',
+      toolName: action.toolName,
+      rawArguments: JSON.stringify({ command: 'echo hi' }),
+      policy: {
+        decision: 'allow',
+        ruleId: 'policy.test',
+        sandbox: { allowedCommands: ['git status'] },
+      },
+      execute,
+    });
+
+    expect(execute).not.toHaveBeenCalled();
+    expect(result.permission.reason).toBe('policy_denied');
+    expect(result.error).toMatch(/does not allow this command/);
+  });
+
+  it('blocks network access when policy disallows it', async () => {
+    const action = classify('google_gmail_search', { query: 'in:inbox' });
+    allow(action);
+    const execute = vi.fn(async () => ({ content: '{"ok":true}', trace: 'searched' }));
+
+    const result = await secureExecuteTool({
+      db: DB,
+      userId: 1,
+      agent: AGENT,
+      projectId: 'project-1',
+      projectLabel: 'Orbit',
+      toolName: action.toolName,
+      rawArguments: JSON.stringify({ query: 'in:inbox' }),
+      policy: {
+        decision: 'allow',
+        ruleId: 'policy.test',
+        sandbox: { allowNetwork: false },
+      },
+      execute,
+    });
+
+    expect(execute).not.toHaveBeenCalled();
+    expect(result.permission.reason).toBe('policy_denied');
+    expect(result.error).toMatch(/blocks network access/);
+  });
 });

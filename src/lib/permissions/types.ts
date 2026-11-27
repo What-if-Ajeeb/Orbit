@@ -139,6 +139,7 @@ export type PermissionRequestRecord = {
   scopeKey: string;
   resourceKey: string;
   fingerprint: string;
+  fingerprintV2?: string;
   freshConfirmation: boolean;
   reversible: boolean;
   external: boolean;
@@ -162,6 +163,7 @@ export type PermissionGrantRecord = {
   scopeKey: string;
   resourceKey: string;
   fingerprint: string;
+  fingerprintV2?: string;
   projectId: string;
   projectLabel: string;
   scope: PermissionGrantScope;
@@ -235,6 +237,7 @@ export type PermissionAuthorization = {
   scopeKey: string;
   resourceKey: string;
   fingerprint: string;
+  fingerprintV2?: string;
   projectId: string;
   conversationId: number | null;
   freshConfirmation: boolean;
@@ -303,6 +306,7 @@ export type ClassifiedPermissionAction = {
   scopeKey: string;
   resourceKey: string;
   fingerprint: string;
+  fingerprintV2?: string;
   narrowable: boolean;
   freshConfirmation: boolean;
   reversible: boolean;

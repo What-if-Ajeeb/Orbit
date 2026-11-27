@@ -47,6 +47,8 @@ export type SkillCapabilityManifest = {
   name: string;
   description: string;
   inputSchema: JsonSchema;
+  /** Data-only output contract, checked with the limited validator in executor.ts. */
+  outputSchema?: Record<string, unknown>;
   steps: SkillStep[];
 };
 
@@ -129,7 +131,7 @@ export function parseSkillManifest(raw: unknown): SkillManifest {
 
   const capabilities: SkillCapabilityManifest[] = root.capabilities.map((entry, index) => {
     const cap = asObject(entry, `capabilities[${index}]`);
-    const allowedCap = new Set(['name', 'description', 'inputSchema', 'steps']);
+    const allowedCap = new Set(['name', 'description', 'inputSchema', 'outputSchema', 'steps']);
     for (const key of Object.keys(cap)) {
       if (!allowedCap.has(key)) {
         throw new Error(`Unknown capability field: ${key}`);
@@ -173,6 +175,9 @@ export function parseSkillManifest(raw: unknown): SkillManifest {
       name: asString(cap.name, 'capability.name', 80),
       description: asString(cap.description, 'capability.description', 500),
       inputSchema: asObject(cap.inputSchema, 'capability.inputSchema') as JsonSchema,
+      ...(cap.outputSchema
+        ? { outputSchema: asObject(cap.outputSchema, 'capability.outputSchema') }
+        : {}),
       steps,
     };
   });

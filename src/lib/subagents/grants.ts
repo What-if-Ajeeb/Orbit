@@ -11,6 +11,29 @@ type GrantRow = {
   expires_at: number | null;
 };
 
+/** Declared grants may bind a tool to a category and a specific resource. */
+export type DeclaredSubagentGrant = {
+  toolName?: string;
+  /** Accepted for callers that describe capabilities by name instead. */
+  name?: string;
+  category?: string;
+  resourceKey?: string;
+};
+
+type DeclaredCapability = string | DeclaredSubagentGrant;
+
+function grantDescriptor(value: DeclaredCapability): { toolName: string; category: string; resourceKey: string } | null {
+  const toolName = typeof value === 'string'
+    ? value.trim()
+    : (value.toolName ?? (value as { name?: string }).name ?? '').trim();
+  if (!toolName) return null;
+  return {
+    toolName,
+    category: typeof value === 'string' ? '' : value.category?.trim() ?? '',
+    resourceKey: typeof value === 'string' ? '' : value.resourceKey?.trim() ?? '',
+  };
+}
+
 function rowToGrant(row: GrantRow): CapabilityGrant {
   return {
     toolName: row.tool_name,
@@ -30,16 +53,29 @@ export async function createSubagentGrants(options: {
   userId: number;
   parentTaskId: string;
   subagentId: string;
-  declaredCapabilities: string[];
-  requestedTools: string[];
+  declaredCapabilities: DeclaredCapability[];
+  requestedTools: DeclaredCapability[];
+  declaredGrants?: DeclaredSubagentGrant[];
   ttlMs?: number;
 }): Promise<CapabilityGrant[]> {
-  const declared = new Set(options.declaredCapabilities.map((name) => name.trim()));
-  const requested = Array.from(new Set(options.requestedTools.map((name) => name.trim()))).filter(
-    Boolean
-  );
+  const declared = new Map<string, { category: string; resourceKey: string }>();
+  for (const entry of [...options.declaredCapabilities, ...(options.declaredGrants ?? [])]) {
+    const descriptor = grantDescriptor(entry);
+    if (descriptor) {
+      declared.set(descriptor.toolName, {
+        category: descriptor.category,
+        resourceKey: descriptor.resourceKey,
+      });
+    }
+  }
 
-  if (requested.length === 0) {
+  const requested = new Map<string, { category: string; resourceKey: string }>();
+  for (const entry of options.requestedTools) {
+    const descriptor = grantDescriptor(entry);
+    if (descriptor) requested.set(descriptor.toolName, descriptor);
+  }
+
+  if (requested.size === 0) {
     throw new Error('A subagent must receive at least one explicit capability grant.');
   }
 
@@ -47,32 +83,37 @@ export async function createSubagentGrants(options: {
   const expiresAt = options.ttlMs && options.ttlMs > 0 ? now + options.ttlMs : null;
   const grants: CapabilityGrant[] = [];
 
-  for (const toolName of requested) {
-    if (!declared.has(toolName)) {
+  for (const [toolName, request] of requested) {
+    const binding = declared.get(toolName);
+    if (!binding) {
       throw new Error(`${toolName} is not declared by subagent ${options.subagentId}.`);
     }
     if (!agentToolRegistry.get(toolName)) {
       throw new Error(`${toolName} is not a registered ORBIT tool.`);
     }
 
+    const category = request.category || binding.category;
+    const resourceKey = request.resourceKey || binding.resourceKey;
     const id = `grant_${now.toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
     await options.db.runAsync(
       `INSERT INTO subagent_grants (
         id, user_id, parent_task_id, subagent_id, tool_name, category, resource_key,
         status, expires_at, created_at, revoked_at
-      ) VALUES (?, ?, ?, ?, ?, '', '', 'active', ?, ?, NULL)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, NULL)`,
       id,
       options.userId,
       options.parentTaskId,
       options.subagentId,
       toolName,
+      category,
+      resourceKey,
       expiresAt,
       now
     );
     grants.push(rowToGrant({
       tool_name: toolName,
-      category: '',
-      resource_key: '',
+      category,
+      resource_key: resourceKey,
       status: 'active',
       expires_at: expiresAt,
     }));

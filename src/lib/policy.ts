@@ -1,3 +1,5 @@
+import { sha256 } from '@noble/hashes/sha2.js';
+import { bytesToHex, utf8ToBytes } from '@noble/hashes/utils.js';
 import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 
@@ -77,6 +79,27 @@ function matchesPattern(pattern: string, match: ToolPolicyRule['match'], toolNam
   }
 
   return toolName.startsWith(pattern);
+}
+
+function stablePolicyStringify(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map(stablePolicyStringify).join(',')}]`;
+  }
+
+  if (value && typeof value === 'object') {
+    return `{${Object.entries(value as Record<string, unknown>)
+      .filter(([, entry]) => entry !== undefined)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, entry]) => `${JSON.stringify(key)}:${stablePolicyStringify(entry)}`)
+      .join(',')}}`;
+  }
+
+  return JSON.stringify(value ?? null);
+}
+
+/** Stable digest over the active rules; used to bind approvals to policy. */
+function policyVersionForRules(rules: ToolPolicyRule[]): string {
+  return bytesToHex(sha256(utf8ToBytes(stablePolicyStringify(rules))));
 }
 
 function defaultRules(): ToolPolicyRule[] {
@@ -416,6 +439,20 @@ export class PolicyEngine {
       ruleName: null,
       sandbox: {},
       reason: 'No matching policy rule.',
+    };
+  }
+
+  /**
+   * Evaluation plus a stable digest of the active rules. `evaluate()` is kept
+   * unchanged for existing callers; execution-bound approvals use this version.
+   */
+  evaluatePolicyForExecution(
+    toolName: string,
+    args: Record<string, unknown>
+  ): PolicyEvaluation & { policyVersion: string } {
+    return {
+      ...this.evaluate(toolName, args),
+      policyVersion: policyVersionForRules(this.listRules()),
     };
   }
 }

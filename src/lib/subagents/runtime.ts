@@ -49,6 +49,9 @@ export async function runSubagentTask(
     depth?: number;
     maxDepth?: number;
     signal?: AbortSignal;
+    /** Optional trace linkage supplied by an orchestrating parent. */
+    traceId?: string;
+    metadata?: Record<string, unknown>;
     onToolEvent?: (event: ToolExecutionEvent) => void;
   }
 ): Promise<DelegatedTaskResult> {
@@ -81,6 +84,16 @@ export async function runSubagentTask(
   const agent = agentIdentityForSubagent(row);
   const now = Date.now();
 
+  const metadataTraceId = typeof options.metadata?.traceId === 'string'
+    ? options.metadata.traceId
+    : undefined;
+  const traceId = options.traceId ?? metadataTraceId;
+  const traceLink = {
+    ...(options.parentTaskId ? { parentTaskId: options.parentTaskId } : {}),
+    ...(traceId ? { traceId } : {}),
+  };
+  const hasTraceLink = Object.keys(traceLink).length > 0;
+
   const agentTask = await createAgentTask(db, {
     userId: options.userId,
     conversationId: options.conversationId ?? null,
@@ -93,6 +106,7 @@ export async function runSubagentTask(
       instruction: options.instruction.slice(0, 4_000),
       subagentId: options.subagentId,
       requestedTools: options.requestedTools,
+      ...(hasTraceLink ? { metadata: traceLink } : {}),
     },
     budget: options.budget,
   });
@@ -129,6 +143,7 @@ export async function runSubagentTask(
       instruction: options.instruction,
       requestedTools: options.requestedTools,
       agentTaskId: agentTask.id,
+      ...(hasTraceLink ? { metadata: traceLink } : {}),
     }),
     now,
     now,
@@ -178,8 +193,14 @@ export async function runSubagentTask(
     );
 
     await updateAgentTaskStatus(db, agentTask.id, result.status, {
-      phase: 'done',
-      result: { reply: result.reply, subagentTaskId },
+      phase: verified ? 'done' : 'verify',
+      result: {
+        reply: result.reply,
+        subagentTaskId,
+        ...(hasTraceLink
+          ? { metadata: { ...traceLink, traces: result.traces.slice(0, 20) } }
+          : {}),
+      },
       verification: result.verification,
       error: verified ? null : error,
       finishedAt: Date.now(),
@@ -196,6 +217,12 @@ export async function runSubagentTask(
       subagentTaskId
     );
     await updateAgentTaskStatus(db, agentTask.id, 'failed', {
+      // A thrown child turn never reached a verified result; keep it in verify.
+      phase: 'verify',
+      result: {
+        error: message,
+        ...(hasTraceLink ? { metadata: traceLink } : {}),
+      },
       verification: verificationFailed(message),
       error: message,
       finishedAt: Date.now(),

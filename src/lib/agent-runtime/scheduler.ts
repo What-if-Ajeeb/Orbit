@@ -9,6 +9,7 @@ import { getChatStore } from '../chat';
 import { DATABASE_NAME } from '../db';
 import { MASTER_AGENT } from '../permissions/agents';
 import type { AgentIdentity } from '../permissions/types';
+import { recoverHybridAgentTasks } from '../hybrid-agent/recovery';
 import { runWorkflow, WorkflowStore } from '../workflows';
 
 import { runAgentTurn } from './orchestrator';
@@ -18,7 +19,6 @@ import {
   completeAgentTaskSchedule,
   createAgentTask,
   getAgentTask,
-  recoverInterruptedAgentTasks,
   updateAgentTaskStatus,
 } from './task-manager';
 import type { AgentBudget, AgentTaskSchedule, CapabilityGrant } from './types';
@@ -303,7 +303,10 @@ export async function runDueAgentWork(
   const owner = `background_${hashChain({ at: Date.now() }).slice(0, 12)}`;
 
   try {
-    const recovered = await recoverInterruptedAgentTasks(db, { owner });
+    const recovered = await recoverHybridAgentTasks(db, {
+      now: Date.now(),
+      traceId: owner,
+    });
     await new WorkflowStore(db).recoverStaleRuns();
     const schedules = await claimDueAgentTaskSchedules(db, owner, Date.now(), SCHEDULE_LEASE_MS, 5);
 
@@ -320,7 +323,7 @@ export async function runDueAgentWork(
     }
 
     return {
-      recoveredTasks: recovered.tasks,
+      recoveredTasks: recovered.requeued + recovered.blocked,
       recoveredSchedules: recovered.schedules,
       executed,
       failed,
@@ -339,7 +342,11 @@ export async function recoverAgentRuntimeOnStartup(
   db: SQLiteDatabase,
   userId?: number
 ): Promise<void> {
-  await recoverInterruptedAgentTasks(db);
+  await recoverHybridAgentTasks(db, {
+    now: Date.now(),
+    traceId: 'startup',
+    ...(userId === undefined ? {} : { userId }),
+  });
   await new WorkflowStore(db).recoverStaleRuns(userId);
   await registerAgentRecoveryBackgroundTask();
 }

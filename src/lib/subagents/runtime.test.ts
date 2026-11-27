@@ -137,4 +137,69 @@ describe('isolated subagent delegation', () => {
 
     expect(mocks.runAgentTurn).not.toHaveBeenCalled();
   });
+
+  it('keeps an unverified child in verify with parent trace linkage', async () => {
+    db = createTestDatabase();
+    await seedSubagent(['list_tasks']);
+    mocks.runAgentTurn.mockResolvedValue({
+      ...verifiedResult,
+      status: 'completed',
+      verification: {
+        verified: false,
+        status: 'unverified',
+        reason: 'No verification evidence.',
+        evidence: {},
+      },
+    });
+
+    const result = await runSubagentTask(db, {
+      userId: 1,
+      userName: 'Asha',
+      subagentId: 'researcher',
+      instruction: 'Check the plan.',
+      requestedTools: ['list_tasks'],
+      parentTaskId: 'parent-1',
+      traceId: 'trace-1',
+    });
+
+    const task = await db.getFirstAsync<{
+      phase: string;
+      input_json: string;
+      result_json: string | null;
+    }>(
+      'SELECT phase, input_json, result_json FROM agent_tasks WHERE id = ?',
+      result.agentTaskId
+    );
+    expect(task?.phase).toBe('verify');
+    expect(JSON.parse(task?.input_json ?? '{}').metadata).toMatchObject({
+      parentTaskId: 'parent-1',
+      traceId: 'trace-1',
+    });
+    expect(JSON.parse(task?.result_json ?? '{}').metadata).toMatchObject({
+      parentTaskId: 'parent-1',
+      traceId: 'trace-1',
+    });
+  });
+
+  it('also records verify phase on a thrown child turn', async () => {
+    db = createTestDatabase();
+    await seedSubagent(['list_tasks']);
+    mocks.runAgentTurn.mockRejectedValue(new Error('child failed'));
+
+    await expect(
+      runSubagentTask(db, {
+        userId: 1,
+        userName: 'Asha',
+        subagentId: 'researcher',
+        instruction: 'Check the plan.',
+        requestedTools: ['list_tasks'],
+        parentTaskId: 'parent-1',
+      })
+    ).rejects.toThrow(/child failed/);
+
+    const task = await db.getFirstAsync<{ status: string; phase: string }>(
+      'SELECT status, phase FROM agent_tasks WHERE user_id = 1 ORDER BY created_at DESC LIMIT 1'
+    );
+    expect(task).toMatchObject({ status: 'failed', phase: 'verify' });
+  });
 });

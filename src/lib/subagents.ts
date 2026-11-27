@@ -1,6 +1,8 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
+import { updateAgentTaskStatus } from './agent-runtime/task-manager';
 import type { AgentBudget } from './agent-runtime/types';
+import { verificationFailed } from './agent-runtime/verification';
 import { revokeSubagentGrants } from './subagents/grants';
 import { runSubagentTask } from './subagents/runtime';
 
@@ -29,6 +31,9 @@ export type SubagentPlugin = {
   capabilities: string[]; // Tool names this subagent can use
   enabled: boolean;
 };
+
+/** Only controllers explicitly handed to the executor are ever aborted. */
+const abortControllers = new Map<string, AbortController>();
 
 type TaskRow = {
   id: string;
@@ -252,6 +257,8 @@ export class SubagentExecutor {
       depth?: number;
       maxDepth?: number;
       signal?: AbortSignal;
+      /** Optional stored controller; the executor never creates one implicitly. */
+      abortController?: AbortController;
     } = {}
   ): Promise<SubagentTask> {
     const subagent = await this.store.getSubagent(subagentId);
@@ -280,7 +287,16 @@ export class SubagentExecutor {
       depth: options.depth,
       maxDepth: options.maxDepth,
       signal: options.signal,
+      traceId: typeof input.traceId === 'string' ? input.traceId : undefined,
+      metadata:
+        input.metadata && typeof input.metadata === 'object' && !Array.isArray(input.metadata)
+          ? (input.metadata as Record<string, unknown>)
+          : undefined,
     });
+
+    if (options.abortController) {
+      abortControllers.set(result.subagentTaskId, options.abortController);
+    }
 
     const legacy = await this.store.getTask(result.subagentTaskId);
     if (!legacy) throw new Error('The delegated task could not be loaded.');
@@ -302,28 +318,94 @@ export class SubagentExecutor {
       id
     ) as { input: string } | null;
 
-    if (row) {
+    let parsed: { agentTaskId?: string; requestedTools?: string[] } = {};
+    try {
+      if (row) parsed = JSON.parse(row.input) as typeof parsed;
+    } catch {
+      // A malformed legacy row must not prevent cancellation.
+    }
+
+    const cancellationMetadata: Record<string, unknown> = {
+      abortControllerAvailable: false,
+      limitation:
+        'No stored AbortController: in-flight child work cannot be interrupted; only task state and grants were updated.',
+    };
+    const controller = abortControllers.get(id);
+    if (controller) {
+      cancellationMetadata.abortControllerAvailable = true;
       try {
-        const parsed = JSON.parse(row.input) as { agentTaskId?: string; requestedTools?: string[] };
-        if (parsed.agentTaskId) {
-          const agentTask = await this.db.getFirstAsync(
-            'SELECT subagent_id, user_id FROM agent_tasks WHERE id = ?',
-            parsed.agentTaskId
-          ) as { subagent_id: string | null; user_id: number } | null;
-          if (agentTask?.subagent_id) {
-            await revokeSubagentGrants(
-              this.db,
-              agentTask.user_id,
-              parsed.agentTaskId,
-              agentTask.subagent_id
-            );
-          }
+        controller.abort();
+      } catch (error) {
+        cancellationMetadata.abortError = error instanceof Error ? error.message : 'abort failed';
+      }
+      abortControllers.delete(id);
+    }
+
+    let sideEffectsRecorded = false;
+    if (parsed.agentTaskId) {
+      cancellationMetadata.agentTaskId = parsed.agentTaskId;
+      try {
+        const attempts = await this.db.getAllAsync<{ status: string }>(
+          'SELECT status FROM agent_task_attempts WHERE task_id = ?',
+          parsed.agentTaskId
+        );
+        sideEffectsRecorded = attempts.some((attempt) => attempt.status === 'success');
+        cancellationMetadata.sideEffectsRecorded = sideEffectsRecorded;
+      } catch {
+        cancellationMetadata.sideEffectsRecorded = false;
+      }
+
+      try {
+        const agentTask = await this.db.getFirstAsync(
+          'SELECT subagent_id, user_id FROM agent_tasks WHERE id = ?',
+          parsed.agentTaskId
+        ) as { subagent_id: string | null; user_id: number } | null;
+        if (agentTask?.subagent_id) {
+          await revokeSubagentGrants(
+            this.db,
+            agentTask.user_id,
+            parsed.agentTaskId,
+            agentTask.subagent_id
+          );
         }
       } catch {
-        // A malformed legacy row must not prevent cancellation.
+        // Revocation failures must not block the cancellation state update.
+      }
+
+      try {
+        await updateAgentTaskStatus(
+          this.db,
+          parsed.agentTaskId,
+          sideEffectsRecorded ? 'needs_review' : 'cancelled',
+          {
+            phase: 'verify',
+            result: {
+              cancelled: true,
+              sideEffectsRecorded,
+              metadata: cancellationMetadata,
+            },
+            verification: verificationFailed(
+              sideEffectsRecorded
+                ? 'Cancelled after recorded side effects; review is required.'
+                : 'Cancelled before any side effect was recorded.'
+            ),
+            error: 'Cancelled by user.',
+            finishedAt: Date.now(),
+            leaseOwner: null,
+            leaseUntil: null,
+          }
+        );
+      } catch {
+        // A legacy or removed task row must not block the legacy update below.
       }
     }
 
-    await this.store.updateTaskStatus(id, 'cancelled');
+    await this.store.updateTaskStatus(id, 'cancelled', {
+      cancellation: {
+        sideEffectsRecorded,
+        agentTaskId: parsed.agentTaskId ?? null,
+        metadata: cancellationMetadata,
+      },
+    });
   }
 }

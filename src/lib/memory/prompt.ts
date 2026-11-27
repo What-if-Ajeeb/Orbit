@@ -1,9 +1,14 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { redactSecrets, truncate } from '../permissions/redact';
-import { MemoryStore, type MemoryEntry } from './store';
+import { MemoryStore, type MemoryEntry, type MemoryScope } from './store';
 
 const MAX_SECTION_CHARS = 3_500;
+const MAX_ENTRIES_PER_SCOPE = 4;
+
+/** Scopes that are safe to load implicitly. Working memory is caller-supplied only. */
+const DURABLE_SCOPES: MemoryScope[] = ['user', 'agent', 'long_term'];
+const SESSION_SCOPES: MemoryScope[] = ['session', 'task_history'];
 
 function formatEntries(label: string, entries: MemoryEntry[]): string {
   if (entries.length === 0) return '';
@@ -15,28 +20,40 @@ function formatEntries(label: string, entries: MemoryEntry[]): string {
 }
 
 /**
- * Builds a bounded memory block from the structured store. Project memories are
- * included only for the current project scope, so one workspace never leaks
- * into another.
+ * Builds a bounded memory block from the structured store. Only durable and
+ * session-safe scopes are loaded implicitly. Project memories are included only
+ * for the current project, and working memory is included only when the caller
+ * explicitly passes it in.
  */
 export async function buildMemoryPromptSection(
   db: SQLiteDatabase,
   userId: number,
   agentId: string,
-  projectId: string | null | undefined
+  projectId: string | null | undefined,
+  workingMemory: MemoryEntry[] = []
 ): Promise<string> {
   try {
     const store = new MemoryStore(db);
-    const [general, project] = await Promise.all([
-      store.recall({ userId, agentId, limit: 10 }),
+    const recallScopes = (scopes: MemoryScope[]) =>
+      Promise.all(
+        scopes.map((scope) =>
+          store.recall({ userId, agentId, scope, limit: MAX_ENTRIES_PER_SCOPE })
+        )
+      ).then((groups) => groups.flat());
+
+    const [durable, session, project] = await Promise.all([
+      recallScopes(DURABLE_SCOPES),
+      recallScopes(SESSION_SCOPES),
       projectId
         ? store.recall({ userId, agentId, projectId, scope: 'project', limit: 6 })
         : Promise.resolve([] as MemoryEntry[]),
     ]);
 
     const section = [
-      formatEntries('Persistent memory', general),
+      formatEntries('Persistent memory', durable),
+      formatEntries('Session memory', session),
       formatEntries(`Project memory (${projectId ?? 'none'})`, project),
+      formatEntries('Working memory (explicit)', workingMemory.slice(0, MAX_ENTRIES_PER_SCOPE)),
     ]
       .filter(Boolean)
       .join('\n\n');

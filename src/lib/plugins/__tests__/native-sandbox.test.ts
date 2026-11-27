@@ -148,7 +148,7 @@ describe('ORBIT Sandbox native plugin', () => {
     const { harness } = await enableSandbox();
     mocks.initialize.mockResolvedValue({
       coreVersion: '0.2.0',
-      policyVersion: 2,
+      policyVersion: 3,
       isolation: 'android-isolated-process',
       securityCapabilities: ['manifest-validation', 'permission-enforcement'],
       allowedOperations: ['file.read', 'file.stat', 'network.request'],
@@ -165,7 +165,7 @@ describe('ORBIT Sandbox native plugin', () => {
 
     expect(result).toMatchObject({
       ok: true,
-      policyVersion: 2,
+      policyVersion: 3,
       execution: false,
       isolation: 'android-isolated-process',
       sessionCount: 0,
@@ -173,11 +173,33 @@ describe('ORBIT Sandbox native plugin', () => {
     });
   });
 
-  it('rejects a policy that still advertises execution', async () => {
+  it('rejects a stale policy version', async () => {
     const { harness } = await enableSandbox();
     mocks.initialize.mockResolvedValue({
       coreVersion: '0.2.0',
       policyVersion: 2,
+      isolation: 'android-isolated-process',
+      securityCapabilities: ['manifest-validation'],
+      allowedOperations: ['file.read'],
+      permissions: ['files.read'],
+      execution: false,
+      limits: {},
+    });
+    mocks.getSnapshot.mockReturnValue({ sessions: [], busy: 0 });
+
+    const tool = harness.toolHost.tools.get(
+      'plugin__orbit_builtin_sandbox__sandbox_policy'
+    );
+    const result = JSON.parse((await tool!.execute(context, {})).content);
+
+    expect(result).toMatchObject({ ok: false });
+  });
+
+  it('rejects a policy that still advertises execution', async () => {
+    const { harness } = await enableSandbox();
+    mocks.initialize.mockResolvedValue({
+      coreVersion: '0.2.0',
+      policyVersion: 3,
       isolation: 'android-isolated-process',
       securityCapabilities: [],
       allowedOperations: [],
