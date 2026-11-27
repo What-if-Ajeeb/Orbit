@@ -39,27 +39,30 @@ const mocks = vi.hoisted(() => {
     })),
     recoverStaleRuns: vi.fn(async () => 0),
     loadAiSettings: vi.fn(async () => ({})),
-    defineTask: vi.fn(),
-    isTaskRegistered: vi.fn(async () => false),
+    defineTask: vi.fn<(taskName: string, executor: () => Promise<boolean>) => void>(),
+    isTaskRegistered: vi.fn(async (_taskName: string) => false),
     registerTask: vi.fn(async () => undefined),
     getBackgroundStatus: vi.fn(async () => 'Available'),
-    registerBackgroundTask: vi.fn(async () => undefined),
+    registerBackgroundTask: vi.fn<
+      (taskName: string, options: { minimumInterval: number }) => Promise<void>
+    >(async () => undefined),
   };
 });
 
 vi.mock('react-native', () => ({ Platform: { OS: 'android' } }));
 vi.mock('expo-sqlite', () => ({ openDatabaseAsync: vi.fn() }));
 vi.mock('expo-crypto', () => ({ randomUUID: () => `uuid-${Math.random().toString(36).slice(2)}` }));
-vi.mock('expo-background-task', () => ({
-  BackgroundTaskStatus: { Available: 'Available' },
-  BackgroundTaskResult: { Success: 'Success', Failed: 'Failed' },
-  getStatusAsync: mocks.getBackgroundStatus,
-  registerTaskAsync: mocks.registerBackgroundTask,
-}));
-vi.mock('expo-task-manager', () => ({
-  defineTask: mocks.defineTask,
-  isTaskRegisteredAsync: mocks.isTaskRegistered,
-  registerTaskAsync: mocks.registerTask,
+vi.mock('./background-task-runtime', () => ({
+  defineRecoveryTask: (taskName: string, executor: () => Promise<boolean>) => {
+    mocks.defineTask(taskName, executor);
+  },
+  registerRecoveryTask: async (taskName: string, minimumInterval: number) => {
+    if ((await mocks.getBackgroundStatus()) !== 'Available') return false;
+    if (!(await mocks.isTaskRegistered(taskName))) {
+      await mocks.registerBackgroundTask(taskName, { minimumInterval });
+    }
+    return true;
+  },
 }));
 vi.mock('../ai/settings', () => ({ loadAiSettings: mocks.loadAiSettings }));
 vi.mock('../chat', () => ({ getChatStore: () => mocks.chatStore }));

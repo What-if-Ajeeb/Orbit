@@ -1,7 +1,5 @@
-import * as BackgroundTask from 'expo-background-task';
 import * as SQLite from 'expo-sqlite';
 import type { SQLiteDatabase } from 'expo-sqlite';
-import * as TaskManager from 'expo-task-manager';
 import { Platform } from 'react-native';
 
 import { loadAiSettings } from '../ai/settings';
@@ -18,6 +16,7 @@ import type { AgentIdentity } from '../permissions/types';
 import { recoverHybridAgentTasks } from '../hybrid-agent/recovery';
 import { runWorkflow, WorkflowStore } from '../workflows';
 
+import { defineRecoveryTask, registerRecoveryTask } from './background-task-runtime';
 import { runAgentTurn } from './orchestrator';
 import {
   claimAgentTask,
@@ -112,14 +111,9 @@ async function executeWorkflowSchedule(
  * before any React component mounts. No iOS background mode is implemented.
  */
 if (Platform.OS === 'android') {
-  TaskManager.defineTask(AGENT_RECOVERY_TASK_NAME, async () => {
-    try {
-      await runDueAgentWork();
-      return BackgroundTask.BackgroundTaskResult.Success;
-    } catch (error) {
-      console.warn('ORBIT background recovery failed.', error);
-      return BackgroundTask.BackgroundTaskResult.Failed;
-    }
+  defineRecoveryTask(AGENT_RECOVERY_TASK_NAME, async () => {
+    await runDueAgentWork();
+    return true;
   });
 }
 
@@ -127,23 +121,10 @@ if (Platform.OS === 'android') {
 export async function registerAgentRecoveryBackgroundTask(): Promise<boolean> {
   if (Platform.OS !== 'android') return false;
 
-  try {
-    const status = await BackgroundTask.getStatusAsync();
-    if (status !== BackgroundTask.BackgroundTaskStatus.Available) return false;
-
-    if (!(await TaskManager.isTaskRegisteredAsync(AGENT_RECOVERY_TASK_NAME))) {
-      // WorkManager treats this as a minimum delay, not an exact alarm. The OS
-      // may wake the worker later to batch wakeups.
-      await BackgroundTask.registerTaskAsync(AGENT_RECOVERY_TASK_NAME, {
-        minimumInterval: MIN_BACKGROUND_INTERVAL_MINUTES,
-      });
-    }
-
-    return true;
-  } catch (error) {
-    console.warn('Could not register the ORBIT background worker.', error);
-    return false;
-  }
+  // WorkManager treats this as a minimum delay, not an exact alarm. The OS may
+  // wake the worker later to batch wakeups. A build without the native module
+  // simply returns false instead of crashing the app.
+  return registerRecoveryTask(AGENT_RECOVERY_TASK_NAME, MIN_BACKGROUND_INTERVAL_MINUTES);
 }
 
 async function executeSchedule(
