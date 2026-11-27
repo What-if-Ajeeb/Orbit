@@ -76,12 +76,14 @@ const makeStyles = ({ colors }: AppTheme) =>
   StyleSheet.create({
     root: {
       backgroundColor: colors.background,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.border,
     },
     bar: {
       height: 56,
       flexDirection: 'row',
       alignItems: 'center',
-      paddingHorizontal: spacing.xs,
+      paddingHorizontal: spacing.sm,
     },
     iconButton: {
       width: layout.iconButton,

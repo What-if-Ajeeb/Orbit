@@ -17,7 +17,7 @@ import { useSidebar } from '@/context/sidebar';
 import { useAppTheme, useStyles, type AppTheme } from '@/context/theme';
 import { isAiConfigured, loadAiSettings } from '@/lib/ai/settings';
 import { completeTask, getTaskStats, listTasks, reopenTask, type Task, type TaskStats } from '@/lib/tasks';
-import { fonts, radius, spacing } from '@/theme';
+import { fonts, layout, radius, spacing } from '@/theme';
 
 function getGreeting(): string {
   const hour = new Date().getHours();
@@ -190,8 +190,8 @@ export default function HomeScreen() {
 
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Open settings"
-            onPress={() => router.navigate('/settings')}
+            accessibilityLabel="Open account details"
+            onPress={() => router.navigate('/settings/account' as Href)}
             style={({ pressed }) => [styles.avatar, pressed && styles.pressed]}
           >
             <Text style={styles.avatarText}>{initials || 'O'}</Text>
@@ -362,6 +362,9 @@ const makeStyles = ({ colors }: AppTheme) =>
     },
     content: {
       flexGrow: 1,
+      width: '100%',
+      maxWidth: layout.contentMaxWidth,
+      alignSelf: 'center',
       paddingHorizontal: spacing.lg,
     },
     topBar: {

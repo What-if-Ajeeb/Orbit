@@ -173,7 +173,8 @@ export default function BuddyScreen() {
               { icon: 'hand-left-outline', label: 'Pet', onPress: () => void runActivity('Pet', 'petting', 'calm', 6, 5, personality?.comfort ?? 'Your buddy feels close to you.') },
               { icon: 'barbell-outline', label: 'Train', onPress: () => void runActivity('Train', 'thinking', 'focused', 15, 2, 'Training complete. XP gained.') },
               { icon: 'sparkles-outline', label: 'Evolve', onPress: () => router.navigate(`/(app)/buddy/evolve?id=${buddy.id}` as never) },
-              { icon: 'person-outline', label: 'Profile', onPress: () => router.navigate(`/(app)/buddy/tree?species=${buddy.speciesId}` as never) },
+              { icon: 'person-outline', label: 'Profile', onPress: () => router.navigate('/settings/account' as never) },
+              { icon: 'git-branch-outline', label: 'Species', onPress: () => router.navigate(`/(app)/buddy/tree?species=${buddy.speciesId}` as never) },
             ].map((a) => (
               <Pressable key={a.label} style={styles.actionBtn} onPress={a.onPress} disabled={busy}>
                 <Ionicons name={a.icon as never} size={20} color={colors.accent} />
