@@ -572,11 +572,31 @@ export async function ollamaChat(
   tools: LlmToolDefinition[],
   options: OllamaChatOptions = {}
 ): Promise<LlmTurn> {
-  const model = settings.model.trim();
+  // Fail-fast: 2s /api/tags probe + persist discovered model (via ollama-resolve).
+  // Dynamic import avoids a static cycle with settings.ts.
+  let model = settings.model.trim();
+  try {
+    const { resolveLocalOllamaSettings } = await import('./ollama-resolve');
+    const resolved = await resolveLocalOllamaSettings(
+      {
+        provider: 'ollama',
+        mode: 'local',
+        baseUrl: settings.baseUrl,
+        model: settings.model,
+        apiKey: '',
+      },
+      { signal: options.signal, timeoutMs: 2_000 }
+    );
+    model = resolved.model.trim() || model;
+  } catch (error) {
+    if (error instanceof OllamaRequestError) throw error;
+    const message = error instanceof Error ? error.message : 'Ollama is not reachable.';
+    throw new OllamaRequestError(message, 'network', null, true);
+  }
 
   if (!model) {
     throw new OllamaRequestError(
-      'No Ollama model is selected. Open Settings → AI and choose an installed model.',
+      'Ollama is running but no model is installed. Run `ollama pull <model>` on this device, then try again.',
       'invalid_response'
     );
   }

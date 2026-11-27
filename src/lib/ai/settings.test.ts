@@ -54,7 +54,20 @@ describe('AI settings', () => {
     expect(settings.baseUrl).toBe('http://127.0.0.1:11434');
     expect(settings.model).toBe('');
     expect(settings.apiKey).toBe('');
-    expect(isAiConfigured(settings)).toBe(false);
+    // System-first: a local URL alone is enough; model is discovered later.
+    expect(isAiConfigured(settings)).toBe(true);
+  });
+
+  it('treats cloud providers without a key as unconfigured', () => {
+    expect(
+      isAiConfigured({
+        provider: 'openai',
+        mode: 'cloud',
+        baseUrl: 'https://api.openai.com/v1',
+        model: 'gpt-4.1-mini',
+        apiKey: '',
+      })
+    ).toBe(false);
   });
 
   it('uses the native adapter for the Ollama preset', () => {

@@ -13,7 +13,7 @@ export type LocalToolExecutor = (
   args: Record<string, unknown>
 ) => Promise<{ content: string; success: boolean; trace?: string; error?: string }>;
 
-const HELP_TEXT = `Abhi AI key set nahi hai, isliye main local mode me hoon.
+const HELP_TEXT = `Main abhi system mode me hoon — tasks aur reminders local pe chalte hain, koi cloud API key zaroori nahi.
 
 Ye commands chalte hain:
 • "Add task pay electricity bill tomorrow 5pm"
@@ -21,7 +21,7 @@ Ye commands chalte hain:
 • "What's pending?"
 • "Complete 3"
 
-AI chat ke liye Settings → AI me apni API key daalo.`;
+Phone pe Ollama chal raha ho to Settings → AI se on-device model connect karo; natural chat wahan se open hoga. Cloud key optional hai.`;
 
 type LocalTask = { id: number; title: string; dueAt: number | null; remindAt: number | null };
 
@@ -132,7 +132,7 @@ export async function runLocalAgent(
 
   if (isGreeting(input)) {
     return {
-      reply: `Namaste! Main Orbit hoon. Local mode me tasks aur reminders manage kar sakta hoon.\n\n${HELP_TEXT}`,
+      reply: `Namaste! Main Orbit hoon — system mode me tasks aur reminders manage kar sakta hoon.\n\n${HELP_TEXT}`,
       traces: [],
     };
   }
@@ -218,7 +218,7 @@ export async function runLocalAgent(
   // Never auto-save arbitrary text as a task. Only explicit task or reminder
   // phrasing above creates something; otherwise explain the local commands.
   return {
-    reply: `Main is message se apne aap task nahi banata. Task save karne ke liye "add task ..." ya "remind me ..." likho. Natural AI chat ke liye Settings → AI me API key daalo.`,
+    reply: `Main is message se apne aap task nahi banata. Task save karne ke liye "add task ..." ya "remind me ..." likho.\n\nNatural chat ke liye phone pe Ollama model chalao (Settings → AI), ya cloud key optional rakho.`,
     traces: [],
   };
 }
