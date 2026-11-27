@@ -15,7 +15,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 pub const CORE_VERSION: &str = "0.2.0";
-pub const POLICY_VERSION: u32 = 2;
+pub const POLICY_VERSION: u32 = 3;
 pub const MAX_ENVELOPE_BYTES: usize = 64 * 1024;
 
 const PLUGIN_ID_MAX_LEN: usize = 128;
@@ -33,7 +33,13 @@ const SECURITY_CAPABILITIES: [&str; 7] = [
     "audit-events",
 ];
 
-const ALLOWED_OPERATIONS: [&str; 3] = ["file.read", "file.stat", "network.request"];
+const ALLOWED_OPERATIONS: [&str; 5] = [
+    "file.read",
+    "file.stat",
+    "file.write",
+    "file.delete",
+    "network.request",
+];
 
 const SANDBOX_PERMISSIONS: [&str; 4] = [
     "files.read",
@@ -730,7 +736,9 @@ fn evaluate_approval_resource(
     };
 
     let normalized_bound = match operation {
-        "file.read" | "file.stat" => validate_path_value(bound_resource, policy),
+        "file.read" | "file.stat" | "file.write" | "file.delete" => {
+            validate_path_value(bound_resource, policy)
+        }
         "network.request" => validate_network_value(bound_resource, policy),
         _ => {
             return Err((
@@ -890,6 +898,7 @@ fn check_permission(params: &PermissionParams, policy: &Policy) -> PermissionDec
 fn permission_for_operation(operation: &str) -> Option<&'static str> {
     match operation {
         "file.read" | "file.stat" => Some("files.read"),
+        "file.write" | "file.delete" => Some("files.write"),
         "network.request" => Some("network.access"),
         _ => None,
     }
@@ -973,7 +982,7 @@ fn authorize_operation(params: &AuthorizeParams, policy: &Policy) -> OperationDe
     }
 
     let normalized_resource = match params.operation.as_str() {
-        "file.read" | "file.stat" => {
+        "file.read" | "file.stat" | "file.write" | "file.delete" => {
             let Some(path) = params.resource.path.as_deref() else {
                 return deny(
                     "missing_resource",

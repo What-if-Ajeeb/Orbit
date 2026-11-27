@@ -13,7 +13,12 @@ export type SandboxPermission =
   | 'network.access'
   | 'sandbox.inspect';
 
-export type SandboxOperation = 'file.read' | 'file.stat' | 'network.request';
+export type SandboxOperation =
+  | 'file.read'
+  | 'file.stat'
+  | 'file.write'
+  | 'file.delete'
+  | 'network.request';
 
 export type SandboxManifest = {
   pluginId: string;

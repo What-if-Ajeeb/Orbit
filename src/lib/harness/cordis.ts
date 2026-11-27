@@ -23,7 +23,7 @@ declare module 'cordis' {
     'orbit/tools/unregister'(context: { name: string }): void;
     'orbit/tools/change'(): void;
     'orbit/agent/created'(agent: { name: string; toolCount: number }): void;
-    'orbit/agent/status'(agent: { status: 'ready' | 'idle' }): void;
+    'orbit/agent/status'(agent: { status: 'ready' | 'idle' | 'running' | 'needs_review' | 'failed' }): void;
     'orbit/agent/step'(agent: { toolName: string }): void;
     'orbit/agent/request'(agent: { toolCount: number }): void;
     'orbit/agent/turn-stopping'(): void;

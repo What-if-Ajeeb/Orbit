@@ -1,5 +1,9 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
+import type { AgentBudget } from './agent-runtime/types';
+import { revokeSubagentGrants } from './subagents/grants';
+import { runSubagentTask } from './subagents/runtime';
+
 export type SubagentStatus = 'idle' | 'running' | 'completed' | 'failed' | 'cancelled';
 
 export type SubagentTask = {
@@ -226,10 +230,9 @@ export class SubagentStore {
 export class SubagentExecutor {
   private store: SubagentStore;
 
-  constructor(db: SQLiteDatabase) {
+  constructor(private db: SQLiteDatabase) {
     this.store = new SubagentStore(db);
   }
-
 
   async delegateTask(
     subagentId: string,
@@ -237,55 +240,90 @@ export class SubagentExecutor {
     taskDescription: string,
     input: Record<string, unknown>,
     conversationId?: number,
-    agentId?: string
+    agentId?: string,
+    options: {
+      userId?: number;
+      userName?: string;
+      requestedTools?: string[];
+      parentTaskId?: string;
+      projectId?: string;
+      projectLabel?: string;
+      budget?: AgentBudget;
+      depth?: number;
+      maxDepth?: number;
+      signal?: AbortSignal;
+    } = {}
   ): Promise<SubagentTask> {
     const subagent = await this.store.getSubagent(subagentId);
-    if (!subagent) {
-      throw new Error(`Subagent ${subagentId} not found`);
+    if (!subagent) throw new Error(`Subagent ${subagentId} not found`);
+    if (!subagent.enabled) throw new Error(`Subagent ${subagentId} is disabled`);
+
+    const requestedTools = options.requestedTools ?? subagent.capabilities;
+    if (requestedTools.length === 0) {
+      throw new Error(`Subagent ${subagentId} has no explicit capability grants.`);
     }
 
-    if (!subagent.enabled) {
-      throw new Error(`Subagent ${subagentId} is disabled`);
-    }
-
-    const task = await this.store.createTask({
-      name: taskName,
-      description: taskDescription,
-      input,
-      parentConversationId: conversationId,
-      agentId: agentId,
+    const instruction = [taskName, taskDescription, JSON.stringify(input)]
+      .filter(Boolean)
+      .join('\n');
+    const result = await runSubagentTask(this.db, {
+      userId: options.userId ?? Number((input.userId as number | undefined) ?? 0),
+      userName: options.userName ?? (input.userName as string | undefined) ?? 'User',
+      subagentId,
+      instruction,
+      requestedTools,
+      parentTaskId: options.parentTaskId,
+      conversationId,
+      projectId: options.projectId,
+      projectLabel: options.projectLabel,
+      budget: options.budget,
+      depth: options.depth,
+      maxDepth: options.maxDepth,
+      signal: options.signal,
     });
 
-    await this.store.markTaskStarted(task.id);
+    const legacy = await this.store.getTask(result.subagentTaskId);
+    if (!legacy) throw new Error('The delegated task could not be loaded.');
 
-    // Simulate subagent execution
-    void (async () => {
-      try {
-        // Simulate work
-        await new Promise((resolve) => setTimeout(resolve, 1500));
-
-        const output = {
-          result: `Completed task "${taskName}" using subagent ${subagent.name}`,
-          input,
-          agent: subagent.name,
-          timestamp: Date.now(),
-        };
-
-        await this.store.updateTaskStatus(task.id, 'completed', output);
-      } catch (error) {
-        await this.store.updateTaskStatus(
-          task.id,
-          'failed',
-          undefined,
-          error instanceof Error ? error.message : 'Task execution failed'
-        );
-      }
-    })();
-
-    return { ...task, status: 'running', startedAt: Date.now() };
+    return {
+      ...legacy,
+      output: {
+        reply: result.reply,
+        traces: result.traces,
+        verification: result.verification,
+        agentTaskId: result.agentTaskId,
+      },
+    };
   }
 
   async cancelTask(id: string): Promise<void> {
+    const row = await this.db.getFirstAsync(
+      'SELECT input FROM subagent_tasks WHERE id = ?',
+      id
+    ) as { input: string } | null;
+
+    if (row) {
+      try {
+        const parsed = JSON.parse(row.input) as { agentTaskId?: string; requestedTools?: string[] };
+        if (parsed.agentTaskId) {
+          const agentTask = await this.db.getFirstAsync(
+            'SELECT subagent_id, user_id FROM agent_tasks WHERE id = ?',
+            parsed.agentTaskId
+          ) as { subagent_id: string | null; user_id: number } | null;
+          if (agentTask?.subagent_id) {
+            await revokeSubagentGrants(
+              this.db,
+              agentTask.user_id,
+              parsed.agentTaskId,
+              agentTask.subagent_id
+            );
+          }
+        }
+      } catch {
+        // A malformed legacy row must not prevent cancellation.
+      }
+    }
+
     await this.store.updateTaskStatus(id, 'cancelled');
   }
 }

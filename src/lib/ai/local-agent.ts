@@ -8,6 +8,11 @@ export type LocalAgentResult = {
   traces: string[];
 };
 
+export type LocalToolExecutor = (
+  toolName: 'list_tasks' | 'complete_task' | 'create_task',
+  args: Record<string, unknown>
+) => Promise<{ content: string; success: boolean; trace?: string; error?: string }>;
+
 const HELP_TEXT = `Abhi AI key set nahi hai, isliye main local mode me hoon.
 
 Ye commands chalte hain:
@@ -17,6 +22,8 @@ Ye commands chalte hain:
 • "Complete 3"
 
 AI chat ke liye Settings → AI me apni API key daalo.`;
+
+type LocalTask = { id: number; title: string; dueAt: number | null; remindAt: number | null };
 
 function extractCreateText(text: string): { text: string; reminder: boolean } | null {
   const patterns: { pattern: RegExp; reminder: boolean }[] = [
@@ -54,10 +61,68 @@ function isAcknowledgement(text: string): boolean {
   );
 }
 
+function parseLocalTimestamp(value: unknown): number | null {
+  if (typeof value !== 'string' || !value) return null;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function tasksFromTool(content: string): LocalTask[] {
+  try {
+    const parsed = JSON.parse(content) as {
+      ok?: unknown;
+      tasks?: Record<string, unknown>[];
+    };
+    if (parsed.ok !== true || !Array.isArray(parsed.tasks)) return [];
+    return parsed.tasks
+      .map((entry) => ({
+        id: typeof entry.id === 'number' ? entry.id : Number(entry.id),
+        title: typeof entry.title === 'string' ? entry.title : '',
+        dueAt: parseLocalTimestamp(entry.due_at),
+        remindAt: parseLocalTimestamp(entry.remind_at),
+      }))
+      .filter((task) => Number.isInteger(task.id) && task.id > 0 && Boolean(task.title));
+  } catch {
+    return [];
+  }
+}
+
+function titleFromTool(content: string): string {
+  try {
+    const parsed = JSON.parse(content) as {
+      ok?: unknown;
+      task?: { title?: unknown };
+    };
+    return parsed.ok === true && typeof parsed.task?.title === 'string' ? parsed.task.title : '';
+  } catch {
+    return '';
+  }
+}
+
+async function listLocalTasks(
+  db: SQLiteDatabase,
+  userId: number,
+  execute?: LocalToolExecutor
+): Promise<LocalTask[]> {
+  if (!execute) {
+    const tasks = await listTasks(db, userId, { status: 'open', limit: 50 });
+    return tasks.map((task) => ({
+      id: task.id,
+      title: task.title,
+      dueAt: task.dueAt,
+      remindAt: task.remindAt,
+    }));
+  }
+
+  const result = await execute('list_tasks', { status: 'open', limit: 50 });
+  return result.success ? tasksFromTool(result.content) : [];
+}
+
 export async function runLocalAgent(
   db: SQLiteDatabase,
   userId: number,
-  text: string
+  text: string,
+  execute?: LocalToolExecutor
 ): Promise<LocalAgentResult> {
   const input = text.trim();
 
@@ -81,7 +146,7 @@ export async function runLocalAgent(
       input
     )
   ) {
-    const tasks = await listTasks(db, userId, { status: 'open', limit: 20 });
+    const tasks = await listLocalTasks(db, userId, execute);
 
     if (tasks.length === 0) {
       return { reply: 'Koi open task nahi hai. Naya task add karna ho to bas likho.', traces: [] };
@@ -106,7 +171,7 @@ export async function runLocalAgent(
     const requested = Number(completeMatch[1]);
 
     try {
-      const openTasks = await listTasks(db, userId, { status: 'open', limit: 50 });
+      const openTasks = await listLocalTasks(db, userId, execute);
       const target =
         openTasks.find((task) => task.id === requested) ?? openTasks[requested - 1];
 
@@ -117,10 +182,24 @@ export async function runLocalAgent(
         };
       }
 
-      const task = await completeTask(db, userId, target.id);
+      let completedTitle = target.title;
+      if (execute) {
+        const result = await execute('complete_task', { task_id: target.id });
+        if (!result.success) {
+          return {
+            reply: result.error || `Task #${requested} complete nahi ho paya.`,
+            traces: [],
+          };
+        }
+        completedTitle = titleFromTool(result.content) || target.title;
+      } else {
+        const task = await completeTask(db, userId, target.id);
+        completedTitle = task.title;
+      }
+
       return {
-        reply: `Ho gaya — “${task.title}” complete mark kar diya. ✅`,
-        traces: [`Completed “${task.title}”`],
+        reply: `Ho gaya — “${completedTitle}” complete mark kar diya. ✅`,
+        traces: [`Completed “${completedTitle}”`],
       };
     } catch {
       return {
@@ -133,7 +212,7 @@ export async function runLocalAgent(
   const createIntent = extractCreateText(input);
 
   if (createIntent) {
-    return createFromText(db, userId, createIntent.text, createIntent.reminder);
+    return createFromText(db, userId, createIntent.text, createIntent.reminder, execute);
   }
 
   // Never auto-save arbitrary text as a task. Only explicit task or reminder
@@ -148,7 +227,8 @@ async function createFromText(
   db: SQLiteDatabase,
   userId: number,
   raw: string,
-  reminder: boolean
+  reminder: boolean,
+  execute?: LocalToolExecutor
 ): Promise<LocalAgentResult> {
   const parsed = parseTaskText(raw);
   const title = parsed.title || raw.trim();
@@ -158,25 +238,35 @@ async function createFromText(
   }
 
   const when = parsed.dueAt;
-  const task = await createTask(db, userId, {
-    title,
-    dueAt: reminder ? null : when,
-    remindAt: reminder ? when : null,
-  });
 
-  const scheduledAt = task.remindAt ?? task.dueAt;
-  const scheduleNote =
-    scheduledAt && !task.notificationId
-      ? ' (notifications off — Settings me allow karo)'
-      : '';
-  const whenNote = scheduledAt ? ` · ${formatDue(scheduledAt)}` : '';
+  if (execute) {
+    const result = await execute('create_task', {
+      title,
+      ...(reminder ? {} : when ? { due_at: new Date(when).toISOString() } : {}),
+      ...(reminder ? (when ? { remind_at: new Date(when).toISOString() } : {}) : {}),
+    });
 
+    if (!result.success) {
+      return { reply: result.error || 'Task save nahi ho paya.', traces: [] };
+    }
+  } else {
+    await createTask(db, userId, {
+      title,
+      dueAt: reminder ? null : when,
+      remindAt: reminder ? when : null,
+    });
+  }
+
+  const scheduleNote = reminder && !when
+    ? ''
+    : '';
+  const whenNote = when ? ` · ${formatDue(when)}` : '';
   const reply = reminder && !when
-    ? `Task “${task.title}” save ho gaya. Reminder ke liye time bhi batao, jaise: "remind me to call mom at 7pm".`
-    : `Done — “${task.title}”${whenNote}${scheduleNote}.`;
+    ? `Task “${title}” save ho gaya. Reminder ke liye time bhi batao, jaise: "remind me to call mom at 7pm".`
+    : `Done — “${title}”${whenNote}${scheduleNote}.`;
 
   return {
     reply,
-    traces: [`Created “${task.title}”${whenNote}`],
+    traces: [`Created “${title}”${whenNote}`],
   };
 }

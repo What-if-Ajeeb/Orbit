@@ -301,7 +301,7 @@ fn authorize_operation_allows_an_approved_file_read() {
         "orbit/notes/today.txt"
     );
     assert_eq!(response["result"]["audit"]["decision"], "allow");
-    assert_eq!(response["result"]["audit"]["policyVersion"], 2);
+    assert_eq!(response["result"]["audit"]["policyVersion"], 3);
 }
 
 #[test]

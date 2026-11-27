@@ -265,6 +265,7 @@ export type PermissionDenialReason =
   | 'scope_mismatch'
   | 'android_permission_denied'
   | 'command_blocked'
+  | 'sandbox_denied'
   | 'execution_timeout'
   | 'execution_failed';
 

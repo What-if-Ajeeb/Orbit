@@ -30,6 +30,8 @@ import { useSidebar } from '@/context/sidebar';
 import { useTabletLayout } from '@/context/tablet-layout';
 import { useAppTheme, useStyles, type AppTheme } from '@/context/theme';
 import { runAgent } from '@/lib/ai/agent';
+import { AgentTurnCancelledError } from '@/lib/agent-runtime/orchestrator';
+import type { AgentTaskStatus, AgentTaskVerification } from '@/lib/agent-runtime/types';
 import type { LlmAttachment } from '@/lib/ai/types';
 import { OllamaRequestError } from '@/lib/ai/ollama';
 import { isAiConfigured, loadAiSettings, type AiSettings } from '@/lib/ai/settings';
@@ -70,6 +72,13 @@ type RetryPayload = {
   attachments: PickedAttachment[];
 };
 
+type TaskNotice = {
+  taskId: string;
+  status: AgentTaskStatus;
+  verified: boolean;
+  reason: string;
+};
+
 function describeAiMode(settings: AiSettings): string {
   if (!isAiConfigured(settings)) {
     return 'Local mode';
@@ -82,9 +91,21 @@ function describeAiMode(settings: AiSettings): string {
 
 function isCancelledError(error: unknown): boolean {
   return (
+    error instanceof AgentTurnCancelledError ||
     (error instanceof OllamaRequestError && error.code === 'cancelled') ||
-    (error instanceof Error && error.message === 'AI request cancelled.')
+    (error instanceof Error &&
+      (error.name === 'AbortError' ||
+        error.message === 'AI request cancelled.' ||
+        /^(?:tool|operation|request) cancelled/i.test(error.message)))
   );
+}
+
+function taskStatusLabel(status: AgentTaskStatus): string {
+  if (status === 'completed') return 'completed';
+  if (status === 'needs_review') return 'needs review';
+  if (status === 'cancelled') return 'cancelled';
+  if (status === 'failed') return 'failed';
+  return status.replace(/_/g, ' ');
 }
 
 function looksOffline(error: unknown): boolean {
@@ -133,6 +154,7 @@ export function AgentChatView({
 
   const scrollRef = useRef<ComponentRef<typeof ScrollView>>(null);
   const activeIdRef = useRef<number | null>(null);
+  const activeTaskIdRef = useRef<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const streamRef = useRef('');
   const handledPromptRef = useRef<string | null>(null);
@@ -153,6 +175,7 @@ export function AgentChatView({
   const [activity, setActivity] = useState<ActivityRecord[]>([]);
   const [agentStopped, setAgentStopped] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [taskNotice, setTaskNotice] = useState<TaskNotice | null>(null);
   const [retryPayload, setRetryPayload] = useState<RetryPayload | null>(null);
   const [creatorMode, setCreatorMode] = useState(false);
   const [historyManualOpen, setHistoryManualOpen] = useState(false);
@@ -381,6 +404,15 @@ export function AgentChatView({
   async function stopCurrentAgent() {
     abortRef.current?.abort();
 
+    if (activeTaskIdRef.current) {
+      setTaskNotice({
+        taskId: activeTaskIdRef.current,
+        status: 'cancelled',
+        verified: false,
+        reason: 'Stop requested. Waiting for the runtime to confirm what stopped.',
+      });
+    }
+
     try {
       const report = await permissionManager.stopAgent(activeUser.id, agent.id);
       const lines = [
@@ -479,6 +511,8 @@ export function AgentChatView({
     setStreamedText('');
     setLiveToolEvents([]);
     setError(null);
+    setTaskNotice(null);
+    activeTaskIdRef.current = null;
     setRetryPayload(payload);
     setIsSending(true);
 
@@ -562,6 +596,21 @@ export function AgentChatView({
       });
 
       const toolEvents = result.toolEvents.length > 0 ? result.toolEvents : liveToolEvents;
+      const turnStatus: AgentTaskStatus = result.status ?? 'needs_review';
+      const turnVerification: AgentTaskVerification = result.verification ?? {
+        verified: false,
+        status: 'uncertain',
+        reason: 'Completion could not be verified.',
+        evidence: {},
+      };
+      const verified = turnStatus === 'completed' && turnVerification.verified;
+      activeTaskIdRef.current = result.taskId;
+      setTaskNotice({
+        taskId: result.taskId,
+        status: turnStatus,
+        verified,
+        reason: turnVerification.reason,
+      });
 
       await store.addMessage(
         activeUser.id,
@@ -570,21 +619,54 @@ export function AgentChatView({
         result.reply,
         result.traces,
         result.artifacts,
-        { toolEvents, agentId: scopeAgentId }
+        {
+          toolEvents,
+          agentId: scopeAgentId,
+          agentTaskId: result.taskId,
+          agentStatus: turnStatus,
+          agentVerified: verified,
+          verification: turnVerification,
+        }
       );
       setMessages(await store.listMessages(activeUser.id, conversationId, 200));
-      setRetryPayload(null);
+      if (verified) {
+        setRetryPayload(null);
+      }
       await refreshConversations();
     } catch (sendError) {
       if (isCancelledError(sendError)) {
+        const taskId =
+          sendError instanceof AgentTurnCancelledError
+            ? sendError.taskId
+            : activeTaskIdRef.current ?? 'unknown';
         const partial = streamRef.current.trim();
         const events = Array.from(toolEventsRef.current.values());
 
-        if (partial && conversationId !== null) {
-          await store.addMessage(activeUser.id, conversationId, 'assistant', partial, [], [], {
-            toolEvents: events,
-            agentId: scopeAgentId,
-          });
+        setTaskNotice({
+          taskId,
+          status: 'cancelled',
+          verified: false,
+          reason: 'Stopped before completion. No completion was verified.',
+        });
+
+        if (conversationId !== null) {
+          await store.addMessage(
+            activeUser.id,
+            conversationId,
+            'assistant',
+            partial
+              ? `${partial}\n\nStopped — task ${taskId} was not verified.`
+              : `Stopped — task ${taskId} was not verified.`,
+            [],
+            [],
+            {
+              toolEvents: events,
+              agentId: scopeAgentId,
+              agentTaskId: taskId,
+              agentStatus: 'cancelled',
+              agentVerified: false,
+            }
+          );
           setMessages(await store.listMessages(activeUser.id, conversationId, 200));
           await refreshConversations();
         }
@@ -921,6 +1003,35 @@ export function AgentChatView({
                 <Text style={styles.retryText}>
                   {looksOffline(error) ? 'Retry when back online' : 'Retry'}
                 </Text>
+              </Pressable>
+            ) : null}
+          </View>
+        ) : null}
+
+        {taskNotice ? (
+          <View style={styles.taskBanner} accessibilityLiveRegion="polite">
+            <Ionicons
+              name={taskNotice.verified ? 'checkmark-circle-outline' : 'alert-circle-outline'}
+              size={15}
+              color={taskNotice.verified ? colors.success : colors.accent}
+            />
+            <View style={styles.taskCopy}>
+              <Text style={styles.taskTitle}>
+                Task {taskNotice.taskId} · {taskStatusLabel(taskNotice.status)}
+              </Text>
+              <Text numberOfLines={2} style={styles.taskReason}>
+                {taskNotice.reason}
+              </Text>
+            </View>
+            {!taskNotice.verified && retryPayload && !isSending ? (
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => {
+                  void retry();
+                }}
+                style={({ pressed }) => [styles.taskRetry, pressed && styles.pressed]}
+              >
+                <Text style={styles.taskRetryText}>Retry</Text>
               </Pressable>
             ) : null}
           </View>
@@ -1295,6 +1406,42 @@ const makeStyles = ({ colors }: AppTheme) =>
     retryText: {
       color: colors.accent,
       fontSize: 13,
+      fontWeight: '700',
+    },
+    taskBanner: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: spacing.sm,
+      borderRadius: radius.md,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: spacing.xs,
+    },
+    taskCopy: {
+      flex: 1,
+      gap: 2,
+    },
+    taskTitle: {
+      color: colors.text,
+      fontSize: 12,
+      fontWeight: '700',
+    },
+    taskReason: {
+      color: colors.textMuted,
+      fontSize: 11,
+      lineHeight: 15,
+    },
+    taskRetry: {
+      paddingHorizontal: spacing.sm,
+      paddingVertical: 4,
+      borderRadius: radius.sm,
+      backgroundColor: colors.accentSoft,
+    },
+    taskRetryText: {
+      color: colors.accent,
+      fontSize: 11,
       fontWeight: '700',
     },
     stoppedBanner: {

@@ -34,6 +34,17 @@ type JsonObject = Record<string, unknown>;
 
 export type { ToolFailureCode } from './execution-limit';
 
+export type SecureToolSandboxGateInput = {
+  toolName: string;
+  args: JsonObject;
+  agent: AgentIdentity;
+  projectId: string;
+  projectLabel: string;
+  signal?: AbortSignal;
+};
+
+export type SecureToolSandboxGate = (input: SecureToolSandboxGateInput) => Promise<void>;
+
 export type SecureToolExecution = {
   success: boolean;
   content: string;
@@ -72,6 +83,12 @@ type SecureToolInput = {
   timeoutMs?: number;
   /** User stop / navigation signal. Aborting denies the in-flight call. */
   signal?: AbortSignal;
+  /**
+   * Mandatory host-side sandbox mediation for sensitive operations. The loop
+   * installs this for every tool call; sandboxed tools may still do their own
+   * native mediation and are skipped by the adapter.
+   */
+  sandboxGate?: SecureToolSandboxGate;
   /**
    * Pre-issued authorization from an explicit Agent Action Card confirmation.
    * All guards below still run, including immediate revalidation. Callers can
@@ -399,6 +416,41 @@ export async function secureExecuteTool(input: SecureToolInput): Promise<SecureT
         input,
         'command_blocked',
         pathError,
+        outcome.request.id,
+        pipeline,
+        action
+      );
+    }
+  }
+
+  if (input.sandboxGate) {
+    try {
+      await input.sandboxGate({
+        toolName: input.toolName,
+        args,
+        agent: input.agent,
+        projectId: input.projectId,
+        projectLabel: input.projectLabel,
+        signal: signals.signal,
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error && error.message
+          ? error.message
+          : 'The Android sandbox denied this operation.';
+      await permissionManager.blockExecution(authorization, 'sandbox_denied', message);
+      await finishOperation('failed', message);
+      await permissionManager.recordActivity({
+        ...activityBase,
+        status: 'blocked',
+        error: truncate(redactSecrets(message), 800),
+        requestId: outcome.request.id,
+        grantId: authorization.grantId,
+      });
+      return deniedResult(
+        input,
+        'sandbox_denied',
+        message,
         outcome.request.id,
         pipeline,
         action

@@ -1,10 +1,30 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
+import { hashChain, stableJson } from './agent-runtime/hash';
+import type { CapabilityGrant } from './agent-runtime/types';
+import { toolFail, agentToolRegistry, type AgentTool } from './ai/tool-registry';
 import type { JsonSchema } from './ai/types';
+import { MASTER_AGENT } from './permissions/agents';
+import type { AgentIdentity } from './permissions/types';
 
-export const WEB_SEARCH_SKILL_ID = 'skill_web_search';
-export const WEB_SEARCH_CAPABILITY = 'search_web';
-export const WEB_SEARCH_TOOL_NAME = `${WEB_SEARCH_SKILL_ID}_${WEB_SEARCH_CAPABILITY}`;
+import type {
+  DeclarativeSkillContext,
+  DeclarativeSkillExecution,
+} from './skills/executor';
+import {
+  builtinSkillManifests,
+  declarativeToolDefinitions,
+  parseSkillManifest,
+  WEB_SEARCH_SKILL_ID,
+  type SkillManifest,
+  type SkillStep,
+} from './skills/manifest';
+
+export {
+  WEB_SEARCH_CAPABILITY,
+  WEB_SEARCH_SKILL_ID,
+  WEB_SEARCH_TOOL_NAME,
+} from './skills/manifest';
 
 export type SkillStatus = 'active' | 'inactive' | 'error' | 'loading';
 
@@ -13,6 +33,7 @@ export type SkillCapability = {
   description: string;
   inputSchema: JsonSchema;
   outputSchema?: Record<string, unknown>;
+  steps?: SkillStep[];
 };
 
 export type SkillPlugin = {
@@ -25,16 +46,56 @@ export type SkillPlugin = {
   autoLoad: boolean;
 };
 
-export type SkillExecution = {
-  skillId: string;
-  capability: string;
-  input: Record<string, unknown>;
-  output: Record<string, unknown>;
-  durationMs: number;
-  success: boolean;
-  error?: string;
-  timestamp: number;
-};
+export type SkillExecution = DeclarativeSkillExecution;
+
+function toLegacySkill(manifest: SkillManifest): SkillPlugin {
+  return {
+    id: manifest.id,
+    name: manifest.name,
+    description: manifest.description,
+    version: manifest.version,
+    capabilities: manifest.capabilities.map((capability) => ({
+      name: capability.name,
+      description: capability.description,
+      inputSchema: capability.inputSchema,
+      steps: capability.steps,
+    })),
+    enabled: manifest.enabled,
+    autoLoad: manifest.autoLoad,
+  };
+}
+
+function parseStoredCapabilities(raw: string | null): SkillCapability[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? (parsed as SkillCapability[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Stores an immutable, integrity-checked declarative manifest version. */
+export async function saveSkillManifestVersion(
+  db: SQLiteDatabase,
+  manifest: SkillManifest,
+  source = 'builtin'
+): Promise<void> {
+  const parsed = JSON.parse(stableJson(manifest)) as unknown;
+  const validated = parseSkillManifest(parsed);
+
+  await db.runAsync(
+    `INSERT INTO skill_versions (skill_id, version, manifest, manifest_hash, source, created_at)
+     VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT(skill_id, version) DO NOTHING`,
+    validated.id,
+    validated.version,
+    stableJson(validated),
+    hashChain(parsed),
+    source,
+    Date.now()
+  );
+}
 
 export class SkillStore {
   constructor(private db: SQLiteDatabase) {}
@@ -50,12 +111,12 @@ export class SkillStore {
         name: row.name,
         description: row.description,
         version: row.version,
-        capabilities: row.capabilities ? JSON.parse(row.capabilities) : [],
+        capabilities: parseStoredCapabilities(row.capabilities),
         enabled: row.enabled === 1,
         autoLoad: row.auto_load === 1,
       }));
     } catch {
-      return defaultSkills().map((s) => ({ ...s }));
+      return defaultSkills().map((skill) => ({ ...skill }));
     }
   }
 
@@ -142,53 +203,76 @@ export function getDefaultSkill(id: string): SkillPlugin | null {
 }
 
 function defaultSkills(): SkillPlugin[] {
-  return [
-    {
-      id: 'skill_file_reader',
-      name: 'File Reader',
-      description: 'Read files from local storage or external sources',
-      version: '1.0.0',
-      capabilities: [
-        {
-          name: 'read_file',
-          description: 'Read contents of a file',
-          inputSchema: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] },
-        },
-      ],
-      enabled: true,
-      autoLoad: false,
-    },
-    {
-      id: 'skill_web_search',
-      name: 'Web Search',
-      description: 'Search the web for information',
-      version: '1.0.0',
-      capabilities: [
-        {
-          name: 'search_web',
-          description: 'Search the internet for information',
-          inputSchema: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] },
-        },
-      ],
-      enabled: true,
-      autoLoad: false,
-    },
-    {
-      id: 'skill_database_query',
-      name: 'Database Query',
-      description: 'Execute SQL queries against connected databases',
-      version: '1.0.0',
-      capabilities: [
-        {
-          name: 'query_db',
-          description: 'Run a SQL query',
-          inputSchema: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] },
-        },
-      ],
-      enabled: false,
-      autoLoad: false,
-    },
-  ];
+  return builtinSkillManifests().map(toLegacySkill);
+}
+
+/** Seeds built-in skill rows and their immutable declarative manifests. */
+export async function ensureBuiltinSkills(db: SQLiteDatabase): Promise<void> {
+  const store = new SkillStore(db);
+  for (const manifest of builtinSkillManifests()) {
+    await store.ensureSkill(toLegacySkill(manifest));
+    await saveSkillManifestVersion(db, manifest);
+  }
+}
+
+export async function getActiveSkillManifests(
+  db: SQLiteDatabase,
+  options: { webSearchDisabled?: boolean } = {}
+): Promise<SkillManifest[]> {
+  const store = new SkillStore(db);
+  const skills = await store.listSkills();
+  const manifests: SkillManifest[] = [];
+
+  for (const skill of skills) {
+    if (!skill.enabled) continue;
+    if (options.webSearchDisabled && skill.id === WEB_SEARCH_SKILL_ID) continue;
+
+    let manifest: SkillManifest | null = null;
+    try {
+      const stored = await db.getFirstAsync(
+        `SELECT manifest FROM skill_versions WHERE skill_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1`,
+        skill.id
+      ) as { manifest: string } | null;
+      if (stored) manifest = parseSkillManifest(JSON.parse(stored.manifest));
+    } catch {
+      manifest = null;
+    }
+
+    if (!manifest || manifest.version !== skill.version || !manifest.enabled) continue;
+    manifests.push(manifest);
+  }
+
+  return manifests;
+}
+
+/**
+ * Skill tools are ordinary registry definitions. Their implementations are
+ * intentionally inert: the orchestrator expands declarative steps and sends
+ * each mapped tool through the permission + sandbox pipeline exactly once.
+ */
+export async function registerDeclarativeSkillTools(
+  db: SQLiteDatabase,
+  options: { webSearchDisabled?: boolean } = {}
+): Promise<SkillManifest[]> {
+  const manifests = await getActiveSkillManifests(db, options);
+
+  for (const manifest of manifests) {
+    for (const definition of declarativeToolDefinitions(manifest)) {
+      const tool: AgentTool = {
+        meta: { source: 'builtin' },
+        definition,
+        execute: async () => ({
+          content: toolFail(
+            `${definition.name} must be dispatched through the ORBIT agent runtime.`
+          ),
+          trace: '',
+        }),
+      };
+      agentToolRegistry.register(tool, { replace: true });
+    }
+  }
+
+  return manifests;
 }
 
 export class SkillExecutor {
@@ -197,81 +281,37 @@ export class SkillExecutor {
   async execute(
     skillId: string,
     capability: string,
-    input: Record<string, unknown>
+    input: Record<string, unknown>,
+    context?: Partial<DeclarativeSkillContext>
   ): Promise<SkillExecution> {
-    const start = Date.now();
     const skill = await this.store.getSkill(skillId);
+    const agent: AgentIdentity = context?.agent ?? MASTER_AGENT;
+    const db = (context?.db ?? (this.store as unknown as { db: SQLiteDatabase }).db);
+    // Loaded only when a skill actually executes: the executor installs the
+    // native sandbox bridge, which must not be imported by preference stores.
+    const { executeDeclarativeSkill } = await import('./skills/executor');
 
-    if (!skill) {
-      return {
-        skillId,
-        capability,
-        input,
-        output: {},
-        durationMs: Date.now() - start,
-        success: false,
-        error: `Skill ${skillId} not found`,
-        timestamp: start,
-      };
-    }
-
-    if (!skill.enabled) {
-      return {
-        skillId,
-        capability,
-        input,
-        output: {},
-        durationMs: Date.now() - start,
-        success: false,
-        error: `Skill ${skillId} is disabled`,
-        timestamp: start,
-      };
-    }
-
-    try {
-      // Simulate skill execution - in production this would load the skill module
-      const result = await this.executeCapability(skill, capability, input);
-      return {
-        skillId,
-        capability,
-        input,
-        output: result,
-        durationMs: Date.now() - start,
-        success: true,
-        timestamp: start,
-      };
-    } catch (error) {
-      return {
-        skillId,
-        capability,
-        input,
-        output: {},
-        durationMs: Date.now() - start,
-        success: false,
-        error: error instanceof Error ? error.message : 'Skill execution failed',
-        timestamp: start,
-      };
-    }
-  }
-
-  private async executeCapability(
-    skill: SkillPlugin,
-    capability: string,
-    input: Record<string, unknown>
-  ): Promise<Record<string, unknown>> {
-    // Simulated skill execution - real implementation loads skill modules
-    const cap = skill.capabilities.find((c) => c.name === capability);
-    if (!cap) {
-      throw new Error(`Capability ${capability} not found in skill ${skill.id}`);
-    }
-
-    // Simulate processing delay
-    await new Promise((resolve) => setTimeout(resolve, 500));
-
-    return {
-      result: `Executed ${capability} on skill ${skill.name}`,
-      input,
-      timestamp: Date.now(),
-    };
+    return executeDeclarativeSkill(
+      {
+        db,
+        userId: context?.userId ?? 0,
+        conversationId: context?.conversationId,
+        agent,
+        projectId: context?.projectId ?? 'orbit-workspace',
+        projectLabel: context?.projectLabel ?? 'Orbit workspace',
+        signal: context?.signal,
+        grants: context?.grants as CapabilityGrant[] | undefined,
+        isToolAllowed: context?.isToolAllowed,
+        sandboxGate: context?.sandboxGate,
+      },
+      skillId,
+      capability,
+      input
+    ).then((execution) => ({
+      ...execution,
+      output: skill ? execution.output : { error: `Skill ${skillId} not found.` },
+      success: skill ? execution.success : false,
+      error: skill ? execution.error : `Skill ${skillId} not found.`,
+    }));
   }
 }
