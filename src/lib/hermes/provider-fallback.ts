@@ -8,7 +8,7 @@ import { buildProviderFallbackChain, isProviderCancellationError, smallTalkReply
 import type { ProviderDiagnostic, ProviderErrorKind, ProviderRoute } from './types';
 
 const FALLBACK_TEXT =
-  'AI provider is unavailable right now. I can still handle deterministic local tasks, but I have not completed this request.';
+  'On-device AI is unavailable right now. I can still handle system tasks (add/list/complete tasks, reminders). Start Ollama on this phone for natural chat — cloud API key is optional.';
 
 function errorStatus(error: unknown): number | undefined {
   const status = (error as { status?: unknown } | null)?.status;
@@ -33,7 +33,7 @@ export function classifyProviderError(error: unknown): ProviderErrorKind {
   if (status === 404) return 'not_found';
   if (status === 400) return 'invalid_request';
   if (status !== undefined && status >= 500) return 'server';
-  if (/could not reach|network|fetch failed/i.test(message)) return 'network';
+  if (/could not reach|network|fetch failed|not reachable/i.test(message)) return 'network';
   return 'unknown';
 }
 
