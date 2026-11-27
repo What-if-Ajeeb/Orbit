@@ -1,4 +1,5 @@
 import * as SecureStore from 'expo-secure-store';
+import * as SystemUI from 'expo-system-ui';
 import { Platform, useColorScheme } from 'react-native';
 import {
   createContext,
@@ -113,6 +114,14 @@ export function ThemeProvider({ children }: PropsWithChildren) {
       glassShadow: isLight ? lightGlassShadow : darkGlassShadow,
     };
   }, [mode, setMode, systemScheme]);
+
+  // Keep the native root view in sync with the resolved theme so launch,
+  // navigation transitions and keyboard resizes never flash the wrong color.
+  useEffect(() => {
+    void SystemUI.setBackgroundColorAsync(value.colors.background).catch((error: unknown) => {
+      console.warn('Could not update the system background.', error);
+    });
+  }, [value.colors.background]);
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }

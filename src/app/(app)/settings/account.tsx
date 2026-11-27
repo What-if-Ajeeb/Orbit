@@ -38,7 +38,19 @@ export default function AccountSettingsScreen() {
   const [error, setError] = useState<string | null>(null);
 
   if (!user) {
-    return null;
+    return (
+      <SettingsScreen
+        title="Account Details"
+        subtitle="Your local profile on this device."
+      >
+        <GlassView style={styles.profile}>
+          <View style={styles.profileCopy}>
+            <Text style={styles.name}>No active account</Text>
+            <Text style={styles.email}>Sign in again to view your profile.</Text>
+          </View>
+        </GlassView>
+      </SettingsScreen>
+    );
   }
 
   function confirmSignOut() {

@@ -223,6 +223,7 @@ export function SidebarContent({
 
   const visibleAccounts = accounts.length > 0 ? accounts : [user];
   const canSwitchAccount = visibleAccounts.length > 1;
+  const accountMenuVisible = accountMenuOpen && !collapsed;
 
   return (
     <View style={[styles.content, collapsed && styles.contentRail, style]}>
@@ -238,7 +239,10 @@ export function SidebarContent({
             accessibilityRole="button"
             accessibilityLabel={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
             hitSlop={8}
-            onPress={onCollapse}
+            onPress={() => {
+              setAccountMenuOpen(false);
+              onCollapse?.();
+            }}
             style={({ pressed }) => [styles.collapseButton, pressed && styles.pressed]}
           >
             <Ionicons
@@ -339,52 +343,57 @@ export function SidebarContent({
               </>
             ) : null}
 
-            {accountMenuOpen ? (
-              <View style={styles.accountMenu}>
-                <Text style={styles.sectionLabel}>Accounts on this device</Text>
-                {visibleAccounts.map((account) => {
-                  const activeAccount = account.id === userId;
-
-                  return (
-                    <Pressable
-                      key={account.id}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected: activeAccount }}
-                      onPress={() => void selectAccount(account.id)}
-                      style={({ pressed }) => [styles.accountRow, pressed && styles.pressed]}
-                    >
-                      <View style={[styles.smallAvatar, activeAccount && styles.smallAvatarActive]}>
-                        <Text style={styles.smallAvatarText}>
-                          {getInitials(account.name) || 'O'}
-                        </Text>
-                      </View>
-                      <View style={styles.accountText}>
-                        <Text numberOfLines={1} style={styles.accountName}>
-                          {account.name}
-                        </Text>
-                        <Text numberOfLines={1} style={styles.accountEmail}>
-                          {account.email}
-                        </Text>
-                      </View>
-                      {activeAccount ? (
-                        <Ionicons name="checkmark" size={18} color={colors.accent} />
-                      ) : null}
-                    </Pressable>
-                  );
-                })}
-              </View>
-            ) : null}
           </>
         ) : null}
       </ScrollView>
 
+      {accountMenuVisible ? (
+        <View style={styles.accountMenu}>
+          <Text style={styles.sectionLabel}>Accounts on this device</Text>
+          {visibleAccounts.map((account) => {
+            const activeAccount = account.id === userId;
+
+            return (
+              <Pressable
+                key={account.id}
+                accessibilityRole="button"
+                accessibilityState={{ selected: activeAccount }}
+                onPress={() => void selectAccount(account.id)}
+                style={({ pressed }) => [styles.accountRow, pressed && styles.pressed]}
+              >
+                <View style={[styles.smallAvatar, activeAccount && styles.smallAvatarActive]}>
+                  <Text style={styles.smallAvatarText}>
+                    {getInitials(account.name) || 'O'}
+                  </Text>
+                </View>
+                <View style={styles.accountText}>
+                  <Text numberOfLines={1} style={styles.accountName}>
+                    {account.name}
+                  </Text>
+                  <Text numberOfLines={1} style={styles.accountEmail}>
+                    {account.email}
+                  </Text>
+                </View>
+                {activeAccount ? (
+                  <Ionicons name="checkmark" size={18} color={colors.accent} />
+                ) : null}
+              </Pressable>
+            );
+          })}
+        </View>
+      ) : null}
+
       <View style={[styles.bottomBar, collapsed && styles.bottomBarRail]}>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={canSwitchAccount ? 'Switch account' : 'Account settings'}
-          accessibilityState={canSwitchAccount ? { expanded: accountMenuOpen } : undefined}
+          accessibilityLabel={
+            canSwitchAccount && !collapsed ? 'Switch account' : 'Account settings'
+          }
+          accessibilityState={
+            canSwitchAccount && !collapsed ? { expanded: accountMenuVisible } : undefined
+          }
           onPress={() => {
-            if (!canSwitchAccount) {
+            if (collapsed || !canSwitchAccount) {
               onNavigate('/settings/account' as Href);
               return;
             }
@@ -394,7 +403,7 @@ export function SidebarContent({
           style={({ pressed }) => [
             styles.bottomUser,
             collapsed && styles.bottomUserRail,
-            accountMenuOpen && styles.bottomUserActive,
+            accountMenuVisible && styles.bottomUserActive,
             pressed && styles.pressed,
           ]}
         >
@@ -442,7 +451,7 @@ export function AppSidebar() {
   const [progress] = useState(() => new Animated.Value(0));
   const [dragX] = useState(() => new Animated.Value(0));
 
-  const panelWidth = Math.min(width * 0.86, 340);
+  const panelWidth = Math.min(width * 0.82, 320);
 
   useEffect(() => {
     Animated.timing(progress, {
@@ -657,7 +666,7 @@ const makeStyles = ({ colors }: AppTheme) =>
       alignItems: 'center',
       gap: spacing.sm,
       paddingHorizontal: spacing.xs,
-      paddingBottom: spacing.md,
+      paddingBottom: spacing.sm,
     },
     headerRowRail: {
       flexDirection: 'column',
@@ -685,7 +694,7 @@ const makeStyles = ({ colors }: AppTheme) =>
       flex: 1,
     },
     navContent: {
-      paddingBottom: spacing.md,
+      paddingBottom: spacing.sm,
     },
     primaryLabel: {
       color: colors.textFaint,
@@ -699,8 +708,8 @@ const makeStyles = ({ colors }: AppTheme) =>
     navItem: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: spacing.md,
-      minHeight: layout.touchTarget + 4,
+      gap: spacing.sm + 2,
+      minHeight: layout.touchTarget,
       paddingHorizontal: spacing.sm + 2,
       borderRadius: radius.md,
     },
@@ -710,7 +719,7 @@ const makeStyles = ({ colors }: AppTheme) =>
     },
     navItemRail: {
       width: layout.touchTarget + 8,
-      minHeight: layout.touchTarget + 4,
+      minHeight: layout.touchTarget,
       alignItems: 'center',
       justifyContent: 'center',
       borderRadius: radius.md,
@@ -739,7 +748,7 @@ const makeStyles = ({ colors }: AppTheme) =>
     divider: {
       height: StyleSheet.hairlineWidth,
       backgroundColor: colors.border,
-      marginVertical: spacing.md,
+      marginVertical: spacing.sm,
     },
     sectionLabel: {
       color: colors.textMuted,
@@ -751,7 +760,7 @@ const makeStyles = ({ colors }: AppTheme) =>
     recentRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: spacing.md,
+      gap: spacing.sm,
       minHeight: layout.touchTarget,
       paddingHorizontal: spacing.sm + 2,
       borderRadius: radius.md,
@@ -769,8 +778,7 @@ const makeStyles = ({ colors }: AppTheme) =>
     },
     accountMenu: {
       gap: spacing.xs,
-      marginTop: spacing.md,
-      paddingTop: spacing.md,
+      paddingTop: spacing.sm,
       borderTopWidth: StyleSheet.hairlineWidth,
       borderTopColor: colors.border,
     },
@@ -815,7 +823,7 @@ const makeStyles = ({ colors }: AppTheme) =>
       ...typography.caption,
     },
     bottomBar: {
-      gap: spacing.sm,
+      gap: spacing.xs,
       paddingTop: spacing.sm,
       borderTopWidth: StyleSheet.hairlineWidth,
       borderTopColor: colors.border,
@@ -827,7 +835,7 @@ const makeStyles = ({ colors }: AppTheme) =>
       flexDirection: 'row',
       alignItems: 'center',
       gap: spacing.sm,
-      minHeight: layout.touchTarget + 8,
+      minHeight: layout.touchTarget + 4,
       paddingHorizontal: spacing.sm,
       borderRadius: radius.md,
     },
@@ -868,7 +876,7 @@ const makeStyles = ({ colors }: AppTheme) =>
       alignItems: 'center',
       justifyContent: 'center',
       gap: spacing.xs,
-      minHeight: layout.touchTarget + 4,
+      minHeight: layout.touchTarget,
       borderRadius: radius.pill,
       backgroundColor: colors.inverse,
     },

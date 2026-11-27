@@ -8,6 +8,7 @@ import {
   Image,
   Keyboard,
   KeyboardAvoidingView,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -743,7 +744,10 @@ export function AgentChatView({
   }
 
   return (
-    <KeyboardAvoidingView style={styles.root} behavior="padding">
+    <KeyboardAvoidingView
+      style={styles.root}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
       <View style={styles.flex}>
         <View
           style={[
@@ -771,7 +775,7 @@ export function AgentChatView({
                 onPress={openHistory}
                 style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
               >
-                <Ionicons name="time-outline" size={21} color={colors.text} />
+                <Ionicons name="time-outline" size={20} color={colors.text} />
                 {conversations.length > 0 ? (
                   <View style={styles.historyBadge}>
                     <Text style={styles.historyBadgeText}>
@@ -789,7 +793,7 @@ export function AgentChatView({
                 }
                 style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
               >
-                <Ionicons name="options-outline" size={20} color={colors.text} />
+                <Ionicons name="options-outline" size={18} color={colors.text} />
               </Pressable>
 
               {allowCreatorMode ? (
@@ -806,7 +810,7 @@ export function AgentChatView({
                 >
                   <Ionicons
                     name={creatorMode ? 'construct' : 'construct-outline'}
-                    size={20}
+                    size={18}
                     color={creatorMode ? colors.accent : colors.text}
                   />
                 </Pressable>
@@ -900,7 +904,7 @@ export function AgentChatView({
         style={[
           styles.composerWrap,
           responsive.isTablet && styles.contentWide,
-          { paddingBottom: Math.max(insets.bottom, spacing.sm) },
+          { paddingBottom: Math.max(insets.bottom, spacing.xs) },
         ]}
       >
         {error ? (
@@ -1001,7 +1005,7 @@ export function AgentChatView({
                   onPress={openAddSheet}
                   style={({ pressed }) => [styles.attachButton, pressed && styles.pressed]}
                 >
-                  <Ionicons name="add-circle-outline" size={22} color={colors.accent} />
+                  <Ionicons name="add-circle-outline" size={20} color={colors.accent} />
                 </Pressable>
               ) : null}
               {voice.available !== false ? (
@@ -1024,7 +1028,7 @@ export function AgentChatView({
                 >
                   <Ionicons
                     name={voice.listening ? 'mic' : 'mic-outline'}
-                    size={20}
+                    size={18}
                     color={voice.listening ? colors.accent : colors.textMuted}
                   />
                 </Pressable>
@@ -1068,7 +1072,7 @@ export function AgentChatView({
               >
                 <Ionicons
                   name="arrow-up"
-                  size={22}
+                  size={20}
                   color={canSend ? colors.onInverse : colors.textFaint}
                 />
               </Pressable>
@@ -1076,9 +1080,11 @@ export function AgentChatView({
           </View>
         </View>
 
-        <Text style={styles.disclaimer}>
-          Images and text documents stay on this device · tasks stay local
-        </Text>
+        {!responsive.keyboardVisible ? (
+          <Text style={styles.disclaimer}>
+            Images and text documents stay on this device · tasks stay local
+          </Text>
+        ) : null}
       </View>
 
       {showAddMenu ? (
@@ -1140,55 +1146,62 @@ const makeStyles = ({ colors }: AppTheme) =>
     },
     header: {
       paddingHorizontal: spacing.md,
-      paddingBottom: spacing.sm,
+      paddingBottom: spacing.xs,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.border,
     },
     headerRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: spacing.sm,
+      gap: spacing.xs,
     },
     headerTitleWrap: {
       flex: 1,
-      alignItems: 'center',
-      gap: 2,
+      minWidth: 0,
+      alignItems: 'flex-start',
+      gap: 1,
+      paddingLeft: spacing.xs,
     },
     headerTitle: {
       color: colors.text,
-      fontSize: 17,
+      fontSize: 16,
       fontWeight: '700',
+      textAlign: 'left',
     },
     headerSubtitle: {
       color: colors.textFaint,
-      fontSize: 12,
+      fontSize: 11,
+      textAlign: 'left',
     },
     headerActions: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: spacing.xs,
+      gap: 4,
+      flexShrink: 0,
     },
     iconButton: {
-      width: 40,
-      height: 40,
-      borderRadius: 20,
+      width: 36,
+      height: 36,
+      borderRadius: 18,
       backgroundColor: colors.surface,
       alignItems: 'center',
       justifyContent: 'center',
     },
     historyBadge: {
       position: 'absolute',
-      top: 1,
-      right: 1,
-      minWidth: 17,
-      height: 17,
-      borderRadius: 9,
-      paddingHorizontal: 4,
+      top: 0,
+      right: 0,
+      minWidth: 16,
+      height: 16,
+      borderRadius: 8,
+      paddingHorizontal: 3,
       backgroundColor: colors.accent,
       alignItems: 'center',
       justifyContent: 'center',
     },
     historyBadgeText: {
       color: colors.onInverse,
-      fontSize: 10,
+      fontSize: 9,
       fontWeight: '700',
     },
     modeBanner: {
@@ -1266,8 +1279,8 @@ const makeStyles = ({ colors }: AppTheme) =>
     },
     composerWrap: {
       paddingHorizontal: spacing.md,
-      paddingTop: spacing.xs,
-      gap: spacing.xs,
+      paddingTop: 4,
+      gap: 4,
     },
     errorWrap: {
       gap: spacing.xs,
@@ -1341,39 +1354,39 @@ const makeStyles = ({ colors }: AppTheme) =>
     },
     composer: {
       backgroundColor: colors.surface,
-      borderRadius: radius.xl,
+      borderRadius: radius.lg,
       borderWidth: StyleSheet.hairlineWidth,
       borderColor: colors.border,
-      paddingHorizontal: spacing.md,
-      paddingTop: spacing.xs,
-      paddingBottom: spacing.sm,
+      paddingHorizontal: spacing.sm + 2,
+      paddingTop: 2,
+      paddingBottom: spacing.xs,
     },
     input: {
       color: colors.text,
-      fontSize: 17,
-      lineHeight: 24,
-      maxHeight: 140,
-      minHeight: 48,
-      paddingTop: spacing.sm,
-      paddingBottom: spacing.sm,
+      fontSize: 16,
+      lineHeight: 22,
+      maxHeight: 120,
+      minHeight: 44,
+      paddingTop: spacing.xs,
+      paddingBottom: spacing.xs,
       paddingHorizontal: spacing.xs,
     },
     composerRow: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      gap: spacing.sm,
+      gap: spacing.xs,
     },
     composerTools: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: spacing.xs,
+      gap: 2,
       flexShrink: 1,
     },
     attachButton: {
-      width: 40,
-      height: 40,
-      borderRadius: 20,
+      width: 36,
+      height: 36,
+      borderRadius: 18,
       alignItems: 'center',
       justifyContent: 'center',
     },
@@ -1387,21 +1400,21 @@ const makeStyles = ({ colors }: AppTheme) =>
       paddingBottom: spacing.xs,
     },
     modePill: {
-      paddingHorizontal: spacing.md,
-      height: 40,
+      paddingHorizontal: spacing.sm,
+      height: 36,
       borderRadius: radius.pill,
       backgroundColor: colors.surfaceAlt,
       justifyContent: 'center',
     },
     modePillText: {
       color: colors.text,
-      fontSize: 13,
+      fontSize: 12,
       fontWeight: '600',
     },
     sendButton: {
-      width: 48,
-      height: 48,
-      borderRadius: 24,
+      width: 44,
+      height: 44,
+      borderRadius: 22,
       alignItems: 'center',
       justifyContent: 'center',
     },
@@ -1412,8 +1425,8 @@ const makeStyles = ({ colors }: AppTheme) =>
       backgroundColor: colors.surfaceAlt,
     },
     stopButton: {
-      minWidth: 64,
-      height: 48,
+      minWidth: 60,
+      height: 44,
       borderRadius: radius.pill,
       paddingHorizontal: spacing.md,
       backgroundColor: colors.surfaceAlt,
@@ -1427,9 +1440,10 @@ const makeStyles = ({ colors }: AppTheme) =>
     },
     disclaimer: {
       color: colors.textFaint,
-      fontSize: 12,
+      fontSize: 11,
+      lineHeight: 14,
       textAlign: 'center',
-      paddingBottom: 2,
+      paddingBottom: 1,
     },
     pressed: {
       opacity: 0.8,
