@@ -296,3 +296,45 @@ describe('frozen prompt bundle', () => {
     expect(first.system).not.toContain(WEB_SEARCH_SKILL_ID);
   });
 });
+
+describe('scheduled bundle disclosure', () => {
+  it('accepts bounded ids, drops unknown bundles and never creates tools', async () => {
+    const {
+      parseScheduledBundleIds,
+      scheduledBundleFingerprint,
+      selectScheduledBundles,
+    } = await import('./scheduled-bundles');
+
+    expect(parseScheduledBundleIds(undefined)).toEqual([]);
+    expect(parseScheduledBundleIds(['bundle_research'])).toEqual(['bundle_research']);
+    expect(() => parseScheduledBundleIds(['bundle_research', 'bundle_research'])).toThrow(
+      /duplicates/
+    );
+    expect(() => parseScheduledBundleIds(['run_shell'])).toThrow(/Invalid skill bundle id/);
+
+    const selected = selectScheduledBundles(['bundle_research', 'bundle_missing']);
+    expect(selected.map((bundle) => bundle.id)).toEqual(['bundle_research']);
+    expect(selected[0].skills).toContain('skill_file_reader');
+    expect(scheduledBundleFingerprint(['bundle_research'])).toBe(
+      scheduledBundleFingerprint(['bundle_research'])
+    );
+  });
+});
+
+describe('provider route disclosure', () => {
+  it('omits endpoint credentials and model from audit summaries', async () => {
+    const { summarizeProviderRoute } = await import('./provider-runtime');
+    const summary = summarizeProviderRoute(settings({
+      mode: 'cloud',
+      provider: 'openai',
+      baseUrl: 'https://user:pass@example.com/v1?token=abc',
+      model: 'private-model',
+      apiKey: 'sk-secret',
+    }));
+
+    expect(summary).toMatchObject({ provider: 'openai', adapterId: 'openai-compatible' });
+    expect(JSON.stringify(summary)).not.toContain('pass');
+    expect(JSON.stringify(summary)).not.toContain('private-model');
+    expect(JSON.stringify(summary)).not.toContain('sk-secret');
+  });
+});

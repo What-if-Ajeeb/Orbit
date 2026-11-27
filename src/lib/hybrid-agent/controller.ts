@@ -10,7 +10,6 @@ import {
 } from '../agent-settings';
 import { parseArtifactToolRef } from '../ai/artifact-tools';
 import { runLocalAgent, type LocalToolExecutor } from '../ai/local-agent';
-import { requestCompletion } from '../ai/providers';
 import { agentToolRegistry, listAgentTools } from '../ai/tools';
 import type { LlmAttachment, LlmMessage } from '../ai/types';
 import { getActiveBuddy } from '../buddy/store';
@@ -21,10 +20,13 @@ import { EventStore } from '../events';
 import {
   buildHermesPromptBundle,
   buildToolsets,
+  isProviderCancellationError,
   isSmallTalk,
-  resolveProviderRoute,
+  requestCompletionWithSystemFallback,
   searchHermesSession,
+  selectScheduledBundles,
   smallTalkReply,
+  summarizeProviderRoute,
   type HermesSessionHit,
 } from '../hermes';
 import { HookEngine } from '../hooks';
@@ -102,8 +104,7 @@ function isCancellationError(error: unknown): boolean {
   if (error instanceof AgentTurnCancelledError) return true;
   if (!(error instanceof Error)) return false;
   return (
-    error.name === 'AbortError' ||
-    error.message === 'AI request cancelled.' ||
+    isProviderCancellationError(error) ||
     /^(?:tool|operation|request)\s+cancelled/i.test(error.message)
   );
 }
@@ -768,7 +769,7 @@ export async function runAgentTurn(input: RuntimeTurnInput): Promise<RuntimeTurn
             grants: input.grants,
             toolNames: toolDefinitions.map((definition) => definition.name),
           });
-          const providerRoute = resolveProviderRoute(input.settings);
+          const providerRoute = summarizeProviderRoute(input.settings);
           let sessionHits: HermesSessionHit[] = [];
           if (conversationId) {
             try {
@@ -797,6 +798,9 @@ export async function runAgentTurn(input: RuntimeTurnInput): Promise<RuntimeTurn
               .filter((call) => call.success && call.verification.verified)
               .map((call) => `- ${call.toolName}: ${redactSecrets(call.content).slice(0, 500)}`),
             manifests,
+            ...(input.skillBundleIds && input.skillBundleIds.length > 0
+              ? { bundles: selectScheduledBundles(input.skillBundleIds) }
+              : {}),
             availableTools: new Set(toolDefinitions.map((definition) => definition.name)),
             availableToolsets: new Set(
               toolsets.filter((descriptor) => descriptor.available.length > 0).map((descriptor) => descriptor.id)
@@ -816,6 +820,8 @@ export async function runAgentTurn(input: RuntimeTurnInput): Promise<RuntimeTurn
               tiers: promptBundle.tiers,
               provider: providerRoute.provider,
               route: providerRoute.kind,
+              routeSummary: providerRoute,
+              skillBundleIds: input.skillBundleIds ?? [],
             },
           });
 
@@ -853,9 +859,28 @@ export async function runAgentTurn(input: RuntimeTurnInput): Promise<RuntimeTurn
             tracker.consumeTokens(requestTokens, 0);
             await emit('ai_request', { tokensIn: requestTokens, messageCount: messages.length });
 
-            const turn = await requestCompletion(input.settings, messages, toolDefinitions, {
-              onTextDelta: input.onTextDelta,
-              signal: input.signal,
+            const completion = await requestCompletionWithSystemFallback({
+              settings: input.settings,
+              messages,
+              tools: toolDefinitions,
+              options: {
+                ...(input.onTextDelta ? { onTextDelta: input.onTextDelta } : {}),
+                ...(input.signal ? { signal: input.signal } : {}),
+              },
+              snapshotId: promptBundle.snapshotId,
+            });
+            const turn = completion.turn;
+            await recordHybridEvent(db, {
+              traceId: trace.traceId,
+              taskId: task.id,
+              userId,
+              source: 'controller',
+              type: 'ai.provider_diagnostic',
+              payload: {
+                snapshotId: promptBundle.snapshotId,
+                usedFallback: completion.usedFallback,
+                diagnostics: completion.diagnostics,
+              },
             });
 
             const outputTokens = estimateTokens(turn.text ?? '');

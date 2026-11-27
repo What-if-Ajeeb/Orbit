@@ -526,6 +526,47 @@ export default function HarnessScreen() {
               )}
             </GlassView>
 
+            <SectionTitle
+              label="HERMES CONTRACTS"
+              count={`${snapshot.hermes.toolsets.ids.length} toolsets`}
+            />
+
+            <GlassView style={styles.card}>
+              <View style={styles.pluginRow}>
+                <Text style={styles.heroSubtitle}>
+                  Route: {snapshot.hermes.provider.kind} · {snapshot.hermes.provider.provider} ·{' '}
+                  {snapshot.hermes.provider.routeCount} step(s)
+                </Text>
+              </View>
+              <View style={styles.pluginRow}>
+                <Text style={styles.heroSubtitle}>
+                  Toolsets: {snapshot.hermes.toolsets.ids.join(', ') || 'none'} ·{' '}
+                  {snapshot.hermes.toolsets.availableCount}/{snapshot.hermes.toolsets.registeredCount}{' '}
+                  tools available
+                </Text>
+              </View>
+              <View style={styles.pluginRow}>
+                <Text style={styles.heroSubtitle}>
+                  Skills: {snapshot.hermes.skills.visibleIds.length} · bundles:{' '}
+                  {snapshot.hermes.skills.bundleIds.join(', ') || 'none'}
+                </Text>
+              </View>
+              <View style={styles.pluginRow}>
+                <Text style={styles.heroSubtitle}>
+                  Memory: {snapshot.hermes.memory.agentChars}/{snapshot.hermes.memory.userChars} chars
+                  · prompt ≤ {snapshot.hermes.prompt.maxChars}
+                </Text>
+              </View>
+              <View style={styles.pluginRow}>
+                <Text style={styles.heroSubtitle}>
+                  Session search: ≤{snapshot.hermes.sessionSearch.terms} terms /{' '}
+                  {snapshot.hermes.sessionSearch.rows} rows · snapshot{' '}
+                  {snapshot.hermes.prompt.tiers.length} tiers ·{' '}
+                  {snapshot.hermes.fingerprint.slice(0, 12)}
+                </Text>
+              </View>
+            </GlassView>
+
             {nativeSections.map((section) => (
               <View key={section.title} style={styles.nativeSection}>
                 <SectionTitle label={section.title} count={String(section.rows.length)} />

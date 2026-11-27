@@ -28,6 +28,9 @@ import type {
 
 const MAX_PROMPT_CHARS = 24_000;
 
+/** Disclosed in the harness snapshot so the bound is observable, not implicit. */
+export const HERMES_PROMPT_LIMITS = { maxChars: MAX_PROMPT_CHARS } as const;
+
 /**
  * Assembles a bounded system prompt once per turn. The timestamp, memory
  * snapshot and skill visibility are captured at build time and never refreshed

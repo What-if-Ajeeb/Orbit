@@ -30,6 +30,38 @@ export function resolveProviderRoute(settings: AiSettings): ProviderRoute {
 }
 
 /**
+ * Audit-safe projection of a route. `baseUrl` and `model` are deliberately
+ * omitted because a user-entered endpoint can carry credentials in userinfo or
+ * query strings; only allowlisted primitives leave this layer.
+ */
+export function summarizeProviderRoute(
+  settings: AiSettings
+): Pick<ProviderRoute, 'kind' | 'provider' | 'adapterId' | 'configured' | 'fallback'> {
+  const route = resolveProviderRoute(settings);
+  return {
+    kind: route.kind,
+    provider: route.provider,
+    adapterId: route.adapterId,
+    configured: route.configured,
+    fallback: route.fallback,
+  };
+}
+
+/** Shared cancellation classification; never falls back on user-initiated stops. */
+export function isProviderCancellationError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const code = (error as { code?: unknown }).code;
+  if (typeof code === 'string' && /^(?:cancelled|abort(?:ed)?)$/i.test(code)) return true;
+
+  return (
+    error.name === 'AbortError' ||
+    error.message === 'AI request cancelled.' ||
+    error.message === 'Ollama request cancelled.' ||
+    /^(?:tool|operation|request)\s+cancelled/i.test(error.message)
+  );
+}
+
+/**
  * A finite chain: the configured provider, then deterministic system work.
  * There is no second network provider because ORBIT stores exactly one active
  * configuration. Secrets are never copied into this structure.

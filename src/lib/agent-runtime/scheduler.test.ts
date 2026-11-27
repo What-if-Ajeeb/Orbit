@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { verifyHybridTrace } from '../hybrid-agent/audit';
 import { createTestDatabase, type TestDatabase } from '../testing/node-sqlite';
 
 import {
@@ -141,6 +142,51 @@ describe('Android agent recovery worker', () => {
     const second = await runDueAgentWork(db);
     expect(second.executed).toBe(0);
     expect(mocks.runAgentTurn).toHaveBeenCalledOnce();
+  });
+
+  it('forwards data-only bundle ids and records hash-only delivery telemetry', async () => {
+    db = createTestDatabase();
+    await db.runAsync('INSERT INTO users (id, name) VALUES (?, ?)', 1, 'Asha');
+    await createAgentTaskSchedule(db, {
+      userId: 1,
+      ownerType: 'agent_task',
+      ownerId: 'manual',
+      title: 'Scheduled check',
+      input: {
+        instruction: 'Check the workspace',
+        conversationId: 0,
+        skillBundleIds: ['bundle_research'],
+      },
+      nextRunAt: Date.now() - 1_000,
+      idempotencyKey: 'schedule:bundles',
+    });
+
+    const result = await runDueAgentWork(db);
+    expect(result.executed).toBe(1);
+    expect(mocks.runAgentTurn).toHaveBeenCalledWith(
+      expect.objectContaining({ skillBundleIds: ['bundle_research'] })
+    );
+
+    const rows = await db.getAllAsync<{
+      trace_id: string;
+      type: string;
+      payload: string;
+    }>(
+      `SELECT trace_id, type, payload FROM hybrid_audit_events
+       WHERE source = 'scheduler' ORDER BY id`
+    );
+    expect(rows.map((row) => row.type)).toEqual([
+      'delivery.queued',
+      'delivery.started',
+      'delivery.delivered',
+    ]);
+
+    const serialised = rows.map((row) => row.payload).join(' ');
+    expect(serialised).toContain('bundle_research');
+    expect(serialised).toContain('contentHash');
+    expect(serialised).not.toContain('Check the workspace');
+    expect(serialised).not.toContain('Done.');
+    expect(await verifyHybridTrace(db, rows[0].trace_id)).toBe(true);
   });
 
   it('recovers interrupted work for one user and registers the worker on startup', async () => {

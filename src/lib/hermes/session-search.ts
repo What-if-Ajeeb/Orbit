@@ -3,9 +3,17 @@ import { redactSecrets, truncate } from '../permissions/redact';
 
 import type { HermesSessionHit } from './types';
 
-const MAX_QUERY_CHARS = 80;
-const MAX_TERMS = 4;
-const MAX_SNIPPET_CHARS = 300;
+/** Hard bounds shared by the search implementation and harness disclosure. */
+export const HERMES_SESSION_SEARCH_LIMITS = {
+  queryChars: 80,
+  terms: 4,
+  snippetChars: 300,
+  promptChars: 1_200,
+  rows: 20,
+} as const;
+
+const { queryChars: MAX_QUERY_CHARS, terms: MAX_TERMS, snippetChars: MAX_SNIPPET_CHARS } =
+  HERMES_SESSION_SEARCH_LIMITS;
 
 /** Deterministic keyword normalisation; no embeddings or network calls. */
 export function normalizeSessionQuery(query: string): string[] {
@@ -47,7 +55,7 @@ export async function searchHermesSession(input: {
     input.userId,
     input.conversationId,
     input.query,
-    Math.min(Math.max(input.limit ?? 6, 1), 20)
+    Math.min(Math.max(input.limit ?? 6, 1), HERMES_SESSION_SEARCH_LIMITS.rows)
   );
 
   return messages
@@ -67,7 +75,10 @@ export async function searchHermesSession(input: {
 }
 
 /** Prompt text with a hard character ceiling so recall cannot flood context. */
-export function formatSessionHits(hits: HermesSessionHit[], maxChars = 1_200): string {
+export function formatSessionHits(
+  hits: HermesSessionHit[],
+  maxChars = HERMES_SESSION_SEARCH_LIMITS.promptChars
+): string {
   if (hits.length === 0) return '';
 
   const lines: string[] = [];

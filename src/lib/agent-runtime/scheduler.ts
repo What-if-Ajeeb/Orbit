@@ -7,6 +7,12 @@ import { Platform } from 'react-native';
 import { loadAiSettings } from '../ai/settings';
 import { getChatStore } from '../chat';
 import { DATABASE_NAME } from '../db';
+import {
+  deliveryContentHash,
+  deliveryTraceId,
+  recordDeliveryEvent,
+} from '../hermes/delivery-telemetry';
+import { parseScheduledBundleIds } from '../hermes/scheduled-bundles';
 import { MASTER_AGENT } from '../permissions/agents';
 import type { AgentIdentity } from '../permissions/types';
 import { recoverHybridAgentTasks } from '../hybrid-agent/recovery';
@@ -223,6 +229,24 @@ async function executeSchedule(
       MASTER_AGENT.id
     ));
   const agent: AgentIdentity = MASTER_AGENT;
+  const traceId = deliveryTraceId(schedule.id, owner);
+  let skillBundleIds: string[] = [];
+  try {
+    skillBundleIds = parseScheduledBundleIds(schedule.input.skillBundleIds);
+  } catch (error) {
+    console.warn(`Scheduled run ${schedule.id} has invalid skill bundle ids.`, error);
+  }
+  const startedAt = Date.now();
+
+  await recordDeliveryEvent(db, {
+    traceId,
+    scheduleId: schedule.id,
+    userId: schedule.userId,
+    taskId: task.id,
+    stage: 'started',
+    bundleIds: skillBundleIds,
+    contentHash: deliveryContentHash(instruction),
+  });
 
   try {
     const result = await runAgentTurn({
@@ -241,9 +265,23 @@ async function executeSchedule(
       parentTaskId: task.id,
       grants: claimed.grants,
       budget: claimed.budget,
+      skillBundleIds,
     });
 
     const completed = result.status === 'completed' && result.verification.verified;
+    await recordDeliveryEvent(db, {
+      traceId,
+      scheduleId: schedule.id,
+      userId: schedule.userId,
+      taskId: task.id,
+      stage: completed ? 'delivered' : 'failed',
+      bundleIds: skillBundleIds,
+      contentHash: deliveryContentHash(result.reply),
+      status: result.status,
+      verified: result.verification.verified,
+      durationMs: Date.now() - startedAt,
+      ...(completed ? {} : { errorKind: 'unknown' as const }),
+    });
     await updateAgentTaskStatus(db, task.id, completed ? 'completed' : 'needs_review', {
       phase: completed ? 'done' : 'verify',
       result: { reply: result.reply, taskId: result.taskId },
@@ -263,6 +301,18 @@ async function executeSchedule(
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Scheduled run failed.';
+    await recordDeliveryEvent(db, {
+      traceId,
+      scheduleId: schedule.id,
+      userId: schedule.userId,
+      taskId: task.id,
+      stage: 'failed',
+      bundleIds: skillBundleIds,
+      status: 'needs_review',
+      verified: false,
+      durationMs: Date.now() - startedAt,
+      errorKind: (error as { code?: string })?.code === 'cancelled' ? 'cancelled' : 'unknown',
+    });
     await updateAgentTaskStatus(db, task.id, 'needs_review', {
       phase: 'verify',
       verification: {
@@ -314,6 +364,13 @@ export async function runDueAgentWork(
     let failed = 0;
     for (const schedule of schedules) {
       try {
+        await recordDeliveryEvent(db, {
+          traceId: deliveryTraceId(schedule.id, owner),
+          scheduleId: schedule.id,
+          userId: schedule.userId,
+          stage: 'queued',
+          contentHash: deliveryContentHash(schedule.title),
+        });
         await executeSchedule(db, schedule, owner);
         executed += 1;
       } catch (error) {

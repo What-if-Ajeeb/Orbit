@@ -42,6 +42,32 @@ export type ProviderRoute = {
   fallback: boolean;
 };
 
+/** Allowlisted failure categories. Provider message text is never persisted. */
+export type ProviderErrorKind =
+  | 'cancelled'
+  | 'timeout'
+  | 'auth'
+  | 'rate_limited'
+  | 'not_found'
+  | 'invalid_request'
+  | 'server'
+  | 'network'
+  | 'unknown';
+
+/** Auditable summary of one route attempt; contains no URLs, keys or payloads. */
+export type ProviderDiagnostic = {
+  route: 'primary' | 'system';
+  kind: ProviderKind;
+  provider: AiProvider;
+  adapterId: string | null;
+  configured: boolean;
+  outcome: 'succeeded' | 'failed' | 'fallback' | 'skipped';
+  errorKind?: ProviderErrorKind;
+  status?: number;
+  elapsedMs: number;
+  snapshotId?: string;
+};
+
 export type ToolsetDescriptor = {
   id: string;
   label: string;
