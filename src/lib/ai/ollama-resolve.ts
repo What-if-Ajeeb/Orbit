@@ -1,41 +1,64 @@
-import { listOllamaModels } from './ollama';
+import { listOllamaModels, OllamaRequestError } from './ollama';
 import { saveAiSettings, type AiSettings } from './settings';
 
+/** Reachability probe — intentionally shorter than chat timeout. */
+export const OLLAMA_RESOLVE_TIMEOUT_MS = 2_000;
+
 /**
- * Ensures local Ollama settings have a concrete model name.
+ * Ensures local Ollama settings have a concrete model name and that the
+ * server is reachable.
  *
- * Fresh installs intentionally leave `model` empty so discovery owns the
- * choice. Before the first chat call we list installed models, pick the
- * first, and persist it so later turns stay stable without a Settings visit.
+ * Fresh installs leave `model` empty so discovery owns the choice. Before the
+ * first chat call we list installed models (2s timeout), pick one, and persist
+ * it. If Ollama is offline this throws quickly instead of blocking on the chat
+ * timeout so the Hermes system fallback can take over.
  */
 export async function resolveLocalOllamaSettings(
   settings: AiSettings,
-  options: { signal?: AbortSignal; persist?: boolean } = {}
+  options: { signal?: AbortSignal; persist?: boolean; timeoutMs?: number } = {}
 ): Promise<AiSettings> {
   if (settings.provider !== 'ollama') {
     return settings;
   }
 
-  if (settings.model.trim()) {
-    return settings;
-  }
+  const timeoutMs = options.timeoutMs ?? OLLAMA_RESOLVE_TIMEOUT_MS;
 
-  const models = await listOllamaModels(settings.baseUrl, {
-    signal: options.signal,
-  });
+  let models;
+  try {
+    models = await listOllamaModels(settings.baseUrl, {
+      signal: options.signal,
+      timeoutMs,
+      retries: 0,
+    });
+  } catch (error) {
+    if (error instanceof OllamaRequestError) {
+      if (error.code === 'cancelled') throw error;
+      throw new Error(
+        'Ollama is not reachable on this device right now. Start Ollama (or pull a model), or use system task commands. Cloud API key is optional.'
+      );
+    }
+    throw error;
+  }
 
   if (models.length === 0) {
     throw new Error(
-      'Ollama is reachable but no model is installed on this device. Install one with `ollama pull`, then open Settings → AI.'
+      'Ollama is running but no model is installed. Run `ollama pull <model>` on this device, then try again.'
     );
+  }
+
+  const preferred = settings.model.trim();
+  if (preferred && models.some((model) => model.name === preferred)) {
+    return settings;
   }
 
   const next: AiSettings = {
     ...settings,
-    model: models[0].name,
+    model: preferred && models.some((m) => m.name === preferred) ? preferred : models[0].name,
   };
 
-  if (options.persist !== false) {
+  // Prefer the previously saved model only when it is still installed; otherwise
+  // take the first available and persist so Settings stays in sync.
+  if (options.persist !== false && next.model !== preferred) {
     try {
       await saveAiSettings(next);
     } catch (error) {
