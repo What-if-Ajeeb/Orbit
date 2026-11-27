@@ -572,21 +572,33 @@ export async function ollamaChat(
   tools: LlmToolDefinition[],
   options: OllamaChatOptions = {}
 ): Promise<LlmTurn> {
+  // Fail-fast: 2s /api/tags probe + persist discovered model (via ollama-resolve).
+  // Dynamic import avoids a static cycle with settings.ts.
   let model = settings.model.trim();
+  try {
+    const { resolveLocalOllamaSettings } = await import('./ollama-resolve');
+    const resolved = await resolveLocalOllamaSettings(
+      {
+        provider: 'ollama',
+        mode: 'local',
+        baseUrl: settings.baseUrl,
+        model: settings.model,
+        apiKey: '',
+      },
+      { signal: options.signal, timeoutMs: 2_000 }
+    );
+    model = resolved.model.trim() || model;
+  } catch (error) {
+    if (error instanceof OllamaRequestError) throw error;
+    const message = error instanceof Error ? error.message : 'Ollama is not reachable.';
+    throw new OllamaRequestError(message, 'network', null, true);
+  }
 
-  // System-first: empty model means "use whatever is installed on this device".
   if (!model) {
-    const installed = await listOllamaModels(settings.baseUrl, {
-      signal: options.signal,
-      timeoutMs: options.timeoutMs ?? OLLAMA_DISCOVERY_TIMEOUT_MS,
-    });
-    if (installed.length === 0) {
-      throw new OllamaRequestError(
-        'Ollama is running but no model is installed. Run `ollama pull <model>` on this device, then try again.',
-        'invalid_response'
-      );
-    }
-    model = installed[0].name;
+    throw new OllamaRequestError(
+      'Ollama is running but no model is installed. Run `ollama pull <model>` on this device, then try again.',
+      'invalid_response'
+    );
   }
 
   const stream = options.stream ?? typeof options.onTextDelta === 'function';
