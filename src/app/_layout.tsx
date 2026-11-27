@@ -1,3 +1,7 @@
+// Keep this first: it installs a global error handler before the heavy native
+// modules below are evaluated, so import-time crashes are visible on the phone.
+import { getEarlyStartupErrors } from '@/lib/early-startup-errors';
+
 import { Stack, SplashScreen } from 'expo-router';
 import { SQLiteProvider, useSQLiteContext, type SQLiteDatabase } from 'expo-sqlite';
 import { StatusBar } from 'expo-status-bar';
@@ -26,6 +30,34 @@ installGlobalDiagnostics();
 markStartupStage('Runtime diagnostics installed');
 void markLaunchStarted();
 
+const BOOT_WATCHDOG_MS = 12000;
+
+/**
+ * Lives outside SQLiteProvider so it still runs if database initialization hangs
+ * and the provider never renders its children.
+ */
+function BootWatchdog() {
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const early = getEarlyStartupErrors();
+      const earlyDetail = early.length > 0 ? ` Early error: ${early[0]!.message}` : '';
+
+      reportDiagnostic(
+        'Boot watchdog',
+        new Error(
+          `UI did not appear within ${BOOT_WATCHDOG_MS / 1000}s. ` +
+            `Last stage: ${getStartupStage()}.${earlyDetail}`
+        )
+      );
+      void SplashScreen.hide();
+    }, BOOT_WATCHDOG_MS);
+
+    return () => clearTimeout(timer);
+  }, []);
+
+  return null;
+}
+
 async function initializeDatabase(db: SQLiteDatabase): Promise<void> {
   try {
     markStartupStage('Database initialization started');
@@ -40,7 +72,14 @@ async function initializeDatabase(db: SQLiteDatabase): Promise<void> {
 export default function RootLayout() {
   return (
     <FatalErrorBoundary>
-      <SQLiteProvider databaseName={DATABASE_NAME} onInit={initializeDatabase}>
+      <BootWatchdog />
+      <SQLiteProvider
+        databaseName={DATABASE_NAME}
+        onInit={initializeDatabase}
+        onError={(error: Error) => {
+          reportDiagnostic('Database provider', error);
+        }}
+      >
         <ThemeProvider>
           <PaperThemeBridge>
             <SessionProvider>
