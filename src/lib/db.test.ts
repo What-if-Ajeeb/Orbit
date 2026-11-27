@@ -40,7 +40,7 @@ describe('database migration', () => {
     expect(sql).toContain('CREATE TABLE IF NOT EXISTS trash_items');
     expect(sql).toContain('CREATE TABLE IF NOT EXISTS active_operations');
     expect(sql).toContain('CREATE TABLE IF NOT EXISTS agent_actions');
-    expect(sql).toContain('PRAGMA user_version = 17');
+    expect(sql).toContain('PRAGMA user_version = 18');
     expect(sql).not.toContain('PRAGMA user_version = 15');
   });
 
@@ -55,7 +55,7 @@ describe('database migration', () => {
     expect(sql).toContain('ALTER TABLE conversations ADD COLUMN agent_id TEXT');
     expect(sql).toContain("UPDATE conversations SET agent_id = 'master'");
     expect(sql).toContain('CREATE TABLE IF NOT EXISTS agent_configs');
-    expect(sql).toContain('PRAGMA user_version = 17');
+    expect(sql).toContain('PRAGMA user_version = 18');
   });
 
   it('adds agent action cards when upgrading from v14', async () => {
@@ -67,7 +67,7 @@ describe('database migration', () => {
 
     expect(sql).toContain('CREATE TABLE IF NOT EXISTS agent_actions');
     expect(sql).toContain('CREATE INDEX IF NOT EXISTS idx_agent_actions_user_updated');
-    expect(sql).toContain('PRAGMA user_version = 17');
+    expect(sql).toContain('PRAGMA user_version = 18');
   });
 
   it('adds durable agent tables and workflow links when upgrading from v15', async () => {
@@ -87,7 +87,7 @@ describe('database migration', () => {
     expect(sql).toContain('ALTER TABLE workflow_runs ADD COLUMN agent_task_id TEXT');
     expect(sql).toContain('ALTER TABLE workflow_runs ADD COLUMN schedule_id TEXT');
     expect(sql).toContain('CREATE INDEX IF NOT EXISTS idx_workflow_runs_agent_task');
-    expect(sql).toContain('PRAGMA user_version = 17');
+    expect(sql).toContain('PRAGMA user_version = 18');
   });
 
   it('builds the complete current schema on a fresh install', async () => {
@@ -102,7 +102,7 @@ describe('database migration', () => {
     expect(sql).toContain('CREATE TABLE IF NOT EXISTS agent_tasks');
     expect(sql).toContain('CREATE TABLE IF NOT EXISTS agent_memory');
     expect(sql).toContain('CREATE INDEX IF NOT EXISTS idx_workflow_runs_agent_task');
-    expect(sql).toContain('PRAGMA user_version = 17');
+    expect(sql).toContain('PRAGMA user_version = 18');
   });
 
   it('adds hybrid agent columns and ledgers when upgrading from v16', async () => {
@@ -132,7 +132,7 @@ describe('database migration', () => {
     expect(sql).toContain('CREATE INDEX IF NOT EXISTS idx_hybrid_audit_trace_created');
     expect(sql).toContain('CREATE TABLE IF NOT EXISTS skill_evaluations');
     expect(sql).toContain('CREATE INDEX IF NOT EXISTS idx_skill_evaluations_skill_version');
-    expect(sql).toContain('PRAGMA user_version = 17');
+    expect(sql).toContain('PRAGMA user_version = 18');
   });
 
   it('skips additive ALTERs when the v17 columns are already present', async () => {
@@ -157,8 +157,21 @@ describe('database migration', () => {
     expect(sql).toContain('CREATE TABLE IF NOT EXISTS agent_task_approvals');
   });
 
-  it('does nothing when the schema is already current', async () => {
+  it('adds the Hermes staged memory-write ledger when upgrading from v17', async () => {
     const { db, executed } = migrationDb(17);
+
+    await migrateDbIfNeeded(db);
+
+    const sql = executed.join('\n');
+
+    expect(sql).toContain('CREATE TABLE IF NOT EXISTS hermes_memory_writes');
+    expect(sql).toContain('CREATE INDEX IF NOT EXISTS idx_hermes_memory_writes_user_state');
+    expect(sql).toContain('CREATE INDEX IF NOT EXISTS idx_hermes_memory_writes_fingerprint');
+    expect(sql).toContain('PRAGMA user_version = 18');
+  });
+
+  it('does nothing when the schema is already current', async () => {
+    const { db, executed } = migrationDb(18);
 
     await migrateDbIfNeeded(db);
 

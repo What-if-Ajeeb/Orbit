@@ -19,6 +19,7 @@ import {
   getMcpToolCount,
 } from '../mcp/registry';
 import { loadMcpServers } from '../mcp/settings';
+import { buildHermesContractSection } from './hermes';
 import type {
   HarnessBuildInput,
   HarnessPlugin,
@@ -28,6 +29,7 @@ import type {
 export type {
   HarnessBuildInput,
   HarnessCounts,
+  HermesContractSnapshot,
   HarnessPlugin,
   HarnessPluginKind,
   HarnessPluginState,
@@ -148,6 +150,7 @@ export function buildHarnessSnapshot(input: HarnessBuildInput): HarnessSnapshot 
     activeProvider: PROVIDER_PRESETS[ai.provider]?.label ?? ai.provider,
     activeAdapter,
     activeChatStore: getActiveChatStoreId(),
+    hermes: buildHermesContractSection(ai, now),
     checkedAt: now,
   };
 }

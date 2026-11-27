@@ -23,23 +23,27 @@ function formatEntries(label: string, entries: MemoryEntry[]): string {
  * Builds a bounded memory block from the structured store. Only durable and
  * session-safe scopes are loaded implicitly. Project memories are included only
  * for the current project, and working memory is included only when the caller
- * explicitly passes it in.
+ * explicitly passes it in. `excludeDurable` is used by the Hermes snapshot,
+ * which owns the bounded user/agent sections.
  */
 export async function buildMemoryPromptSection(
   db: SQLiteDatabase,
   userId: number,
   agentId: string,
   projectId: string | null | undefined,
-  workingMemory: MemoryEntry[] = []
+  workingMemory: MemoryEntry[] = [],
+  options: { excludeDurable?: boolean } = {}
 ): Promise<string> {
   try {
     const store = new MemoryStore(db);
     const recallScopes = (scopes: MemoryScope[]) =>
-      Promise.all(
-        scopes.map((scope) =>
-          store.recall({ userId, agentId, scope, limit: MAX_ENTRIES_PER_SCOPE })
-        )
-      ).then((groups) => groups.flat());
+      options.excludeDurable
+        ? Promise.resolve([] as MemoryEntry[])
+        : Promise.all(
+            scopes.map((scope) =>
+              store.recall({ userId, agentId, scope, limit: MAX_ENTRIES_PER_SCOPE })
+            )
+          ).then((groups) => groups.flat());
 
     const [durable, session, project] = await Promise.all([
       recallScopes(DURABLE_SCOPES),

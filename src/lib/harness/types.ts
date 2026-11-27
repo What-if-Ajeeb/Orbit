@@ -1,4 +1,8 @@
 import type { AiSettings } from '../ai/settings';
+import type {
+  HermesPromptTier,
+  ProviderKind,
+} from '../hermes/types';
 import type { McpServerSyncStatus } from '../mcp/registry';
 import type { McpServerConfig } from '../mcp/settings';
 
@@ -32,6 +36,45 @@ export type HarnessCounts = {
   mcpTools: number;
 };
 
+/** Read-only disclosure of Hermes contracts; nothing here is executable. */
+export type HermesContractSnapshot = {
+  provider: {
+    kind: ProviderKind;
+    provider: AiSettings['provider'];
+    adapterId: string | null;
+    configured: boolean;
+    fallback: boolean;
+    routeCount: number;
+  };
+  toolsets: {
+    ids: string[];
+    registeredCount: number;
+    availableCount: number;
+  };
+  skills: {
+    visibleIds: string[];
+    bundleIds: string[];
+  };
+  prompt: {
+    tiers: HermesPromptTier[];
+    maxChars: number;
+  };
+  memory: {
+    agentChars: number;
+    userChars: number;
+  };
+  sessionSearch: {
+    queryChars: number;
+    terms: number;
+    snippetChars: number;
+    promptChars: number;
+    rows: number;
+  };
+  /** Hash of the descriptors above; identical configuration yields this value. */
+  fingerprint: string;
+  checkedAt: number;
+};
+
 export type HarnessSnapshot = {
   plugins: HarnessPlugin[];
   counts: HarnessCounts;
@@ -39,6 +82,7 @@ export type HarnessSnapshot = {
   activeProvider: string;
   activeAdapter: string;
   activeChatStore: string;
+  hermes: HermesContractSnapshot;
   checkedAt: number;
 };
 

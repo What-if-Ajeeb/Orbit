@@ -436,6 +436,25 @@ invalidate it. Startup/background recovery requeues only work with no recorded
 side effects; anything else is blocked for review and pending approvals are
 never auto-approved.
 
+`src/lib/hermes/` is the read-only Hermes-style architecture layer: frozen
+prompt tiers, provider route resolution, availability-filtered toolsets, and
+progressive skill disclosure. Small talk and acknowledgements are answered by
+the deterministic path even when a provider is configured, so ordinary
+conversation never spends a model call.
+
+Phase 2 adds a char-bounded `agent`/`user` memory snapshot (redacted and
+injection-filtered), v18 staged memory writes that only a user-approved exact
+fingerprint can apply, bounded `LIKE`-based session recall, and data-only skill
+bundles/fallbacks. Bundles never become callable tools.
+
+Phase 3 adds a route-level provider wrapper that calls the configured provider
+at most once before returning deterministic system work, with allowlisted
+diagnostics (no keys, URLs, prompts or raw error text). Scheduled runs can carry
+bounded, data-only `skillBundleIds`, record hash-only delivery stages in the
+audit ledger, and the harness snapshot exposes read-only Hermes contracts
+(`snapshot.hermes`). The full design and rollout plan is in
+[`HERMES_STYLE_ARCHITECTURE.md`](HERMES_STYLE_ARCHITECTURE.md).
+
 ## File map
 
 ```text

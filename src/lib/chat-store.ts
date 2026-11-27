@@ -83,6 +83,13 @@ export type ChatStore = {
     conversationId: number,
     limit?: number
   ): Promise<ChatMessage[]>;
+  /** Bounded, parameterised keyword search scoped to one conversation. */
+  searchMessages(
+    userId: number,
+    conversationId: number,
+    query: string,
+    limit?: number
+  ): Promise<ChatMessage[]>;
   addMessage(
     userId: number,
     conversationId: number,
@@ -333,6 +340,15 @@ function cleanTitle(value: string): string {
   return value.replace(/\s+/g, ' ').trim().slice(0, 80);
 }
 
+/** Escapes LIKE metacharacters so user text cannot widen a search. */
+export function escapeLikePattern(value: string): string {
+  return value.replace(/[\\%_]/g, (character) => `\\${character}`);
+}
+
+function searchTerms(query: string): string[] {
+  return query.replace(/\s+/g, ' ').trim().slice(0, 80).split(' ').filter(Boolean).slice(0, 4);
+}
+
 export function createSqliteChatStore(db: SQLiteDatabase): ChatStore {
   async function getConversation(
     userId: number,
@@ -404,6 +420,27 @@ export function createSqliteChatStore(db: SQLiteDatabase): ChatStore {
         userId,
         conversationId,
         Math.min(Math.max(limit, 1), 300)
+      );
+
+      return rows.map(toMessage);
+    },
+
+    async searchMessages(userId, conversationId, query, limit = 20) {
+      const terms = searchTerms(query);
+      if (terms.length === 0) return [];
+
+      const conditions = terms.map(() => `content LIKE ? ESCAPE '\\'`).join(' AND ');
+      const patterns = terms.map((term) => `%${escapeLikePattern(term)}%`);
+      const rows = await db.getAllAsync<MessageRow>(
+        `SELECT id, role, content, meta, created_at
+         FROM messages
+         WHERE user_id = ? AND conversation_id = ? AND ${conditions}
+         ORDER BY id DESC
+         LIMIT ?`,
+        userId,
+        conversationId,
+        ...patterns,
+        Math.min(Math.max(limit, 1), 20)
       );
 
       return rows.map(toMessage);

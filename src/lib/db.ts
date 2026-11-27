@@ -7,7 +7,7 @@ export const DATABASE_NAME = 'orbit.db';
  * tasks and the agent conversation) lives in SQLite on the device.
  */
 export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
-  const DATABASE_VERSION = 17;
+  const DATABASE_VERSION = 18;
 
   const result = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
   let currentDbVersion = result?.user_version ?? 0;
@@ -1231,6 +1231,38 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
     `);
 
     currentDbVersion = 17;
+  }
+
+  if (currentDbVersion === 17) {
+    // Hermes-style staged memory writes: exact previews that can only be
+    // applied after a user decision. Applied values still live in agent_memory.
+    await db.execAsync(`
+      CREATE TABLE IF NOT EXISTS hermes_memory_writes (
+        id TEXT PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        agent_id TEXT NOT NULL DEFAULT 'master',
+        target TEXT NOT NULL,
+        action TEXT NOT NULL,
+        project_key TEXT NOT NULL DEFAULT '',
+        key TEXT NOT NULL,
+        value TEXT NOT NULL,
+        policy_version TEXT NOT NULL,
+        fingerprint TEXT NOT NULL,
+        source TEXT NOT NULL DEFAULT 'agent',
+        confidence REAL NOT NULL DEFAULT 1,
+        requested_at INTEGER NOT NULL,
+        resolved_at INTEGER,
+        applied_at INTEGER,
+        state TEXT NOT NULL DEFAULT 'pending',
+        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_hermes_memory_writes_user_state
+        ON hermes_memory_writes (user_id, state, requested_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_hermes_memory_writes_fingerprint
+        ON hermes_memory_writes (fingerprint);
+    `);
+
+    currentDbVersion = 18;
   }
 
   if (currentDbVersion !== DATABASE_VERSION) {

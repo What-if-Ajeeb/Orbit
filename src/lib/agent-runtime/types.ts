@@ -163,6 +163,8 @@ export type RuntimeTurnInput = {
   budget?: AgentBudget;
   /** Parent task id when this turn is a delegated subagent run. */
   parentTaskId?: string;
+  /** Data-only bundle ids attached to a scheduled run; never executable. */
+  skillBundleIds?: string[];
 };
 
 export type RuntimeTurnResult = {

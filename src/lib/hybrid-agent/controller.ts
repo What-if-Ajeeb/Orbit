@@ -10,14 +10,25 @@ import {
 } from '../agent-settings';
 import { parseArtifactToolRef } from '../ai/artifact-tools';
 import { runLocalAgent, type LocalToolExecutor } from '../ai/local-agent';
-import { buildSystemPrompt } from '../ai/prompt';
-import { requestCompletion } from '../ai/providers';
 import { agentToolRegistry, listAgentTools } from '../ai/tools';
 import type { LlmAttachment, LlmMessage } from '../ai/types';
 import { getActiveBuddy } from '../buddy/store';
 import type { ToolExecutionEvent } from '../chat-store';
+import { getChatStore } from '../chat';
 import { buildCordisTools } from '../cordis-tools';
 import { EventStore } from '../events';
+import {
+  buildHermesPromptBundle,
+  buildToolsets,
+  isProviderCancellationError,
+  isSmallTalk,
+  requestCompletionWithSystemFallback,
+  searchHermesSession,
+  selectScheduledBundles,
+  smallTalkReply,
+  summarizeProviderRoute,
+  type HermesSessionHit,
+} from '../hermes';
 import { HookEngine } from '../hooks';
 import { MemoryStore } from '../memory/store';
 import { ensureMcpTools } from '../mcp/registry';
@@ -57,12 +68,7 @@ import {
   verificationFailed,
 } from '../agent-runtime/verification';
 
-import {
-  buildHybridAiContext,
-  hasLocalFallback,
-  shouldUseAi,
-  MAX_HYBRID_AI_ROUNDS,
-} from './ai-router';
+import { hasLocalFallback, shouldUseAi, MAX_HYBRID_AI_ROUNDS } from './ai-router';
 import { recordHybridEvent, newHybridTraceId, traceContext } from './audit';
 import { buildApprovalBinding, enterApprovalWait, resolveApprovalWait } from './approvals';
 import { buildCapabilityCatalog } from './capability-catalog';
@@ -98,8 +104,7 @@ function isCancellationError(error: unknown): boolean {
   if (error instanceof AgentTurnCancelledError) return true;
   if (!(error instanceof Error)) return false;
   return (
-    error.name === 'AbortError' ||
-    error.message === 'AI request cancelled.' ||
+    isProviderCancellationError(error) ||
     /^(?:tool|operation|request)\s+cancelled/i.test(error.message)
   );
 }
@@ -715,13 +720,21 @@ export async function runAgentTurn(input: RuntimeTurnInput): Promise<RuntimeTurn
         }
       }
 
-      const useAi = shouldUseAi({ intent, settings: input.settings });
-      const useLocal = !useAi && hasLocalFallback({ intent, settings: input.settings });
+      // Hermes-style system deferral: small talk never reaches a model, even
+      // when a provider is configured. It produces a deterministic reply and
+      // leaves the task in the system path.
+      const deferToSystem =
+        intent.decision === 'NEEDS_AI' && runtimeCalls.length === 0 && isSmallTalk(latestText);
+      const useAi = shouldUseAi({ intent, settings: input.settings }) && !deferToSystem;
+      const useLocal =
+        !useAi && (hasLocalFallback({ intent, settings: input.settings }) || deferToSystem);
 
       if (!blocked && intent.decision === 'NEEDS_AI' && (useAi || useLocal)) {
         if (useLocal) {
-          mode = 'local';
-          const local = await runLocalAgent(db, userId, latestText, localExecute);
+          mode = deferToSystem ? 'system' : 'local';
+          const local = deferToSystem
+            ? { reply: smallTalkReply(latestText) ?? '', traces: [] as string[] }
+            : await runLocalAgent(db, userId, latestText, localExecute);
           finalVerification =
             runtimeCalls.length > 0
               ? combineVerifications(runtimeCalls.map((call) => call.verification))
@@ -734,16 +747,6 @@ export async function runAgentTurn(input: RuntimeTurnInput): Promise<RuntimeTurn
           traces.push(...local.traces);
         } else {
           mode = 'ai';
-          const verifiedContext = await buildHybridAiContext({
-            db,
-            userId,
-            agentId: agent.id,
-            projectId,
-            verifiedResults: runtimeCalls
-              .filter((call) => call.success && call.verification.verified)
-              .map((call) => `- ${call.toolName}: ${redactSecrets(call.content).slice(0, 500)}`),
-          });
-
           let toolDefinitions = filterAllowedTools(listAgentTools(), agentConfig);
           if (input.grants) {
             toolDefinitions = toolDefinitions.filter((definition) => allowedTool(definition.name));
@@ -761,14 +764,71 @@ export async function runAgentTurn(input: RuntimeTurnInput): Promise<RuntimeTurn
             }
           }
 
+          const toolsets = buildToolsets({
+            agentConfig,
+            grants: input.grants,
+            toolNames: toolDefinitions.map((definition) => definition.name),
+          });
+          const providerRoute = summarizeProviderRoute(input.settings);
+          let sessionHits: HermesSessionHit[] = [];
+          if (conversationId) {
+            try {
+              sessionHits = await searchHermesSession({
+                store: getChatStore(db),
+                userId,
+                conversationId,
+                query: latestText,
+                limit: 6,
+              });
+            } catch (error) {
+              console.warn('Could not recall bounded session history.', error);
+            }
+          }
+          const promptBundle = await buildHermesPromptBundle({
+            db,
+            userId,
+            agentId: agent.id,
+            projectId,
+            userName: input.userName,
+            agentName: agent.name,
+            buddyCtx,
+            instructions: agentConfig.instructions,
+            memoryNotes: agentConfig.memory,
+            verifiedResults: runtimeCalls
+              .filter((call) => call.success && call.verification.verified)
+              .map((call) => `- ${call.toolName}: ${redactSecrets(call.content).slice(0, 500)}`),
+            manifests,
+            ...(input.skillBundleIds && input.skillBundleIds.length > 0
+              ? { bundles: selectScheduledBundles(input.skillBundleIds) }
+              : {}),
+            availableTools: new Set(toolDefinitions.map((definition) => definition.name)),
+            availableToolsets: new Set(
+              toolsets.filter((descriptor) => descriptor.available.length > 0).map((descriptor) => descriptor.id)
+            ),
+            webSearchDisabled,
+            toolsetIds: toolsets.map((descriptor) => descriptor.id),
+            sessionHits,
+          });
+          await recordHybridEvent(db, {
+            traceId: trace.traceId,
+            taskId: task.id,
+            userId,
+            source: 'controller',
+            type: 'prompt.frozen',
+            payload: {
+              snapshotId: promptBundle.snapshotId,
+              tiers: promptBundle.tiers,
+              provider: providerRoute.provider,
+              route: providerRoute.kind,
+              routeSummary: providerRoute,
+              skillBundleIds: input.skillBundleIds ?? [],
+            },
+          });
+
           const messages: LlmMessage[] = [
             {
               role: 'system',
-              content: buildSystemPrompt(input.userName, agent.name, Date.now(), buddyCtx, {
-                instructions: agentConfig.instructions,
-                memory: agentConfig.memory,
-                verifiedContext: verifiedContext,
-              }),
+              content: promptBundle.system,
             },
             ...input.history
               .filter((item) => item.content.trim().length > 0 || (item.attachments?.length ?? 0) > 0)
@@ -799,9 +859,28 @@ export async function runAgentTurn(input: RuntimeTurnInput): Promise<RuntimeTurn
             tracker.consumeTokens(requestTokens, 0);
             await emit('ai_request', { tokensIn: requestTokens, messageCount: messages.length });
 
-            const turn = await requestCompletion(input.settings, messages, toolDefinitions, {
-              onTextDelta: input.onTextDelta,
-              signal: input.signal,
+            const completion = await requestCompletionWithSystemFallback({
+              settings: input.settings,
+              messages,
+              tools: toolDefinitions,
+              options: {
+                ...(input.onTextDelta ? { onTextDelta: input.onTextDelta } : {}),
+                ...(input.signal ? { signal: input.signal } : {}),
+              },
+              snapshotId: promptBundle.snapshotId,
+            });
+            const turn = completion.turn;
+            await recordHybridEvent(db, {
+              traceId: trace.traceId,
+              taskId: task.id,
+              userId,
+              source: 'controller',
+              type: 'ai.provider_diagnostic',
+              payload: {
+                snapshotId: promptBundle.snapshotId,
+                usedFallback: completion.usedFallback,
+                diagnostics: completion.diagnostics,
+              },
             });
 
             const outputTokens = estimateTokens(turn.text ?? '');
