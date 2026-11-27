@@ -436,6 +436,13 @@ invalidate it. Startup/background recovery requeues only work with no recorded
 side effects; anything else is blocked for review and pending approvals are
 never auto-approved.
 
+`src/lib/hermes/` is the read-only Hermes-style architecture layer: frozen
+prompt tiers, provider route resolution, availability-filtered toolsets, and
+progressive skill disclosure. Small talk and acknowledgements are answered by
+the deterministic path even when a provider is configured, so ordinary
+conversation never spends a model call. The full design and rollout plan is in
+[`HERMES_STYLE_ARCHITECTURE.md`](HERMES_STYLE_ARCHITECTURE.md).
+
 ## File map
 
 ```text

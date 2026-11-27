@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { requestCompletion } from '../ai/providers';
 import type { AiSettings } from '../ai/settings';
 import { createTestDatabase, type TestDatabase } from '../testing/node-sqlite';
 
@@ -20,6 +21,7 @@ const mocks = vi.hoisted(() => {
 
   return {
     config,
+    aiConfigured: { value: false },
     secureExecuteTool: vi.fn(),
     registry: {
       get: (name: string) => ({ definition: { name }, timeoutMs: 1_000 }),
@@ -27,7 +29,7 @@ const mocks = vi.hoisted(() => {
       definitions: () => [],
       register: () => undefined,
     },
-    routeDeterministically: vi.fn(() => ({
+    routeDeterministically: vi.fn<() => unknown>(() => ({
       kind: 'handled' as const,
       calls: [{ toolName: 'memory_remember', args: { key: 'fact', value: 'remembered' } }],
       reply: '',
@@ -53,7 +55,10 @@ vi.mock('../ai/artifact-tools', () => ({ parseArtifactToolRef: () => null }));
 vi.mock('../ai/local-agent', () => ({ runLocalAgent: vi.fn() }));
 vi.mock('../ai/prompt', () => ({ buildSystemPrompt: () => 'system prompt' }));
 vi.mock('../ai/providers', () => ({ requestCompletion: vi.fn() }));
-vi.mock('../ai/settings', () => ({ isAiConfigured: () => false }));
+vi.mock('../ai/settings', () => ({
+  isAiConfigured: () => mocks.aiConfigured.value,
+  PROVIDER_PRESETS: {},
+}));
 vi.mock('../ai/tools', () => ({
   agentToolRegistry: mocks.registry,
   executeTool: vi.fn(),
@@ -135,6 +140,7 @@ const turnInput = () => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.aiConfigured.value = false;
   mocks.routeDeterministically.mockReturnValue({
     kind: 'handled',
     calls: [{ toolName: 'memory_remember', args: { key: 'fact', value: 'remembered' } }],
@@ -235,5 +241,21 @@ describe('orchestrator completion rules', () => {
     const task = await getAgentTask(db, (thrown as AgentTurnCancelledError).taskId);
     expect(task?.status).toBe('cancelled');
     expect(task?.verification?.verified).toBe(false);
+  });
+
+  it('defers small talk to the system path even when AI is configured', async () => {
+    db = createTestDatabase();
+    mocks.aiConfigured.value = true;
+    mocks.routeDeterministically.mockReturnValue({ kind: 'needs_ai', notes: [] });
+
+    const result = await runAgentTurn({
+      ...turnInput(),
+      history: [{ role: 'user', content: 'namaste' }],
+    });
+
+    expect(requestCompletion).not.toHaveBeenCalled();
+    expect(result.mode).toBe('system');
+    expect(result.reply).toContain('Namaste');
+    expect(result.status).toBe('completed');
   });
 });
