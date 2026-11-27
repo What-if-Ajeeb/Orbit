@@ -60,6 +60,18 @@ export type ProviderPreset = {
 };
 
 export const PROVIDER_PRESETS: Record<AiProvider, ProviderPreset> = {
+  ollama: {
+    id: 'ollama',
+    adapterId: 'ollama-native',
+    label: 'On-device (Ollama)',
+    shortLabel: 'System',
+    baseUrl: ON_DEVICE_OLLAMA_BASE_URL,
+    model: '',
+    keyHint: 'not needed',
+    docsUrl: 'https://github.com/ollama/ollama/blob/main/docs/api.md',
+    note: 'Default Orbit AI path. Uses models already on this phone. No API key. Model list is discovered from /api/tags.',
+    requiresApiKey: false,
+  },
   openai: {
     id: 'openai',
     adapterId: 'openai-compatible',
@@ -117,7 +129,7 @@ export const PROVIDER_PRESETS: Record<AiProvider, ProviderPreset> = {
     model: 'deepseek-chat',
     keyHint: 'sk-...',
     docsUrl: 'https://platform.deepseek.com/api-keys',
-    note: 'DeepSeek-V4 compatible models. Recommended for Orbit.',
+    note: 'DeepSeek-V4 compatible models. Recommended for cloud Orbit.',
     requiresApiKey: true,
   },
   anthropic: {
@@ -156,28 +168,17 @@ export const PROVIDER_PRESETS: Record<AiProvider, ProviderPreset> = {
     note: 'Hugging Face Inference API. Model naam manually दें।',
     requiresApiKey: true,
   },
-  ollama: {
-    id: 'ollama',
-    adapterId: 'ollama-native',
-    label: 'Ollama',
-    shortLabel: 'Ollama',
-    baseUrl: ON_DEVICE_OLLAMA_BASE_URL,
-    model: '',
-    keyHint: 'not needed',
-    docsUrl: 'https://github.com/ollama/ollama/blob/main/docs/api.md',
-    note: 'Native /api/tags + /api/chat. Model list is discovered from the running server; no /v1 suffix.',
-    requiresApiKey: false,
-  },
 };
 
+/** Local / system AI first — cloud is opt-in. */
 export const PROVIDER_ORDER: AiProvider[] = [
+  'ollama',
   'deepseek',
   'openai',
   'gemini',
   'anthropic',
   'mistral',
   'huggingface',
-  'ollama',
   'openrouter',
   'custom',
 ];
@@ -266,18 +267,44 @@ export async function clearAiSettings(): Promise<void> {
   await SecureStore.deleteItemAsync(SETTINGS_KEY);
 }
 
+/**
+ * Whether Orbit may attempt a model call for this configuration.
+ *
+ * System-first rule: on-device Ollama only needs a reachable local URL. The
+ * model name is discovered at request time from `/api/tags`, so an empty model
+ * must not force the user into "API key missing" local command mode.
+ * Cloud providers still require a key (and model) as before.
+ */
 export function isAiConfigured(settings: AiSettings): boolean {
   const baseUrl = settings.baseUrl.trim();
 
-  if (!baseUrl || !settings.model.trim()) {
+  if (!baseUrl) {
     return false;
   }
 
-  if (settings.mode === 'local') {
+  if (settings.mode === 'local' || settings.provider === 'ollama') {
+    // Local path: URL alone is enough. Model may be filled by discovery.
     return /^https?:\/\//i.test(baseUrl);
   }
 
+  if (!settings.model.trim()) {
+    return false;
+  }
+
   return !PROVIDER_PRESETS[settings.provider].requiresApiKey || settings.apiKey.trim().length > 0;
+}
+
+/** True when settings point at the default on-device Ollama endpoint. */
+export function isOnDeviceOllama(settings: AiSettings): boolean {
+  if (settings.provider !== 'ollama' && settings.mode !== 'local') {
+    return false;
+  }
+
+  const normalized = normalizeOllamaBaseUrl(settings.baseUrl);
+  return (
+    normalized === ON_DEVICE_OLLAMA_BASE_URL ||
+    normalized === 'http://localhost:11434'
+  );
 }
 
 export function applyProviderPreset(settings: AiSettings, provider: AiProvider): AiSettings {
@@ -286,6 +313,7 @@ export function applyProviderPreset(settings: AiSettings, provider: AiProvider):
   return {
     ...settings,
     provider,
+    mode: provider === 'ollama' ? 'local' : settings.mode === 'local' && provider === 'custom' ? 'local' : 'cloud',
     baseUrl: preset.baseUrl,
     model: preset.model,
   };
