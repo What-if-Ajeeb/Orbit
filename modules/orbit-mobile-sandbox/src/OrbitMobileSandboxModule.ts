@@ -12,4 +12,51 @@ declare class OrbitMobileSandboxModule extends NativeModule<{}> {
   shutdown(): Promise<string>;
 }
 
-export default requireNativeModule<OrbitMobileSandboxModule>('OrbitMobileSandbox');
+function unavailableResponse(requestJson?: string): string {
+  let id = '';
+  try {
+    if (requestJson) {
+      const parsed = JSON.parse(requestJson) as { id?: unknown };
+      if (typeof parsed?.id === 'string') id = parsed.id;
+    }
+  } catch {
+    // Ignore malformed request bodies; still return a structured failure.
+  }
+
+  return JSON.stringify({
+    id,
+    ok: false,
+    result: null,
+    error: {
+      code: 'native_core_unavailable',
+      message: 'OrbitMobileSandbox native module is not available in this build.',
+    },
+  });
+}
+
+function createUnavailableStub(): OrbitMobileSandboxModule {
+  const stub = {
+    describe: async () => unavailableResponse(),
+    validateManifest: async (manifestJson: string) => unavailableResponse(manifestJson),
+    checkPermission: async (requestJson: string) => unavailableResponse(requestJson),
+    validatePath: async (requestJson: string) => unavailableResponse(requestJson),
+    validateNetwork: async (requestJson: string) => unavailableResponse(requestJson),
+    validateRequest: async (requestJson: string) => unavailableResponse(requestJson),
+    authorizeOperation: async (requestJson: string) => unavailableResponse(requestJson),
+    readFile: async (requestJson: string) => unavailableResponse(requestJson),
+    shutdown: async () => unavailableResponse(),
+  };
+
+  return stub as unknown as OrbitMobileSandboxModule;
+}
+
+let moduleInstance: OrbitMobileSandboxModule;
+
+try {
+  moduleInstance = requireNativeModule<OrbitMobileSandboxModule>('OrbitMobileSandbox');
+} catch (error) {
+  console.warn('OrbitMobileSandbox native module is unavailable; using soft-fail stub.', error);
+  moduleInstance = createUnavailableStub();
+}
+
+export default moduleInstance;
