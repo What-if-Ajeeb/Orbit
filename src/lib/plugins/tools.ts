@@ -164,6 +164,7 @@ export function buildPluginAgentTool(input: BuildPluginToolInput): AgentTool {
           db: context.db,
           userId: context.userId,
           conversationId: context.conversationId,
+          grantedPermissions: input.grantedPermissions(),
         };
         if (typeof input.definition.execute !== 'function') {
           throw new Error('Plugin tool has no reviewed host implementation.');

@@ -36,20 +36,31 @@ const SANDBOX_OPERATIONS = [
 export const sandboxManifest: PluginManifest = seedPluginManifest({
   pluginId: SANDBOX_PLUGIN_ID,
   name: 'ORBIT Sandbox',
-  version: '2.0.0',
+  version: '2.1.0',
   description:
-    'Android-only security policy and permission mediation. It validates manifests, approvals, paths, URLs and request envelopes, and mediates bounded app-private file reads after Rust allows them. It never executes code and is absent on iOS and web.',
+    'Android-only security policy and permission mediation. It validates manifests, approvals, paths, URLs and request envelopes, and mediates approved, bounded app-private UTF-8 file reads after Rust allows them. It never executes code and is absent on iOS and web.',
   category: 'service',
   icon: 'shield-outline',
   minimumOrbitVersion: '1.0.0',
   platformSupport: ['android'],
   entryPoint: { kind: 'builtin', moduleId: 'orbit-native-sandbox' },
-  permissions: ['ai.invoke', 'sandbox.inspect'],
+  permissions: ['ai.invoke', 'files.read', 'sandbox.inspect'],
   capabilities: ['tools.ai'],
   dependencies: [{ pluginId: 'orbit.core.tools', version: '^1.0.0' }],
   lifecycleHooks: ['onStart', 'onStop', 'onError'],
   dataSchemaVersion: 1,
 });
+
+/** Security-relevant manifest subset sent to the Rust policy core. */
+const sandboxPolicyManifest: SandboxManifest = {
+  pluginId: sandboxManifest.pluginId,
+  version: sandboxManifest.version,
+  permissions: sandboxManifest.permissions.filter(
+    (permission): permission is SandboxPermission =>
+      (SANDBOX_PERMISSIONS as readonly string[]).includes(permission)
+  ),
+  capabilities: sandboxManifest.capabilities,
+};
 
 const AUDIT_SCHEMA = {
   type: 'object',
@@ -181,6 +192,35 @@ const DECISION_OUTPUT_SCHEMA = nativeOutputSchema({
       audit: AUDIT_SCHEMA,
     },
     required: ['decision', 'operation', 'reasonCode', 'policyVersion', 'audit'],
+  },
+});
+
+const FILE_READ_OUTPUT_SCHEMA = nativeOutputSchema({
+  read: {
+    type: 'object',
+    properties: {
+      decision: { type: 'string', enum: ['allow'] },
+      operation: { type: 'string' },
+      permission: { type: ['string', 'null'] },
+      normalizedResource: { type: ['string', 'null'] },
+      path: { type: ['string', 'null'] },
+      content: { type: 'string' },
+      bytesRead: { type: 'number' },
+      reason: { type: 'string' },
+      reasonCode: { type: 'string' },
+      policyVersion: { type: 'number' },
+      limits: LIMITS_SCHEMA,
+      audit: AUDIT_SCHEMA,
+    },
+    required: [
+      'decision',
+      'operation',
+      'reasonCode',
+      'policyVersion',
+      'audit',
+      'content',
+      'bytesRead',
+    ],
   },
 });
 
@@ -471,6 +511,55 @@ const authorizeOperationTool = nativeHostTool('sandbox_authorize_operation', {
   },
 });
 
+const readFileTool = nativeHostTool('sandbox_read_file', {
+  name: 'sandbox_read_file',
+  description:
+    'Read a bounded UTF-8 text file from the app-private sandbox directory after a fresh, resource-bound user approval and Rust allow. Android only; it never executes code or accepts absolute paths.',
+  permissions: ['files.read'],
+  parameters: objectSchema({ path: { type: 'string' } }, ['path']),
+  outputSchema: FILE_READ_OUTPUT_SCHEMA,
+  async execute(args, context) {
+    const requestedPath = readString(args, 'path', {
+      required: true,
+      maxLength: 1_024,
+    })!;
+    const manager = getMobileSandboxManager();
+    await manager.initialize();
+
+    const pathReport = await manager.validatePath(requestedPath);
+    if (!pathReport.ok || !pathReport.normalizedPath) {
+      throw new Error(
+        pathReport.errors.join(' ') || 'The sandbox path is invalid.'
+      );
+    }
+
+    const targetPath = pathReport.normalizedPath;
+    const approval = await manager.requestOperationApproval({
+      pluginId: SANDBOX_PLUGIN_ID,
+      pluginName: 'ORBIT Sandbox',
+      trustLevel: 'official',
+      permission: 'files.read',
+      resource: targetPath,
+      reason: 'Read a UTF-8 text file from the app-private sandbox directory.',
+    });
+
+    const grantedPermissions = (context.grantedPermissions ?? []).filter(
+      (permission): permission is SandboxPermission =>
+        (SANDBOX_PERMISSIONS as readonly string[]).includes(permission)
+    );
+
+    const result = await manager.readFile({
+      pluginId: SANDBOX_PLUGIN_ID,
+      manifest: sandboxPolicyManifest,
+      path: targetPath,
+      grantedPermissions,
+      approval,
+    });
+
+    return { read: result };
+  },
+});
+
 export const sandboxImplementation: PluginImplementation = {
   hooks: {
     onStart() {
@@ -491,5 +580,6 @@ export const sandboxImplementation: PluginImplementation = {
     void sdk.tools.register(validateNetworkTool);
     void sdk.tools.register(validateRequestTool);
     void sdk.tools.register(authorizeOperationTool);
+    void sdk.tools.register(readFileTool);
   },
 };

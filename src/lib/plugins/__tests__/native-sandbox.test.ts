@@ -75,6 +75,8 @@ const mocks = vi.hoisted(() => ({
   validateNetwork: vi.fn(),
   validateRequest: vi.fn(),
   authorizeOperation: vi.fn(),
+  requestOperationApproval: vi.fn(),
+  readFile: vi.fn(),
 }));
 
 vi.mock('@/lib/sandbox/manager', () => ({
@@ -87,6 +89,8 @@ vi.mock('@/lib/sandbox/manager', () => ({
     validateNetwork: mocks.validateNetwork,
     validateRequest: mocks.validateRequest,
     authorizeOperation: mocks.authorizeOperation,
+    requestOperationApproval: mocks.requestOperationApproval,
+    readFile: mocks.readFile,
     onAudit: () => () => undefined,
   }),
 }));
@@ -132,8 +136,12 @@ describe('ORBIT Sandbox native plugin', () => {
     )!;
 
     expect(manifest.platformSupport).toEqual(['android']);
-    expect(manifest.permissions).toEqual(['ai.invoke', 'sandbox.inspect']);
-    expect(manifest.version).toBe('2.0.0');
+    expect(manifest.permissions).toEqual([
+      'ai.invoke',
+      'files.read',
+      'sandbox.inspect',
+    ]);
+    expect(manifest.version).toBe('2.1.0');
   });
 
   it('exposes the security policy without executing anything', async () => {
@@ -289,5 +297,98 @@ describe('ORBIT Sandbox native plugin', () => {
       ).content
     );
     expect(unavailable).toMatchObject({ ok: false });
+  });
+
+  it('reads a normalized app-private path only after approval', async () => {
+    const { harness } = await enableSandbox();
+    mocks.requestOperationApproval.mockClear();
+    mocks.readFile.mockClear();
+    mocks.initialize.mockResolvedValue({});
+    mocks.validatePath.mockResolvedValue({
+      ok: true,
+      normalizedPath: 'orbit/note.txt',
+      errors: [],
+      policyVersion: 2,
+      audit,
+    });
+    const approval = {
+      permission: 'files.read',
+      resource: 'orbit/note.txt',
+      grantedAt: 1,
+      expiresAt: 2,
+      requestId: 'sandbox-approval-1',
+    };
+    mocks.requestOperationApproval.mockResolvedValue(approval);
+    mocks.readFile.mockResolvedValue({
+      decision: 'allow',
+      operation: 'file.read',
+      permission: 'files.read',
+      normalizedResource: 'orbit/note.txt',
+      path: 'orbit/note.txt',
+      content: 'hello',
+      bytesRead: 5,
+      reason: 'Permission, approval and path policy allowed the read.',
+      reasonCode: 'allowed',
+      policyVersion: 2,
+      limits: {},
+      audit: { ...audit, operation: 'file.read' },
+    });
+
+    const tool = harness.toolHost.tools.get(
+      'plugin__orbit_builtin_sandbox__sandbox_read_file'
+    );
+    const result = JSON.parse(
+      (
+        await tool!.execute(context, {
+          path: './orbit//note.txt',
+        })
+      ).content
+    );
+
+    expect(result).toMatchObject({
+      ok: true,
+      read: { decision: 'allow', content: 'hello', bytesRead: 5 },
+    });
+    expect(mocks.validatePath).toHaveBeenCalledWith('./orbit//note.txt');
+    expect(mocks.requestOperationApproval).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pluginId: SANDBOX_PLUGIN_ID,
+        permission: 'files.read',
+        resource: 'orbit/note.txt',
+      })
+    );
+    expect(mocks.readFile).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pluginId: SANDBOX_PLUGIN_ID,
+        path: 'orbit/note.txt',
+        approval,
+        grantedPermissions: expect.arrayContaining(['files.read']),
+      })
+    );
+  });
+
+  it('rejects an unsafe path before asking for approval', async () => {
+    const { harness } = await enableSandbox();
+    mocks.requestOperationApproval.mockClear();
+    mocks.readFile.mockClear();
+    mocks.validatePath.mockResolvedValue({
+      ok: false,
+      normalizedPath: null,
+      errors: ['path_traversal: Path traversal segments are not allowed.'],
+      policyVersion: 2,
+      audit: { ...audit, decision: 'deny', operation: 'path.validate' },
+    });
+
+    const tool = harness.toolHost.tools.get(
+      'plugin__orbit_builtin_sandbox__sandbox_read_file'
+    );
+    const result = JSON.parse(
+      (await tool!.execute(context, { path: '../secret' })).content
+    );
+
+    expect(result).toMatchObject({ ok: false });
+    expect(result.error).toContain('path_traversal');
+    expect(mocks.requestOperationApproval).not.toHaveBeenCalled();
+    expect(mocks.readFile).not.toHaveBeenCalled();
   });
 });

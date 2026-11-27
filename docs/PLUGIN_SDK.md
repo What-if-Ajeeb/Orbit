@@ -110,9 +110,10 @@ const unregister = await sdk.tools.register(
 There are no sandbox-backed tool bodies. Tool definitions cannot declare a
 `program`, `instructions`, `handler` or `execute` string, and the registry
 rejects program-only tools. The reviewed Android sandbox plugin exposes
-read-only security tools such as `sandbox_policy`, `sandbox_validate_manifest`
-and `sandbox_validate_network`; sensitive operations require fresh approval and
-are enforced by Rust plus the Kotlin platform boundary. See
+security tools such as `sandbox_policy`, `sandbox_validate_manifest`,
+`sandbox_validate_network` and the reviewed `sandbox_read_file`; sensitive
+operations require a fresh resource-bound approval and are enforced by Rust plus
+the Kotlin platform boundary. See
 [`MOBILE_SANDBOX.md`](MOBILE_SANDBOX.md).
 
 Registration requires `starting`/`running` status, `ai.invoke` in the manifest,

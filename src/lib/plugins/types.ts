@@ -477,6 +477,8 @@ export type PluginSdkToolContext = {
   db?: SQLiteDatabase;
   userId?: number;
   conversationId?: number;
+  /** Active grants snapshot taken after the tool permission checks pass. */
+  grantedPermissions?: PluginPermission[];
 };
 
 export type PluginSdkToolResult = {
