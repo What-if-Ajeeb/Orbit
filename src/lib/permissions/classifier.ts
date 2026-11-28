@@ -36,6 +36,7 @@ const ARTIFACT_TOOLS = new Set([
   'artifact_update',
   'artifact_edit',
   'artifact_read',
+  'artifact_append',
   'artifact_list',
 ]);
 
@@ -485,6 +486,8 @@ function artifactActions(toolName: string, args: Record<string, unknown>): strin
       return [id ? `Replace the content of ${id}` : 'Replace artifact content'];
     case 'artifact_edit':
       return [id ? `Apply small edits to ${id}` : 'Apply small edits'];
+    case 'artifact_append':
+      return [id ? `Append content to ${id}` : 'Append artifact content'];
     default:
       return [id ? `Read artifact ${id}` : 'Read artifact data'];
   }

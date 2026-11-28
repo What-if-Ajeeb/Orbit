@@ -19,6 +19,7 @@ export { ArtifactStore, applyExactEdits, type ArtifactEdit, type CreateArtifactI
 export { escapeHtml, markdownToHtml, sanitizeUrl } from './markdown';
 export {
   ARTIFACT_CSP,
+  ARTIFACT_ERROR_BRIDGE_JS,
   buildPreviewDocument,
   injectCsp,
   type PreviewTheme,

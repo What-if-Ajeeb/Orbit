@@ -195,11 +195,19 @@ const artifactReadTool: AgentTool = {
   definition: {
     name: 'artifact_read',
     description:
-      'Read an existing artifact: its metadata, current content, and version history. Call this before editing an artifact you did not create in this turn.',
+      'Read an existing artifact: its metadata, a page of its current content, and version history. Returns at most 60000 characters per call. Pass start from a previous next_start to read the rest, or artifact_append to continue writing without rereading everything. Call this before editing an artifact you did not create in this turn.',
     parameters: {
       type: 'object',
       properties: {
         id: { type: 'string', description: 'The artifact id.' },
+        start: {
+          type: 'integer',
+          description: 'Character offset to read from. Defaults to 0.',
+        },
+        max_chars: {
+          type: 'integer',
+          description: `Maximum characters to return (1-${READ_CONTENT_MAX}). Defaults to ${READ_CONTENT_MAX}.`,
+        },
       },
       required: ['id'],
       additionalProperties: false,
@@ -220,8 +228,11 @@ const artifactReadTool: AgentTool = {
         return { content: toolFail('Artifact not found. It may have been deleted.'), trace: '' };
       }
 
-      const truncated = artifact.content.length > READ_CONTENT_MAX;
-      const content = truncated ? artifact.content.slice(0, READ_CONTENT_MAX) : artifact.content;
+      const totalLength = artifact.content.length;
+      const start = Math.min(Math.max(asInteger(args.start) ?? 0, 0), totalLength);
+      const maxChars = Math.min(Math.max(asInteger(args.max_chars) ?? READ_CONTENT_MAX, 1), READ_CONTENT_MAX);
+      const end = Math.min(start + maxChars, totalLength);
+      const content = artifact.content.slice(start, end);
 
       return {
         content: toolOk({
@@ -231,13 +242,54 @@ const artifactReadTool: AgentTool = {
           language: artifact.language,
           version: artifact.currentVersion,
           content,
-          content_truncated: truncated,
+          start,
+          max_chars: maxChars,
+          total_length: totalLength,
+          content_truncated: end < totalLength,
+          next_start: end < totalLength ? end : null,
           versions: artifact.versions.map((item) => ({
             version: item.version,
             summary: item.summary,
           })),
         }),
         trace: '',
+      };
+    } catch (error) {
+      return { content: toolFail(errorText(error)), trace: '' };
+    }
+  },
+};
+
+const artifactAppendTool: AgentTool = {
+  definition: {
+    name: 'artifact_append',
+    description:
+      'Append text to the end of an existing artifact and record a new version. Use this to continue a large artifact or add a section without sending the whole content again. The artifact keeps one title and type; never create a duplicate.',
+    parameters: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', description: 'The artifact id.' },
+        content: { type: 'string', description: 'Text to add after the current content.' },
+        summary: { type: 'string', description: 'Short note about what was added.' },
+      },
+      required: ['id', 'content'],
+      additionalProperties: false,
+    },
+  },
+  async execute({ db, userId }, args) {
+    try {
+      const store = new ArtifactStore(db);
+      const id = asString(args.id);
+
+      if (!id) {
+        return { content: toolFail('id is required.'), trace: '' };
+      }
+
+      const artifact = await store.append(userId, id, args.content, args.summary);
+
+      return {
+        content: toolOk(refResult(artifact)),
+        trace: `Appended to artifact “${artifact.title}” → v${artifact.currentVersion}`,
       };
     } catch (error) {
       return { content: toolFail(errorText(error)), trace: '' };
@@ -289,5 +341,6 @@ export const ARTIFACT_TOOLS: AgentTool[] = [
   artifactUpdateTool,
   artifactEditTool,
   artifactReadTool,
+  artifactAppendTool,
   artifactListTool,
 ];
