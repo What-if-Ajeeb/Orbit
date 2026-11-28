@@ -96,7 +96,7 @@ describe('Hermes route-level provider fallback', () => {
     expect(mocks.requestCompletion).toHaveBeenCalledOnce();
     expect(result.usedFallback).toBe(true);
     expect(result.turn.toolCalls).toEqual([]);
-    expect(result.turn.text).toContain('have not completed this request');
+    expect(result.turn.text).toContain('On-device AI is unavailable right now');
     expect(result.diagnostics.map((entry) => entry.outcome)).toEqual(['failed', 'fallback']);
     expect(result.diagnostics[0]).toMatchObject({ errorKind: 'auth', status: 401 });
   });
@@ -170,7 +170,7 @@ describe('Hermes route-level provider fallback', () => {
 
   it('skips the network entirely when no provider is configured', async () => {
     const result = await requestCompletionWithSystemFallback({
-      settings: settings({ model: '' }),
+      settings: settings({ baseUrl: '', model: '' }),
       messages,
       tools: [],
     });

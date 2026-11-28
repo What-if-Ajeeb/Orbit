@@ -94,7 +94,7 @@ describe('Hermes harness snapshot', () => {
   });
 
   it('reflects the deterministic system route when AI is unconfigured', () => {
-    const snapshot = build(settings({ model: '' }));
+    const snapshot = build(settings({ baseUrl: '', model: '' }));
 
     expect(snapshot.hermes.provider).toMatchObject({
       kind: 'system',

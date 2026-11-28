@@ -101,10 +101,10 @@ const memorySnapshot = buildMemorySnapshot({
 describe('provider runtime', () => {
   it('uses the deterministic system route when no provider is configured', async () => {
     const { buildProviderFallbackChain, resolveProviderRoute } = await import('./provider-runtime');
-    const route = resolveProviderRoute(settings());
+    const route = resolveProviderRoute(settings({ baseUrl: '', model: '' }));
 
     expect(route).toMatchObject({ kind: 'system', configured: false, adapterId: null });
-    expect(buildProviderFallbackChain(settings())).toHaveLength(1);
+    expect(buildProviderFallbackChain(settings({ baseUrl: '', model: '' }))).toHaveLength(1);
     expect(JSON.stringify(route)).not.toContain('apiKey');
   });
 
