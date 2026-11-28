@@ -14,8 +14,9 @@ import { useSession } from '@/context/auth';
 import { useSidebar } from '@/context/sidebar';
 import { useAppTheme, useStyles, type AppTheme } from '@/context/theme';
 import {
-  addBond, addXp, ensureStarterBuddy, getForm, getPersonality, getSpecies,
-  logBuddyActivity, setBuddyMood, type BuddyAnimationState, type UserBuddy, xpForLevel,
+  ensureStarterBuddy, evaluateBuddyProgress, getBuddyCustomization, getForm,
+  getPersonality, getSpecies, publishUserInteraction, rewardDailyLogin, setBuddyMood,
+  type BuddyAccessory, type BuddyAnimationState, type UserBuddy, xpForLevel,
 } from '@/lib/buddy';
 import { radius, spacing } from '@/theme';
 
@@ -48,6 +49,7 @@ export default function BuddyScreen() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [anim, setAnim] = useState<BuddyAnimationState>('idle');
+  const [accessory, setAccessory] = useState<BuddyAccessory>('none');
   const [speakingToken, setSpeakingToken] = useState<string | null>(null);
   const speaking = speakingToken !== null;
   const loadedRef = useRef(false);
@@ -58,6 +60,13 @@ export default function BuddyScreen() {
       const active = await ensureStarterBuddy(db, user.id);
       setBuddy(active);
       setAnim(active.mood === 'happy' ? 'happy' : active.mood === 'sleepy' ? 'sleeping' : 'idle');
+      const [customization, daily] = await Promise.all([
+        getBuddyCustomization(db, user.id, active.id),
+        rewardDailyLogin(db, user.id),
+      ]);
+      setAccessory((customization.accessory as BuddyAccessory) ?? 'none');
+      const current = daily.buddy ?? active;
+      await evaluateBuddyProgress(db, user.id, current);
     } catch (err) { console.warn('Failed to load buddy', err); }
     finally { setLoading(false); loadedRef.current = true; }
   }, [db, user]);
@@ -71,16 +80,24 @@ export default function BuddyScreen() {
   const prevLevelXp = buddy && buddy.level > 1 ? xpForLevel(buddy.level - 1) : 0;
   const xpPct = buddy ? Math.max(0, Math.min(1, (buddy.xp - prevLevelXp) / Math.max(1, nextLevelXp - prevLevelXp))) : 0;
 
-  const runActivity = async (label: string, nextAnim: BuddyAnimationState, mood: UserBuddy['mood'], xp: number, bond: number, message: string) => {
+  const runActivity = async (
+    label: string,
+    nextAnim: BuddyAnimationState,
+    mood: UserBuddy['mood'],
+    interaction: 'play' | 'feed' | 'pet' | 'train',
+    message: string
+  ) => {
     if (!user || !buddy || busy) return;
     setBusy(true);
     setAnim(nextAnim);
     try {
-      await addXp(db, user.id, buddy.id, xp);
-      await addBond(db, user.id, buddy.id, bond);
+      publishUserInteraction({
+        userId: user.id,
+        interaction,
+        surface: 'buddy_home',
+        occurrenceId: `${buddy.id}:${Date.now()}:${interaction}`,
+      });
       await setBuddyMood(db, user.id, buddy.id, mood);
-      await logBuddyActivity(db, user.id, buddy.id, label, xp, bond);
-      await load();
       setAnim('celebrating');
       setTimeout(() => setAnim('idle'), 1400);
       Alert.alert(label, message);
@@ -140,7 +157,7 @@ export default function BuddyScreen() {
           </View>
 
           <View style={styles.avatarWrap}>
-            <BuddyAvatar speciesId={buddy.speciesId} formId={buddy.currentFormId} size={Math.min(280, Math.max(190, Math.floor(width - 96)))} state={anim} speaking={speaking} onStateChange={setAnim} />
+            <BuddyAvatar speciesId={buddy.speciesId} formId={buddy.currentFormId} size={Math.min(280, Math.max(190, Math.floor(width - 96)))} state={anim} speaking={speaking} accessory={accessory} onStateChange={setAnim} />
           </View>
 
           <View style={styles.moodRow}>
@@ -166,15 +183,18 @@ export default function BuddyScreen() {
           <Text style={styles.sectionTitle}>Interact</Text>
           <View style={styles.actionsGrid}>
             {[
-              { icon: 'chatbubble-ellipses-outline', label: 'Chat', onPress: () => router.navigate('/(app)/(tabs)/chat' as never) },
+              { icon: 'chatbubble-ellipses-outline', label: 'Buddy Chat', onPress: () => router.navigate(`/(app)/buddy/chat?id=${buddy.id}` as never) },
               { icon: 'mic-outline', label: 'Voice', onPress: onVoice },
-              { icon: 'game-controller-outline', label: 'Play', onPress: () => void runActivity('Play', 'playing', 'happy', 12, 4, personality?.encouragement ?? 'That was fun!') },
-              { icon: 'restaurant-outline', label: 'Feed', onPress: () => void runActivity('Feed', 'feeding', 'happy', 8, 3, 'Yum! Your buddy feels cared for.') },
-              { icon: 'hand-left-outline', label: 'Pet', onPress: () => void runActivity('Pet', 'petting', 'calm', 6, 5, personality?.comfort ?? 'Your buddy feels close to you.') },
-              { icon: 'barbell-outline', label: 'Train', onPress: () => void runActivity('Train', 'thinking', 'focused', 15, 2, 'Training complete. XP gained.') },
+              { icon: 'game-controller-outline', label: 'Play', onPress: () => void runActivity('Play', 'playing', 'happy', 'play', personality?.encouragement ?? 'That was fun!') },
+              { icon: 'restaurant-outline', label: 'Feed', onPress: () => void runActivity('Feed', 'feeding', 'happy', 'feed', 'Yum! Your buddy feels cared for.') },
+              { icon: 'hand-left-outline', label: 'Pet', onPress: () => void runActivity('Pet', 'petting', 'calm', 'pet', personality?.comfort ?? 'Your buddy feels close to you.') },
+              { icon: 'barbell-outline', label: 'Train', onPress: () => void runActivity('Train', 'thinking', 'focused', 'train', 'Training complete. Progress recorded.') },
               { icon: 'sparkles-outline', label: 'Evolve', onPress: () => router.navigate(`/(app)/buddy/evolve?id=${buddy.id}` as never) },
-              { icon: 'person-outline', label: 'Profile', onPress: () => router.navigate('/settings/account' as never) },
-              { icon: 'git-branch-outline', label: 'Species', onPress: () => router.navigate(`/(app)/buddy/tree?species=${buddy.speciesId}` as never) },
+              { icon: 'person-outline', label: 'Profile', onPress: () => router.navigate(`/(app)/buddy/profile?id=${buddy.id}` as never) },
+              { icon: 'git-branch-outline', label: 'Species', onPress: () => router.navigate(`/(app)/buddy/tree?speciesId=${buddy.speciesId}` as never) },
+              { icon: 'stats-chart-outline', label: 'Progress', onPress: () => router.navigate(`/(app)/buddy/progress?id=${buddy.id}` as never) },
+              { icon: 'time-outline', label: 'Reactions', onPress: () => router.navigate(`/(app)/buddy/reactions?id=${buddy.id}` as never) },
+              { icon: 'color-palette-outline', label: 'Customize', onPress: () => router.navigate(`/(app)/buddy/customize?id=${buddy.id}` as never) },
             ].map((a) => (
               <Pressable key={a.label} style={styles.actionBtn} onPress={a.onPress} disabled={busy}>
                 <Ionicons name={a.icon as never} size={20} color={colors.accent} />

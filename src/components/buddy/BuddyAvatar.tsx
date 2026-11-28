@@ -1,10 +1,10 @@
 /* eslint-disable react-hooks/refs */
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Easing, Pressable } from 'react-native';
+import { AccessibilityInfo, Animated, Easing, Pressable, Text, View } from 'react-native';
 import Svg, { Circle, Defs, Ellipse, G, LinearGradient, Path, Stop } from 'react-native-svg';
 
 import { renderCharacter } from './renderer';
-import type { BuddyAnimationState } from '@/lib/buddy/types';
+import type { BuddyAccessory, BuddyAnimationState } from '@/lib/buddy/types';
 import { isTransient, transientMs } from '@/lib/buddy/engine/stateMachine';
 
 type Props = {
@@ -15,6 +15,8 @@ type Props = {
   speaking?: boolean;
   onStateChange?: (state: BuddyAnimationState) => void;
   interactive?: boolean;
+  /** Cosmetic-only overlay; never affects stats, permissions, or animations. */
+  accessory?: BuddyAccessory;
 };
 
 type Palette = { fur: string; fur2: string; belly: string; ear: string; accent: string; eye: string };
@@ -40,16 +42,51 @@ const PALETTES: Record<string, Palette> = {
 
 function getPalette(speciesId: string): Palette { return PALETTES[speciesId] ?? PALETTES.fox; }
 
-export function BuddyAvatar({ speciesId, formId, size = 220, state = 'idle', speaking = false, onStateChange, interactive = true }: Props) {
+const ACCESSORY_GLYPH: Record<BuddyAccessory, string> = {
+  none: '',
+  bow: '❀',
+  scarf: '≈',
+  crown: '♛',
+  star: '★',
+};
+
+export function BuddyAvatar({ speciesId, formId, size = 220, state = 'idle', speaking = false, onStateChange, interactive = true, accessory = 'none' }: Props) {
   const rendered = renderCharacter({ speciesId, formId, size, state, speaking, onStateChange, interactive });
-  if (rendered) return rendered;
-  return <GenericBuddyAvatar speciesId={speciesId} size={size} state={state} onStateChange={onStateChange} interactive={interactive} />;
+  const avatar = rendered ?? (
+    <GenericBuddyAvatar speciesId={speciesId} size={size} state={state} onStateChange={onStateChange} interactive={interactive} />
+  );
+  const glyph = ACCESSORY_GLYPH[accessory];
+
+  return (
+    <View style={{ width: size, height: size }}>
+      {avatar}
+      {glyph ? (
+        <View
+          pointerEvents="none"
+          style={{
+            position: 'absolute',
+            right: size * 0.06,
+            bottom: size * 0.08,
+            width: size * 0.2,
+            height: size * 0.2,
+            borderRadius: size * 0.1,
+            backgroundColor: 'rgba(20,20,19,0.72)',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Text style={{ color: '#FFFFFF', fontSize: size * 0.11, lineHeight: size * 0.13 }}>{glyph}</Text>
+        </View>
+      ) : null}
+    </View>
+  );
 }
 
 function GenericBuddyAvatar({ speciesId, size = 220, state = 'idle', onStateChange, interactive = true }: Omit<Props, 'formId' | 'speaking'>) {
   const p = getPalette(speciesId);
   const [internal, setInternal] = useState<BuddyAnimationState>(state);
   const [blinkClosed, setBlinkClosed] = useState(false);
+  const [reducedMotion, setReducedMotion] = useState(false);
   const anim = useRef(new Animated.Value(0)).current;
   const bounce = useRef(new Animated.Value(0)).current;
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -60,15 +97,31 @@ function GenericBuddyAvatar({ speciesId, size = 220, state = 'idle', onStateChan
   }, [state]);
 
   useEffect(() => {
+    let mounted = true;
+    AccessibilityInfo.isReduceMotionEnabled?.()
+      .then((enabled) => { if (mounted) setReducedMotion(!!enabled); })
+      .catch(() => {});
+    const sub = AccessibilityInfo.addEventListener?.('reduceMotionChanged', (enabled) => {
+      if (mounted) setReducedMotion(!!enabled);
+    });
+    return () => {
+      mounted = false;
+      sub?.remove?.();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (reducedMotion) return;
     const loop = Animated.loop(Animated.sequence([
       Animated.timing(anim, { toValue: 1, duration: 2200, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
       Animated.timing(anim, { toValue: 0, duration: 2200, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
     ]));
     loop.start();
     return () => loop.stop();
-  }, [anim]);
+  }, [anim, reducedMotion]);
 
   useEffect(() => {
+    if (reducedMotion) return;
     let mounted = true;
     let t: ReturnType<typeof setTimeout> | null = null;
     const schedule = () => {
@@ -81,19 +134,21 @@ function GenericBuddyAvatar({ speciesId, size = 220, state = 'idle', onStateChan
     };
     schedule();
     return () => { mounted = false; if (t) clearTimeout(t); };
-  }, []);
+  }, [reducedMotion]);
 
   useEffect(() => {
     if (timer.current) clearTimeout(timer.current);
     if (isTransient(internal)) {
-      Animated.sequence([
-        Animated.timing(bounce, { toValue: -8, duration: 140, useNativeDriver: true }),
-        Animated.timing(bounce, { toValue: 0, duration: 180, useNativeDriver: true }),
-      ]).start();
+      if (!reducedMotion) {
+        Animated.sequence([
+          Animated.timing(bounce, { toValue: -8, duration: 140, useNativeDriver: true }),
+          Animated.timing(bounce, { toValue: 0, duration: 180, useNativeDriver: true }),
+        ]).start();
+      }
       timer.current = setTimeout(() => { setInternal('idle'); onStateChange?.('idle'); }, transientMs(internal));
     }
     return () => { if (timer.current) clearTimeout(timer.current); };
-  }, [internal, bounce, onStateChange]);
+  }, [internal, bounce, onStateChange, reducedMotion]);
 
   // eslint-disable react-hooks/refs -- Animated interpolations are stable, created once from Animated.Value ref.
   const interp = useRef({
@@ -104,7 +159,14 @@ function GenericBuddyAvatar({ speciesId, size = 220, state = 'idle', onStateChan
   const { breathe, sway, floatY } = interp;
   // eslint-enable react-hooks/refs
   const moodScale = internal === 'happy' || internal === 'celebrating' ? 1.02 : internal === 'sad' ? 0.98 : 1;
-  const eyesClosed = internal === 'sleeping' || blinkClosed;
+  const eyesClosed = internal === 'sleeping' || (blinkClosed && !reducedMotion);
+  const transform = reducedMotion
+    ? undefined
+    : [
+        { translateY: Animated.add(floatY, bounce) },
+        { scale: Animated.multiply(breathe, moodScale) },
+        { rotate: sway as any },
+      ];
 
   const mouthPath = useMemo(() => {
     if (internal === 'happy' || internal === 'celebrating' || internal === 'playing') return 'M145 172c5 8 10 10 15 10s10-2 15-10';
@@ -138,7 +200,7 @@ function GenericBuddyAvatar({ speciesId, size = 220, state = 'idle', onStateChan
   return (
     <Pressable testID="buddy-generic-avatar" disabled={!interactive} onPress={() => trigger('tapped')} onLongPress={() => trigger('long-pressed')} style={{ width: size, height: size }}>
       {/* eslint-disable react-hooks/refs -- stable Animated interpolation refs */}
-      <Animated.View style={{ flex: 1, transform: [{ translateY: Animated.add(floatY, bounce) }, { scale: Animated.multiply(breathe, moodScale) }, { rotate: sway as any }] }}>
+      <Animated.View style={{ flex: 1, transform }}>
       {/* eslint-enable react-hooks/refs */}
         <Svg viewBox="0 0 320 320" width={size} height={size}>
           <Defs>

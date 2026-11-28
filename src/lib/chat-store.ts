@@ -1,5 +1,6 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
+import { publishUserInteraction } from './buddy/event-sources';
 import { rewardChatMessage } from './buddy/rewards';
 import { isArtifactType, type ArtifactRef, type ArtifactType } from './artifacts/types';
 import type { AgentTaskVerification } from './agent-runtime/types';
@@ -532,10 +533,23 @@ export function createSqliteChatStore(db: SQLiteDatabase): ChatStore {
         userId
       );
 
-      // Phase 3: small XP + bond for every user message
+      // Observation and progression are best effort; chat persistence above is
+      // already committed and is never retried or altered by Buddy.
       if (role === 'user') {
+        const messageKey = String(result.lastInsertRowId);
         try {
-          await rewardChatMessage(db, userId);
+          publishUserInteraction({
+            userId,
+            interaction: 'chat_message',
+            surface: 'agent_chat',
+            occurrenceId: messageKey,
+            occurredAt: createdAt,
+          });
+        } catch (err) {
+          console.warn('Buddy interaction observation failed', err);
+        }
+        try {
+          await rewardChatMessage(db, userId, messageKey, createdAt);
         } catch (err) {
           console.warn('Buddy chat reward failed', err);
         }

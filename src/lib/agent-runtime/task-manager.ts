@@ -7,6 +7,7 @@ import type {
   HybridAuditEvent,
   HybridTaskState,
 } from '../hybrid-agent/types';
+import { publishTaskLifecycleEvent } from '../buddy/event-sources';
 
 import { hashChain, stableJson } from './hash';
 import type {
@@ -487,7 +488,11 @@ export async function createAgentTask(
     taskId: id,
     userId: input.userId,
     type: 'task.created',
-    payload: { title: input.title, kind: input.kind ?? 'turn' },
+    payload: {
+      title: input.title,
+      kind: input.kind ?? 'turn',
+      priority: input.priority ?? 0,
+    },
     traceId: input.traceId,
     hybridState: input.hybridState,
   });
@@ -643,6 +648,7 @@ export async function updateAgentTaskStatus(
       payload: {
         phase: patch.phase ?? task.phase,
         verified: patch.verification?.verified ?? task.verification?.verified ?? false,
+        priority: task.priority,
       },
       traceId: patch.traceId ?? task.traceId,
       hybridState: patch.hybridState ?? task.hybridState,
@@ -663,7 +669,7 @@ export async function appendAgentTaskEvent(
   }
 ): Promise<AgentTaskEvent> {
   await ensureHybridSchema(db);
-  let saved: AgentTaskEvent | null = null;
+  const savedRef: { value: AgentTaskEvent | null } = { value: null };
 
   await db.withTransactionAsync(async () => {
     const [previous, sequenceRow] = await Promise.all([
@@ -718,10 +724,26 @@ export async function appendAgentTaskEvent(
     )) as EventRow | null;
 
     if (!row) throw new Error('The task event could not be read back.');
-    saved = rowToEvent(row);
+    savedRef.value = rowToEvent(row);
   });
 
+  const saved = savedRef.value;
   if (!saved) throw new Error('The task event could not be saved.');
+
+  // Observation is best effort and never affects task durability or execution.
+  try {
+    publishTaskLifecycleEvent({
+      userId: saved.userId,
+      taskId: saved.taskId,
+      type: saved.type,
+      eventId: saved.id,
+      occurredAt: saved.createdAt,
+      payload: saved.payload,
+    });
+  } catch (error) {
+    console.warn('Buddy task observation failed', error);
+  }
+
   return saved;
 }
 

@@ -274,7 +274,7 @@ export async function updateTask(
   // Phase 3: reward active buddy when a task is newly completed
   if (input.status === 'done' && existing.status !== 'done') {
     try {
-      await rewardTaskComplete(db, userId, updated.priority);
+      await rewardTaskComplete(db, userId, updated.priority, String(taskId));
     } catch (err) {
       console.warn('Buddy reward on task complete failed', err);
     }

@@ -21,6 +21,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AddToChatSheet } from '@/components/AddToChatSheet';
 import { AgentActivityTimeline } from '@/components/AgentActivityTimeline';
+import { BuddyReactionStrip } from '@/components/buddy/BuddyReactionStrip';
 import { ChatBubble } from '@/components/ChatBubble';
 import { ChatHistoryPanel } from '@/components/ChatHistoryPanel';
 import { FormError } from '@/components/FormError';
@@ -1092,6 +1093,8 @@ export function AgentChatView({
           { paddingBottom: Math.max(insets.bottom, spacing.xs) },
         ]}
       >
+        <BuddyReactionStrip />
+
         {error ? (
           <View style={styles.errorWrap}>
             <FormError message={error} onDismiss={() => setError(null)} />

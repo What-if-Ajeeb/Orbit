@@ -195,7 +195,7 @@ describe('durable agent task ledger', () => {
         taskId: task.id,
         sequence: created.sequence,
         type: 'task.created',
-        payload: { title: 'Legacy hash', kind: 'turn' },
+        payload: { title: 'Legacy hash', kind: 'turn', priority: 0 },
         createdAt: created.createdAt,
         previousHash: '',
       })
