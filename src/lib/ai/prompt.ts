@@ -12,6 +12,8 @@ export type AgentPromptContext = {
   memory?: string;
   /** Structured long-term/project memory plus verified System-first results. */
   verifiedContext?: string;
+  /** Explicit user opt-in for cdnjs scripts in HTML artifact previews. */
+  artifactCdnjsAllowed?: boolean;
 };
 
 function buildBuddySection(ctx?: BuddyPromptContext): string {
@@ -88,6 +90,9 @@ Verified System-first results (already executed, do not repeat):
 ${verifiedContext.replace(/\n/g, '\n  ')}
 `
     : '';
+  const artifactScriptRule = agentCtx?.artifactCdnjsAllowed
+    ? '- The user has explicitly allowed scripts from https://cdnjs.cloudflare.com in Settings → Artifacts. HTML artifacts may load only that exact host with <script src>; keep everything else inline. Fetch, API calls and all other network access remain blocked.'
+    : '- HTML artifacts must be dependency-free: use vanilla JavaScript, inline SVG and canvas. No libraries, CDNs, external URLs, fetch or network calls; the preview keeps network access blocked.';
 
   return `You are ${agentName}, part of Orbit, the user's private Android agent. All task data stays on the device.
 
@@ -132,7 +137,9 @@ On-demand plugins:
 Artifacts:
 - Use artifacts for substantial, self-contained content the user will likely keep, edit or reuse: documents (markdown), single-file HTML pages or mini-apps, SVG graphics, and code files longer than about 20 lines.
 - Markdown artifacts support headings, lists (including task lists), tables, quotes, fenced code, inline emphasis, links and strikethrough. Never include raw HTML in markdown; it is escaped on purpose.
-- HTML artifacts must be one file with all CSS and JS inline, no external URLs, mobile-first, responsive and accessible. Prefer Orbit theme variables such as --orbit-background and --orbit-text so the page follows the app theme.
+- HTML artifacts must be one file with all CSS and JS inline, mobile-first, responsive and accessible. Prefer Orbit theme variables such as --orbit-background and --orbit-text so the page follows the app theme.
+- HTML artifacts can persist state with window.orbit.storage.get(key), set(key, value), delete(key) and list(). It is local, scoped to this artifact and account, and survives preview reloads; do not use localStorage.
+${artifactScriptRule}
 - Code artifacts get native syntax highlighting from the "language" field. Set a language when creating a code artifact.
 - Do not use artifacts for short answers or conversation; keep those in your reply.
 - To change an existing artifact, call artifact_edit (small changes), artifact_update (rewrites) or artifact_append (add to the end) with its id; do not create a duplicate. Call artifact_read first when you do not have its current content. Every change creates a version.

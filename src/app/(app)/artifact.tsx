@@ -3,7 +3,14 @@ import * as Clipboard from 'expo-clipboard';
 import * as Linking from 'expo-linking';
 import { useFocusEffect, useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  type ComponentRef,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   Alert,
   FlatList,
@@ -23,16 +30,22 @@ import { useAppTheme, useStyles, type AppTheme } from '@/context/theme';
 import {
   ArtifactStore,
   ARTIFACT_CONTENT_MAX,
+  ARTIFACT_STORAGE_BRIDGE_JS,
+  buildStorageReplyScript,
   highlightCodeLine,
+  parseArtifactBridgeMessage,
   prepareArtifactExport,
   shareArtifactFile,
+  type ArtifactBridgeMessage,
   type ArtifactDetail,
+  type ArtifactStorageReply,
   type CodeTokenKind,
 } from '@/lib/artifacts';
 import {
   ARTIFACT_ERROR_BRIDGE_JS,
   buildPreviewDocument,
 } from '@/lib/artifacts/preview';
+import { loadAiSettings } from '@/lib/ai/settings';
 import { formatDateTime } from '@/lib/dates';
 import { fonts, radius, spacing } from '@/theme';
 
@@ -51,38 +64,7 @@ function isExternalLink(url: string): boolean {
   return /^(https?:|mailto:)/i.test(url);
 }
 
-const BRIDGE_LABELS: Record<string, string> = {
-  error: 'Error',
-  console_error: 'Console error',
-  console_warn: 'Console warning',
-};
-
-/** Accepts only the small, content-free messages sent by the error bridge. */
-function parseBridgeMessage(data: string): string | null {
-  try {
-    const parsed = JSON.parse(data) as {
-      source?: unknown;
-      type?: unknown;
-      message?: unknown;
-    };
-
-    if (parsed.source !== 'orbit-artifact') {
-      return null;
-    }
-
-    if (typeof parsed.type !== 'string' || !BRIDGE_LABELS[parsed.type]) {
-      return null;
-    }
-
-    if (typeof parsed.message !== 'string' || !parsed.message) {
-      return null;
-    }
-
-    return `${BRIDGE_LABELS[parsed.type]}: ${parsed.message.slice(0, 500)}`;
-  } catch {
-    return null;
-  }
-}
+const ARTIFACT_BRIDGE_JS = `${ARTIFACT_ERROR_BRIDGE_JS}\n${ARTIFACT_STORAGE_BRIDGE_JS}`;
 
 function codeTokenColor(colors: AppTheme['colors'], kind: CodeTokenKind): string {
   switch (kind) {
@@ -129,7 +111,9 @@ export default function ArtifactScreen() {
   const [editOpen, setEditOpen] = useState(false);
   const [editDraft, setEditDraft] = useState('');
   const [editError, setEditError] = useState<string | null>(null);
+  const [cdnjsAllowed, setCdnjsAllowed] = useState(false);
 
+  const webViewRef = useRef<ComponentRef<WebViewComponent> | null>(null);
   const store = useMemo(() => new ArtifactStore(db), [db]);
   const isOldVersion =
     detail !== null && version !== null && version !== detail.currentVersion;
@@ -194,6 +178,26 @@ export default function ArtifactScreen() {
     useCallback(() => {
       void load();
     }, [load])
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+
+      void loadAiSettings()
+        .then((settings) => {
+          if (active) {
+            setCdnjsAllowed(settings.artifactCdnjsAllowed === true);
+          }
+        })
+        .catch(() => {
+          // Keep the safe default (off) when settings cannot be read.
+        });
+
+      return () => {
+        active = false;
+      };
+    }, [])
   );
 
   const openVersion = useCallback(
@@ -419,13 +423,72 @@ export default function ArtifactScreen() {
     setFullscreen((current) => !current);
   }, []);
 
-  const handleWebViewMessage = useCallback((event: { nativeEvent: { data: string } }) => {
-    const message = parseBridgeMessage(event.nativeEvent.data);
+  const handleStorageRequest = useCallback(
+    async (message: Extract<ArtifactBridgeMessage, { kind: 'storage' }>) => {
+      const reply = (result: ArtifactStorageReply) => {
+        webViewRef.current?.injectJavaScript(buildStorageReplyScript(message.id, result));
+      };
 
-    if (message) {
-      setRuntimeError((current) => (current === message ? current : message));
-    }
-  }, []);
+      if (!user || !detail) {
+        reply({ ok: false, error: 'This artifact is no longer open.' });
+        return;
+      }
+
+      try {
+        switch (message.op) {
+          case 'get': {
+            const value = await store.kvGet(user.id, detail.id, message.key);
+            reply({ ok: true, value });
+            break;
+          }
+          case 'set': {
+            if (typeof message.value !== 'string') {
+              throw new Error('value is required.');
+            }
+
+            await store.kvSet(user.id, detail.id, message.key, message.value);
+            reply({ ok: true, value: null });
+            break;
+          }
+          case 'delete': {
+            await store.kvDelete(user.id, detail.id, message.key);
+            reply({ ok: true, value: null });
+            break;
+          }
+          case 'list': {
+            const keys = await store.kvList(user.id, detail.id);
+            reply({ ok: true, value: keys });
+            break;
+          }
+        }
+      } catch (storageError) {
+        reply({
+          ok: false,
+          error:
+            storageError instanceof Error ? storageError.message : 'Storage request failed.',
+        });
+      }
+    },
+    [detail, store, user]
+  );
+
+  const handleWebViewMessage = useCallback(
+    (event: { nativeEvent: { data: string } }) => {
+      const parsed = parseArtifactBridgeMessage(event.nativeEvent.data);
+
+      if (!parsed) {
+        return;
+      }
+
+      if (parsed.kind === 'error') {
+        setRuntimeError((current) => (current === parsed.message ? current : parsed.message));
+        return;
+      }
+
+      void handleStorageRequest(parsed);
+    },
+    [handleStorageRequest]
+  );
 
   const handleShouldStart = useCallback((event: { url: string }) => {
     const url = event.url;
@@ -454,9 +517,13 @@ export default function ArtifactScreen() {
   const previewHtml = useMemo(
     () =>
       detail
-        ? buildPreviewDocument({ type: detail.type, content }, { isLight, colors })
+        ? buildPreviewDocument(
+            { type: detail.type, content },
+            { isLight, colors },
+            { cdnjsAllowed }
+          )
         : '',
-    [colors, content, detail, isLight]
+    [cdnjsAllowed, colors, content, detail, isLight]
   );
 
   const codeChunks = useMemo(() => {
@@ -473,6 +540,7 @@ export default function ArtifactScreen() {
   const previewView =
     WebViewView && detail ? (
       <WebViewView
+        ref={webViewRef}
         key={`${detail.id}-${version}-${previewNonce}`}
         testID="artifact-preview"
         source={{ html: previewHtml, baseUrl: 'about:blank' }}
@@ -502,7 +570,7 @@ export default function ArtifactScreen() {
         allowsPictureInPictureMediaPlayback={false}
         cacheEnabled={false}
         injectedJavaScriptBeforeContentLoaded={
-          detail.type === 'html' ? ARTIFACT_ERROR_BRIDGE_JS : undefined
+          detail.type === 'html' ? ARTIFACT_BRIDGE_JS : undefined
         }
         onMessage={detail.type === 'html' ? handleWebViewMessage : undefined}
         onShouldStartLoadWithRequest={handleShouldStart}

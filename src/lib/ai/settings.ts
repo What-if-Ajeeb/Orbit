@@ -27,6 +27,8 @@ export type AiSettings = {
   apiKey: string;
   /** Opt-in for automatic web tools. Older saved settings default to enabled. */
   webSearch?: boolean;
+  /** Artifact previews may load scripts from cdnjs.cloudflare.com. Default off. */
+  artifactCdnjsAllowed?: boolean;
 };
 
 /**
@@ -41,6 +43,7 @@ export function onDeviceOllamaSettings(): AiSettings {
     model: '',
     apiKey: '',
     webSearch: true,
+    artifactCdnjsAllowed: false,
   };
 }
 
@@ -227,6 +230,7 @@ function normalizeSettings(value: Partial<AiSettings> | null): AiSettings {
     model: (value?.model ?? preset.model).trim(),
     apiKey: (value?.apiKey ?? '').trim(),
     webSearch: value?.webSearch !== false,
+    artifactCdnjsAllowed: value?.artifactCdnjsAllowed === true,
   };
 }
 
@@ -256,6 +260,12 @@ export async function saveAiSettings(settings: AiSettings): Promise<AiSettings> 
 
   await SecureStore.setItemAsync(SETTINGS_KEY, raw);
   return normalized;
+}
+
+/** Persists the artifact CDN opt-in without disturbing provider settings. */
+export async function setArtifactCdnjsAllowed(enabled: boolean): Promise<AiSettings> {
+  const settings = await loadAiSettings();
+  return saveAiSettings({ ...settings, artifactCdnjsAllowed: enabled === true });
 }
 
 export async function clearAiSettings(): Promise<void> {

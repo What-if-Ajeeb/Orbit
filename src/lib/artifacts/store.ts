@@ -2,6 +2,9 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 import {
   ARTIFACT_CONTENT_MAX,
+  ARTIFACT_KV_KEY_MAX_CHARS,
+  ARTIFACT_KV_TOTAL_MAX_CHARS,
+  ARTIFACT_KV_VALUE_MAX_CHARS,
   ARTIFACT_MAX_VERSIONS,
   ARTIFACT_TITLE_MAX,
   isArtifactType,
@@ -34,6 +37,10 @@ type VersionRow = {
   summary: string | null;
   created_at: number;
 };
+
+type ArtifactKvValueRow = { value: string };
+type ArtifactKvKeyRow = { key: string };
+type ArtifactKvTotalRow = { total: number };
 
 export type CreateArtifactInput = {
   title: string;
@@ -165,6 +172,32 @@ function validateLanguage(raw: unknown): string | null {
   return language || null;
 }
 
+function validateKvKey(raw: unknown): string {
+  if (typeof raw !== 'string' || raw.trim().length === 0) {
+    throw new Error('key must be a non-empty string.');
+  }
+
+  if (raw.length > ARTIFACT_KV_KEY_MAX_CHARS) {
+    throw new Error(`key can be at most ${ARTIFACT_KV_KEY_MAX_CHARS} characters.`);
+  }
+
+  return raw;
+}
+
+function validateKvValue(raw: unknown): string {
+  if (typeof raw !== 'string') {
+    throw new Error('value must be a string.');
+  }
+
+  if (raw.length > ARTIFACT_KV_VALUE_MAX_CHARS) {
+    throw new Error(
+      `value has ${raw.length} characters; the limit is ${ARTIFACT_KV_VALUE_MAX_CHARS}.`
+    );
+  }
+
+  return raw;
+}
+
 /**
  * Exact-match replacement used by artifact_edit. Every `old` must occur
  * exactly once so a small change can never clobber the wrong text.
@@ -214,6 +247,111 @@ export function applyExactEdits(content: string, rawEdits: unknown): string {
  */
 export class ArtifactStore {
   constructor(private db: SQLiteDatabase) {}
+
+  private async assertArtifactOwner(userId: number, id: string): Promise<void> {
+    const owner = await this.db.getFirstAsync<{ id: string }>(
+      'SELECT id FROM artifacts WHERE id = ? AND user_id = ?',
+      id,
+      userId
+    );
+
+    if (!owner) {
+      throw new Error('Artifact not found. It may have been deleted.');
+    }
+  }
+
+  /**
+   * Persists state for interactive HTML artifacts. The WebView has no DOM
+   * storage, so the artifact calls this through the postMessage bridge instead
+   * of localStorage. Writes are scoped to the user and capped per value and
+   * per artifact, inside one transaction.
+   */
+  async kvSet(
+    userId: number,
+    id: string,
+    rawKey: unknown,
+    rawValue: unknown
+  ): Promise<void> {
+    const key = validateKvKey(rawKey);
+    const value = validateKvValue(rawValue);
+
+    await this.db.withTransactionAsync(async () => {
+      await this.assertArtifactOwner(userId, id);
+
+      const previous = await this.db.getFirstAsync<ArtifactKvValueRow>(
+        'SELECT value FROM artifact_kv WHERE user_id = ? AND artifact_id = ? AND key = ?',
+        userId,
+        id,
+        key
+      );
+      const total = await this.db.getFirstAsync<ArtifactKvTotalRow>(
+        'SELECT COALESCE(SUM(LENGTH(value)), 0) AS total FROM artifact_kv WHERE user_id = ? AND artifact_id = ?',
+        userId,
+        id
+      );
+      const nextTotal =
+        (total?.total ?? 0) - (previous?.value.length ?? 0) + value.length;
+
+      if (nextTotal > ARTIFACT_KV_TOTAL_MAX_CHARS) {
+        throw new Error(
+          `This artifact already stores ${total?.total ?? 0} characters; the combined limit is ${ARTIFACT_KV_TOTAL_MAX_CHARS}. Delete a key before adding more.`
+        );
+      }
+
+      const now = Date.now();
+
+      await this.db.runAsync(
+        `INSERT INTO artifact_kv (artifact_id, user_id, key, value, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT(user_id, artifact_id, key)
+         DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+        id,
+        userId,
+        key,
+        value,
+        now,
+        now
+      );
+    });
+  }
+
+  async kvGet(userId: number, id: string, rawKey: unknown): Promise<string | null> {
+    const key = validateKvKey(rawKey);
+    await this.assertArtifactOwner(userId, id);
+
+    const row = await this.db.getFirstAsync<ArtifactKvValueRow>(
+      'SELECT value FROM artifact_kv WHERE user_id = ? AND artifact_id = ? AND key = ?',
+      userId,
+      id,
+      key
+    );
+
+    return row ? row.value : null;
+  }
+
+  async kvDelete(userId: number, id: string, rawKey: unknown): Promise<void> {
+    const key = validateKvKey(rawKey);
+    await this.assertArtifactOwner(userId, id);
+
+    await this.db.runAsync(
+      'DELETE FROM artifact_kv WHERE user_id = ? AND artifact_id = ? AND key = ?',
+      userId,
+      id,
+      key
+    );
+  }
+
+  async kvList(userId: number, id: string): Promise<string[]> {
+    await this.assertArtifactOwner(userId, id);
+
+    const rows = await this.db.getAllAsync<ArtifactKvKeyRow>(
+      'SELECT key FROM artifact_kv WHERE user_id = ? AND artifact_id = ? ORDER BY key',
+      userId,
+      id
+    );
+
+    return rows.map((row) => row.key);
+  }
 
   async create(userId: number, input: CreateArtifactInput): Promise<Artifact> {
     const title = validateTitle(input.title);

@@ -42,6 +42,12 @@ export const ARTIFACT_TITLE_MAX = 80;
 export const ARTIFACT_CONTENT_MAX = 200_000;
 /** Newest versions kept per artifact; older ones are pruned. */
 export const ARTIFACT_MAX_VERSIONS = 30;
+/** Maximum characters in one window.orbit.storage key. */
+export const ARTIFACT_KV_KEY_MAX_CHARS = 200;
+/** Maximum characters in one window.orbit.storage value (~1 MB). */
+export const ARTIFACT_KV_VALUE_MAX_CHARS = 1_000_000;
+/** Maximum combined characters across all keys of one artifact (~5 MB). */
+export const ARTIFACT_KV_TOTAL_MAX_CHARS = 5_000_000;
 
 const ARTIFACT_TYPES: ArtifactType[] = ['markdown', 'html', 'svg', 'code'];
 

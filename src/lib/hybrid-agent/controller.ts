@@ -806,6 +806,7 @@ export async function runAgentTurn(input: RuntimeTurnInput): Promise<RuntimeTurn
               toolsets.filter((descriptor) => descriptor.available.length > 0).map((descriptor) => descriptor.id)
             ),
             webSearchDisabled,
+            artifactCdnjsAllowed: input.settings.artifactCdnjsAllowed === true,
             toolsetIds: toolsets.map((descriptor) => descriptor.id),
             sessionHits,
           });

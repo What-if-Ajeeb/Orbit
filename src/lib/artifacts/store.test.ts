@@ -3,7 +3,12 @@ import { describe, expect, it } from 'vitest';
 import { artifactTestDb } from '@/testing/artifact-db';
 
 import { ArtifactStore, applyExactEdits } from './store';
-import { ARTIFACT_CONTENT_MAX } from './types';
+import {
+  ARTIFACT_CONTENT_MAX,
+  ARTIFACT_KV_KEY_MAX_CHARS,
+  ARTIFACT_KV_TOTAL_MAX_CHARS,
+  ARTIFACT_KV_VALUE_MAX_CHARS,
+} from './types';
 
 describe('applyExactEdits', () => {
   it('applies ordered, unique replacements', () => {
@@ -109,5 +114,54 @@ describe('ArtifactStore', () => {
     expect(updated.currentVersion).toBe(2);
     expect(state.content).toBe('Hello Orbit');
     expect(state.versions.find((entry) => entry.version === 2)?.summary).toBe('Edited (1 change)');
+  });
+});
+
+describe('ArtifactStore key-value state', () => {
+  it('stores, reads, lists and deletes scoped artifact state', async () => {
+    const { db, state } = artifactTestDb();
+    const store = new ArtifactStore(db);
+
+    expect(await store.kvGet(1, 'art_test', 'missing')).toBeNull();
+    await store.kvSet(1, 'art_test', 'tasks', '[1,2]');
+    await store.kvSet(1, 'art_test', 'theme', 'dark');
+
+    expect(await store.kvGet(1, 'art_test', 'tasks')).toBe('[1,2]');
+    expect(await store.kvList(1, 'art_test')).toEqual(['tasks', 'theme']);
+
+    await store.kvSet(1, 'art_test', 'tasks', '[3]');
+    expect(await store.kvGet(1, 'art_test', 'tasks')).toBe('[3]');
+
+    await store.kvDelete(1, 'art_test', 'theme');
+    expect(await store.kvList(1, 'art_test')).toEqual(['tasks']);
+    expect(state.kv.size).toBe(1);
+  });
+
+  it('rejects another user and invalid keys or values', async () => {
+    const { db } = artifactTestDb();
+    const store = new ArtifactStore(db);
+
+    await expect(store.kvSet(2, 'art_test', 'tasks', '[]')).rejects.toThrow(/Artifact not found/);
+    await expect(store.kvGet(1, 'art_test', '   ')).rejects.toThrow(/non-empty string/);
+    await expect(
+      store.kvSet(1, 'art_test', 'x'.repeat(ARTIFACT_KV_KEY_MAX_CHARS + 1), 'a')
+    ).rejects.toThrow(/at most 200/);
+    await expect(
+      store.kvSet(1, 'art_test', 'tasks', 'x'.repeat(ARTIFACT_KV_VALUE_MAX_CHARS + 1))
+    ).rejects.toThrow(/limit is 1000000/);
+  });
+
+  it('caps the combined storage for one artifact', async () => {
+    const { db } = artifactTestDb();
+    const store = new ArtifactStore(db);
+    const fullValue = 'x'.repeat(ARTIFACT_KV_VALUE_MAX_CHARS);
+
+    for (let index = 0; index < ARTIFACT_KV_TOTAL_MAX_CHARS / ARTIFACT_KV_VALUE_MAX_CHARS; index += 1) {
+      await store.kvSet(1, 'art_test', `key-${index}`, fullValue);
+    }
+
+    await expect(store.kvSet(1, 'art_test', 'overflow', 'y')).rejects.toThrow(
+      /combined limit is 5000000/
+    );
   });
 });

@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  ARTIFACT_CDNJS_HOST,
   ARTIFACT_CSP,
   ARTIFACT_ERROR_BRIDGE_JS,
+  artifactCsp,
   buildPreviewDocument,
   injectCsp,
   type PreviewTheme,
@@ -152,5 +154,33 @@ describe('artifact preview documents', () => {
     expect(ARTIFACT_ERROR_BRIDGE_JS).toContain("ReactNativeWebView");
     expect(ARTIFACT_ERROR_BRIDGE_JS).toContain("source: 'orbit-artifact'");
     expect(ARTIFACT_ERROR_BRIDGE_JS).toContain('MAX_LENGTH = 500');
+  });
+
+  it('keeps cdnjs scripts out of the default CSP and adds only the opted-in host', () => {
+    expect(ARTIFACT_CSP).not.toContain('cdnjs.cloudflare.com');
+    expect(artifactCsp({ cdnjsAllowed: false })).toBe(ARTIFACT_CSP);
+
+    const allowed = artifactCsp({ cdnjsAllowed: true });
+    expect(allowed).toContain(`script-src 'unsafe-inline' ${ARTIFACT_CDNJS_HOST}`);
+    expect(allowed).toContain("connect-src 'none'");
+    expect(allowed).not.toContain('cdnjs.cloudflare.com/');
+    expect(allowed.match(/cdnjs\.cloudflare\.com/g)).toHaveLength(1);
+  });
+
+  it('applies the cdnjs opt-in to HTML only and never enables scripts elsewhere', () => {
+    const html = buildPreviewDocument(
+      { type: 'html', content: '<p>Hi</p>' },
+      theme,
+      { cdnjsAllowed: true }
+    );
+    expect(firstHeadContents(html).startsWith(`<meta http-equiv="Content-Security-Policy" content="${artifactCsp({ cdnjsAllowed: true })}">`)).toBe(true);
+
+    const code = buildPreviewDocument(
+      { type: 'code', content: 'const x = 1;' },
+      theme,
+      { cdnjsAllowed: true }
+    );
+    expect(code).toContain("script-src 'none'");
+    expect(code).not.toContain(ARTIFACT_CDNJS_HOST);
   });
 });
