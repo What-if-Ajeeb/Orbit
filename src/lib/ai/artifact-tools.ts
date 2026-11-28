@@ -68,7 +68,7 @@ const artifactCreateTool: AgentTool = {
   definition: {
     name: 'artifact_create',
     description:
-      'Save substantial, self-contained content as an artifact the user can keep, open, and edit later: a document (markdown), a single-file HTML page or mini-app, an SVG graphic, or a code file longer than about 20 lines. Do not use it for short answers or conversation. Reply with one or two sentences after creating; never paste the content into chat.',
+      'Save substantial, self-contained content as an artifact the user can keep, open, edit, version and export later: a markdown document, a single-file HTML page or mini-app, an SVG graphic, or a code file longer than about 20 lines. Markdown supports headings, nested and task lists, tables, quotes, fenced code, emphasis, links and strikethrough; raw HTML is escaped. HTML must be one file with inline CSS/JS, no external URLs, and may use --orbit-* theme variables. Set `language` for code artifacts so the viewer can highlight them. Do not use it for short answers or conversation. Reply with one or two sentences after creating; never paste the content into chat.',
     parameters: {
       type: 'object',
       properties: {
@@ -76,7 +76,7 @@ const artifactCreateTool: AgentTool = {
         type: { type: 'string', enum: ['markdown', 'html', 'svg', 'code'] },
         language: {
           type: 'string',
-          description: 'Language label when type is code, e.g. javascript, python.',
+          description: 'Language label when type is code, e.g. javascript, python. Used for file extension and syntax highlighting.',
         },
         content: { type: 'string', description: 'The complete artifact content.' },
       },
@@ -109,7 +109,7 @@ const artifactUpdateTool: AgentTool = {
   definition: {
     name: 'artifact_update',
     description:
-      'Replace the entire content of an existing artifact with new content and record a new version. Use this for rewrites; prefer artifact_edit for small changes. Never create a duplicate artifact when an id already exists.',
+      'Replace the entire content of an existing artifact with new content and record a new version the user can browse or restore. Use this for rewrites; prefer artifact_edit for small changes. Never create a duplicate artifact when an id already exists.',
     parameters: {
       type: 'object',
       properties: {
@@ -146,7 +146,7 @@ const artifactEditTool: AgentTool = {
   definition: {
     name: 'artifact_edit',
     description:
-      'Apply small exact-match replacements inside an existing artifact and record a new version. Each `old` string must appear exactly once in the current content. Use this instead of artifact_update for small changes.',
+      'Apply small exact-match replacements inside an existing artifact and record a new version the user can browse or restore. Each `old` string must appear exactly once in the current content. Use this instead of artifact_update for small changes.',
     parameters: {
       type: 'object',
       properties: {
@@ -264,7 +264,7 @@ const artifactAppendTool: AgentTool = {
   definition: {
     name: 'artifact_append',
     description:
-      'Append text to the end of an existing artifact and record a new version. Use this to continue a large artifact or add a section without sending the whole content again. The artifact keeps one title and type; never create a duplicate.',
+      'Append text to the end of an existing artifact and record a new version the user can browse or restore. Use this to continue a large artifact or add a section without sending the whole content again. The artifact keeps one title and type; never create a duplicate.',
     parameters: {
       type: 'object',
       properties: {

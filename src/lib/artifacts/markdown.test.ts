@@ -67,6 +67,25 @@ describe('markdown artifact rendering', () => {
     expect(html).toContain('<ol><li>one</li><li>two</li></ol>');
   });
 
+  it('renders strikethrough, nested lists and task markers safely', () => {
+    const html = markdownToHtml(
+      [
+        '~~old plan~~',
+        '',
+        '- parent',
+        '  - child',
+        '  - [x] done',
+        '- [ ] next',
+      ].join('\n')
+    );
+
+    expect(html).toContain('<del>old plan</del>');
+    expect(html).toContain(
+      '<ul><li>parent<ul><li>child</li><li><span class="task-done" aria-label="done">☑</span> done</li></ul></li><li><span class="task-open" aria-label="not done">☐</span> next</li></ul>'
+    );
+    expect(html).not.toContain('<script');
+  });
+
   it('exposes a complete escape set for preview builders', () => {
     expect(escapeHtml(`&<>"'`)).toBe('&amp;&lt;&gt;&quot;&#39;');
   });

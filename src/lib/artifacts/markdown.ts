@@ -43,6 +43,8 @@ function renderInline(text: string): string {
     return safe ? `<a href="${safe}">${label}</a>` : label;
   });
 
+  out = out.replace(/~~([^~\n]+)~~/g, '<del>$1</del>');
+
   // Bold before italic so ** never becomes nested emphasis.
   out = out.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
   out = out.replace(/__([^_\n]+)__/g, '<strong>$1</strong>');
@@ -81,6 +83,91 @@ function isBlockStart(line: string): boolean {
     /^\s*\d+[.)]\s+/.test(line) ||
     /^```/.test(line)
   );
+}
+
+type ListItem = {
+  ordered: boolean;
+  depth: number;
+  content: string;
+  task: 'open' | 'done' | null;
+};
+
+/** Parses one list line; two spaces of indentation are one nesting level. */
+function parseListItem(line: string): ListItem | null {
+  const match = /^([ \t]*)([-*+]|\d+[.)])\s+(.*)$/.exec(line);
+  if (!match) {
+    return null;
+  }
+
+  const indent = match[1].replace(/\t/g, '  ').length;
+  let content = match[3];
+  let task: ListItem['task'] = null;
+  const taskMatch = /^\[([ xX])\]\s+(.*)$/.exec(content);
+
+  if (taskMatch) {
+    task = taskMatch[1].toLowerCase() === 'x' ? 'done' : 'open';
+    content = taskMatch[2];
+  }
+
+  return {
+    ordered: /\d/.test(match[2]),
+    depth: Math.floor(indent / 2),
+    content,
+    task,
+  };
+}
+
+function renderListItemOpening(item: ListItem): string {
+  const check =
+    item.task === 'done'
+      ? '<span class="task-done" aria-label="done">☑</span> '
+      : item.task === 'open'
+        ? '<span class="task-open" aria-label="not done">☐</span> '
+        : '';
+
+  return `<li>${check}${renderInline(item.content)}`;
+}
+
+type OpenList = { depth: number; tag: 'ol' | 'ul' };
+
+/** Renders a list group. Deeper items are nested inside the preceding <li>. */
+function renderList(items: ListItem[]): string {
+  let html = '';
+  const open: OpenList[] = [];
+
+  for (const item of items) {
+    const parentDepth = open.length > 0 ? open[open.length - 1].depth : -1;
+    const depth = Math.min(item.depth, parentDepth + 1);
+    const tag: 'ol' | 'ul' = item.ordered ? 'ol' : 'ul';
+
+    while (open.length > 0 && depth < open[open.length - 1].depth) {
+      const level = open.pop();
+      if (level) {
+        html += `</li></${level.tag}>`;
+      }
+    }
+
+    if (open.length === 0) {
+      html += `<${tag}>`;
+      open.push({ depth, tag });
+    } else if (depth === open[open.length - 1].depth) {
+      html += '</li>';
+    } else {
+      html += `<${tag}>`;
+      open.push({ depth, tag });
+    }
+
+    html += renderListItemOpening(item);
+  }
+
+  while (open.length > 0) {
+    const level = open.pop();
+    if (level) {
+      html += `</li></${level.tag}>`;
+    }
+  }
+
+  return html;
 }
 
 /** Converts Markdown to a fragment of safe HTML. */
@@ -162,28 +249,22 @@ export function markdownToHtml(markdown: string): string {
       continue;
     }
 
-    // Lists.
-    const unordered = /^\s*[-*+]\s+(.*)$/.exec(line);
-    const ordered = /^\s*\d+[.)]\s+(.*)$/.exec(line);
+    // Lists, including nested items and GitHub-style task markers.
+    const firstItem = parseListItem(line);
 
-    if (unordered || ordered) {
-      const isOrdered = Boolean(ordered);
-      const itemPattern = isOrdered ? /^\s*\d+[.)]\s+(.*)$/ : /^\s*[-*+]\s+(.*)$/;
-      const items: string[] = [];
+    if (firstItem) {
+      const items: ListItem[] = [];
 
       while (index < lines.length) {
-        const match = itemPattern.exec(lines[index]);
-
-        if (!match) {
+        const item = parseListItem(lines[index]);
+        if (!item) {
           break;
         }
-
-        items.push(`<li>${renderInline(match[1])}</li>`);
+        items.push(item);
         index += 1;
       }
 
-      const tag = isOrdered ? 'ol' : 'ul';
-      blocks.push(`<${tag}>${items.join('')}</${tag}>`);
+      blocks.push(renderList(items));
       continue;
     }
 

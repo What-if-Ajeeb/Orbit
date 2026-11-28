@@ -284,6 +284,9 @@ h3 { font-size: 1.2em; }
 p { margin: 0.8em 0; }
 a { color: var(--orbit-accent); }
 strong { font-weight: 700; }
+del { color: var(--orbit-text-muted); }
+.task-open { color: var(--orbit-text-muted); margin-right: 4px; }
+.task-done { color: var(--orbit-success); margin-right: 4px; }
 code {
   font-family: ui-monospace, Menlo, Consolas, monospace;
   font-size: 0.9em;
