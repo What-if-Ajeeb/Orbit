@@ -130,6 +130,20 @@ function validateContent(raw: unknown): string {
   return raw;
 }
 
+function validateAppend(raw: unknown): string {
+  if (typeof raw !== 'string' || raw.trim().length === 0) {
+    throw new Error('content is required and must be a non-empty string.');
+  }
+
+  if (raw.length > ARTIFACT_CONTENT_MAX) {
+    throw new Error(
+      `The content is ${raw.length} characters; the limit is ${ARTIFACT_CONTENT_MAX}. Shorten it or split it into smaller artifacts.`
+    );
+  }
+
+  return raw;
+}
+
 function validateType(raw: unknown): ArtifactType {
   if (!isArtifactType(raw)) {
     throw new Error('type must be one of: markdown, html, svg, code.');
@@ -315,6 +329,29 @@ export class ArtifactStore {
       typeof summary === 'string' && summary.trim()
         ? summary.trim().slice(0, 200)
         : `Edited (${editCount} change${editCount === 1 ? '' : 's'})`;
+
+    return this.addVersion(userId, id, nextContent, cleanSummary);
+  }
+
+  /** Appends text to the current content as one new version. */
+  async append(
+    userId: number,
+    id: string,
+    content: unknown,
+    summary?: unknown
+  ): Promise<Artifact> {
+    const addition = validateAppend(content);
+    const artifact = await this.get(userId, id);
+
+    if (!artifact) {
+      throw new Error('Artifact not found. It may have been deleted.');
+    }
+
+    const nextContent = validateContent(artifact.content + addition);
+    const cleanSummary =
+      typeof summary === 'string' && summary.trim()
+        ? summary.trim().slice(0, 200)
+        : `Appended (${addition.length} character${addition.length === 1 ? '' : 's'})`;
 
     return this.addVersion(userId, id, nextContent, cleanSummary);
   }

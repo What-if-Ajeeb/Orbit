@@ -45,6 +45,8 @@ lockllm/logs/
 
 # build / release outputs
 artifacts/
+# artifact feature source is code, not a build output
+!/src/lib/artifacts/
 symbols/
 coverage/
 *.apk

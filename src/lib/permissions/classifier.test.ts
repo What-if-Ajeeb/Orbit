@@ -39,6 +39,18 @@ describe('demand plugin tool classification', () => {
   });
 });
 
+describe('artifact permission classification', () => {
+  it('keeps artifact append local, low-risk and auto-approved', () => {
+    const action = classifyArgs('artifact_append', { id: 'art_1', content: 'more' });
+
+    expect(action.risk).toBe('low');
+    expect(action.autoApprove).toBe(true);
+    expect(action.category).toBe('database_operations');
+    expect(action.actions).toContain('Append content to art_1');
+    expect(action.metadata).toMatchObject({ localOnly: true, noNetwork: true });
+  });
+});
+
 describe('Google permission classification', () => {
   it('requires explicit approval for content reads', () => {
     const action = classify('google_gmail_read');

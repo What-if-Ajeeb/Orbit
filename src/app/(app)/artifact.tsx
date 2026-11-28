@@ -21,7 +21,10 @@ import { Skeleton } from '@/components/Skeleton';
 import { useSession } from '@/context/auth';
 import { useAppTheme, useStyles, type AppTheme } from '@/context/theme';
 import { ArtifactStore, type ArtifactDetail } from '@/lib/artifacts';
-import { buildPreviewDocument } from '@/lib/artifacts/preview';
+import {
+  ARTIFACT_ERROR_BRIDGE_JS,
+  buildPreviewDocument,
+} from '@/lib/artifacts/preview';
 import { formatDateTime } from '@/lib/dates';
 import { fonts, radius, spacing } from '@/theme';
 
@@ -38,6 +41,39 @@ function isInternalUrl(url: string): boolean {
 
 function isExternalLink(url: string): boolean {
   return /^(https?:|mailto:)/i.test(url);
+}
+
+const BRIDGE_LABELS: Record<string, string> = {
+  error: 'Error',
+  console_error: 'Console error',
+  console_warn: 'Console warning',
+};
+
+/** Accepts only the small, content-free messages sent by the error bridge. */
+function parseBridgeMessage(data: string): string | null {
+  try {
+    const parsed = JSON.parse(data) as {
+      source?: unknown;
+      type?: unknown;
+      message?: unknown;
+    };
+
+    if (parsed.source !== 'orbit-artifact') {
+      return null;
+    }
+
+    if (typeof parsed.type !== 'string' || !BRIDGE_LABELS[parsed.type]) {
+      return null;
+    }
+
+    if (typeof parsed.message !== 'string' || !parsed.message) {
+      return null;
+    }
+
+    return `${BRIDGE_LABELS[parsed.type]}: ${parsed.message.slice(0, 500)}`;
+  } catch {
+    return null;
+  }
 }
 
 /** Read-only artifact viewer reached from an assistant message's artifact card. */
@@ -60,6 +96,7 @@ export default function ArtifactScreen() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [versionsOpen, setVersionsOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [runtimeError, setRuntimeError] = useState<string | null>(null);
   const [WebViewView, setWebViewView] = useState<WebViewComponent | null>(null);
 
   const store = useMemo(() => new ArtifactStore(db), [db]);
@@ -89,6 +126,7 @@ export default function ArtifactScreen() {
     if (!user || !id) {
       setDetail(null);
       setError('Artifact not found.');
+      setRuntimeError(null);
       setLoading(false);
       return;
     }
@@ -100,6 +138,7 @@ export default function ArtifactScreen() {
       if (!found) {
         setDetail(null);
         setError('This artifact no longer exists.');
+        setRuntimeError(null);
         return;
       }
 
@@ -107,6 +146,7 @@ export default function ArtifactScreen() {
       setVersion(found.currentVersion);
       setContent(found.content);
       setError(null);
+      setRuntimeError(null);
     } catch (loadError) {
       console.warn('Could not load artifact.', loadError);
       setError('Could not load this artifact.');
@@ -135,6 +175,7 @@ export default function ArtifactScreen() {
           setVersion(next);
           setContent(found.content);
           setError(null);
+          setRuntimeError(null);
         }
       } catch (versionError) {
         console.warn('Could not load artifact version.', versionError);
@@ -222,28 +263,59 @@ export default function ArtifactScreen() {
     );
   }, [detail, id, router, store, user]);
 
+  const openChatWithPrompt = useCallback(
+    (prompt: string) => {
+      if (!detail) {
+        return;
+      }
+
+      const queryParams: Record<string, string> = {
+        prompt,
+        t: String(Date.now()),
+      };
+
+      if (detail.conversationId !== null) {
+        queryParams.c = String(detail.conversationId);
+      } else {
+        queryParams.n = '1';
+      }
+
+      const query = Object.entries(queryParams)
+        .map(([key, value]) => `${key}=${encodeURIComponent(value)}`)
+        .join('&');
+
+      router.navigate(`/chat?${query}` as Href);
+    },
+    [detail, router]
+  );
+
   const askOrbit = useCallback(() => {
     if (!detail) {
       return;
     }
 
-    const queryParams: Record<string, string> = {
-      prompt: `Update the artifact “${detail.title}” (id ${detail.id}): `,
-      t: String(Date.now()),
-    };
+    openChatWithPrompt(`Update the artifact “${detail.title}” (id ${detail.id}): `);
+  }, [detail, openChatWithPrompt]);
 
-    if (detail.conversationId !== null) {
-      queryParams.c = String(detail.conversationId);
-    } else {
-      queryParams.n = '1';
+  const fixRuntimeError = useCallback(() => {
+    if (!detail || !runtimeError) {
+      return;
     }
 
-    const query = Object.entries(queryParams)
-      .map(([key, value]) => `${key}=${encodeURIComponent(value)}`)
-      .join('&');
+    openChatWithPrompt(
+      `Fix a runtime error in the HTML artifact “${detail.title}” (id ${detail.id}). ` +
+        `The preview reported: ${runtimeError}. Read the artifact first, then make the smallest exact edit that fixes it. ` +
+        'Do not paste the artifact content into chat.'
+    );
+  }, [detail, openChatWithPrompt, runtimeError]);
 
-    router.navigate(`/chat?${query}` as Href);
-  }, [detail, router]);
+  const handleWebViewMessage = useCallback((event: { nativeEvent: { data: string } }) => {
+    const message = parseBridgeMessage(event.nativeEvent.data);
+
+    if (message) {
+      setRuntimeError((current) => (current === message ? current : message));
+    }
+  }, []);
 
   const handleShouldStart = useCallback((event: { url: string }) => {
     const url = event.url;
@@ -366,6 +438,40 @@ export default function ArtifactScreen() {
             </View>
           ) : null}
 
+          {runtimeError && tab === 'preview' ? (
+            <View style={styles.runtimeErrorBanner}>
+              <Ionicons
+                name="warning-outline"
+                size={18}
+                color={colors.danger}
+                style={styles.runtimeErrorIcon}
+              />
+              <View style={styles.runtimeErrorBody}>
+                <Text style={styles.runtimeErrorTitle}>Preview error</Text>
+                <Text numberOfLines={3} style={styles.runtimeErrorDetail}>
+                  {runtimeError}
+                </Text>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Fix this preview error with Orbit"
+                  hitSlop={6}
+                  onPress={fixRuntimeError}
+                >
+                  <Text style={styles.fixLink}>Fix with Orbit</Text>
+                </Pressable>
+              </View>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Dismiss preview error"
+                hitSlop={8}
+                onPress={() => setRuntimeError(null)}
+                style={styles.dismissButton}
+              >
+                <Ionicons name="close" size={18} color={colors.textMuted} />
+              </Pressable>
+            </View>
+          ) : null}
+
           <View accessibilityRole="tablist" style={styles.segmented}>
             {(['preview', 'code'] as const).map((option) => {
               const active = tab === option;
@@ -412,6 +518,10 @@ export default function ArtifactScreen() {
                 allowsInlineMediaPlayback={false}
                 allowsPictureInPictureMediaPlayback={false}
                 cacheEnabled={false}
+                injectedJavaScriptBeforeContentLoaded={
+                  detail.type === 'html' ? ARTIFACT_ERROR_BRIDGE_JS : undefined
+                }
+                onMessage={detail.type === 'html' ? handleWebViewMessage : undefined}
                 onShouldStartLoadWithRequest={handleShouldStart}
                 showsHorizontalScrollIndicator={false}
               />
@@ -660,6 +770,45 @@ const makeStyles = ({ colors }: AppTheme) =>
       color: colors.accent,
       fontSize: 13,
       fontWeight: '700',
+    },
+    runtimeErrorBanner: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: spacing.sm,
+      marginHorizontal: spacing.md,
+      marginTop: spacing.sm,
+      padding: spacing.sm,
+      borderRadius: radius.md,
+      backgroundColor: colors.dangerSoft,
+    },
+    runtimeErrorIcon: {
+      marginTop: 2,
+    },
+    runtimeErrorBody: {
+      flex: 1,
+      gap: 2,
+    },
+    runtimeErrorTitle: {
+      color: colors.danger,
+      fontSize: 13,
+      fontWeight: '700',
+    },
+    runtimeErrorDetail: {
+      color: colors.text,
+      fontSize: 13,
+    },
+    fixLink: {
+      alignSelf: 'flex-start',
+      color: colors.accent,
+      fontSize: 13,
+      fontWeight: '700',
+      paddingVertical: 4,
+    },
+    dismissButton: {
+      minWidth: 32,
+      minHeight: 32,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
     segmented: {
       flexDirection: 'row',
