@@ -12,6 +12,7 @@ import {
   Share,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -20,7 +21,7 @@ import { FormError } from '@/components/FormError';
 import { Skeleton } from '@/components/Skeleton';
 import { useSession } from '@/context/auth';
 import { useAppTheme, useStyles, type AppTheme } from '@/context/theme';
-import { ArtifactStore, type ArtifactDetail } from '@/lib/artifacts';
+import { ArtifactStore, ARTIFACT_CONTENT_MAX, type ArtifactDetail } from '@/lib/artifacts';
 import {
   ARTIFACT_ERROR_BRIDGE_JS,
   buildPreviewDocument,
@@ -98,8 +99,15 @@ export default function ArtifactScreen() {
   const [busy, setBusy] = useState(false);
   const [runtimeError, setRuntimeError] = useState<string | null>(null);
   const [WebViewView, setWebViewView] = useState<WebViewComponent | null>(null);
+  const [previewNonce, setPreviewNonce] = useState(0);
+  const [fullscreen, setFullscreen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editDraft, setEditDraft] = useState('');
+  const [editError, setEditError] = useState<string | null>(null);
 
   const store = useMemo(() => new ArtifactStore(db), [db]);
+  const isOldVersion =
+    detail !== null && version !== null && version !== detail.currentVersion;
 
   // The native WebView module is loaded only when a preview is actually shown.
   // Hidden tabs can be mounted at startup, so importing it eagerly would make
@@ -127,6 +135,7 @@ export default function ArtifactScreen() {
       setDetail(null);
       setError('Artifact not found.');
       setRuntimeError(null);
+      setFullscreen(false);
       setLoading(false);
       return;
     }
@@ -139,6 +148,7 @@ export default function ArtifactScreen() {
         setDetail(null);
         setError('This artifact no longer exists.');
         setRuntimeError(null);
+        setFullscreen(false);
         return;
       }
 
@@ -294,7 +304,9 @@ export default function ArtifactScreen() {
       return;
     }
 
-    openChatWithPrompt(`Update the artifact “${detail.title}” (id ${detail.id}): `);
+    openChatWithPrompt(
+      `Update the current version of the artifact “${detail.title}” (id ${detail.id}): `
+    );
   }, [detail, openChatWithPrompt]);
 
   const fixRuntimeError = useCallback(() => {
@@ -308,6 +320,62 @@ export default function ArtifactScreen() {
         'Do not paste the artifact content into chat.'
     );
   }, [detail, openChatWithPrompt, runtimeError]);
+
+  const openEditor = useCallback(() => {
+    setMenuOpen(false);
+
+    if (isOldVersion) {
+      Alert.alert(
+        'Restore a version to edit',
+        'You can edit the current version. Restore this version first if you want to use it as the starting point.'
+      );
+      return;
+    }
+
+    setEditDraft(content);
+    setEditError(null);
+    setEditOpen(true);
+  }, [content, isOldVersion]);
+
+  const saveEdit = useCallback(async () => {
+    if (!user || !id || !detail || isOldVersion) {
+      return;
+    }
+
+    if (!editDraft.trim()) {
+      setEditError('Content cannot be empty.');
+      return;
+    }
+
+    if (editDraft.length > ARTIFACT_CONTENT_MAX) {
+      setEditError(`The content is over the ${ARTIFACT_CONTENT_MAX.toLocaleString()} character limit.`);
+      return;
+    }
+
+    try {
+      setBusy(true);
+      setEditError(null);
+      await store.addVersion(user.id, id, editDraft, 'Edited manually');
+      setEditOpen(false);
+      setPreviewNonce((current) => current + 1);
+      await load();
+    } catch (saveError) {
+      setEditError(
+        saveError instanceof Error ? saveError.message : 'Could not save this version.'
+      );
+    } finally {
+      setBusy(false);
+    }
+  }, [detail, editDraft, id, isOldVersion, load, store, user]);
+
+  const reloadPreview = useCallback(() => {
+    setRuntimeError(null);
+    setPreviewNonce((current) => current + 1);
+  }, []);
+
+  const toggleFullscreen = useCallback(() => {
+    setFullscreen((current) => !current);
+  }, []);
 
   const handleWebViewMessage = useCallback((event: { nativeEvent: { data: string } }) => {
     const message = parseBridgeMessage(event.nativeEvent.data);
@@ -360,8 +428,95 @@ export default function ArtifactScreen() {
     return chunks.length > 0 ? chunks : [''];
   }, [content]);
 
-  const isOldVersion =
-    detail !== null && version !== null && version !== detail.currentVersion;
+  const previewView =
+    WebViewView && detail ? (
+      <WebViewView
+        key={`${detail.id}-${version}-${previewNonce}`}
+        testID="artifact-preview"
+        source={{ html: previewHtml, baseUrl: 'about:blank' }}
+        style={[
+          fullscreen ? styles.fullscreenPreview : styles.preview,
+          { backgroundColor: colors.surface },
+        ]}
+        // react-native-webview auto-opens URLs that fail the whitelist before
+        // onShouldStartLoadWithRequest runs. Let link schemes reach the
+        // callback so the user gets a confirmation instead of a silent launch.
+        originWhitelist={['about:blank', 'data:*', 'http://*', 'https://*', 'mailto:*']}
+        javaScriptEnabled={detail.type === 'html'}
+        domStorageEnabled={false}
+        allowFileAccess={false}
+        allowFileAccessFromFileURLs={false}
+        allowUniversalAccessFromFileURLs={false}
+        javaScriptCanOpenWindowsAutomatically={false}
+        setSupportMultipleWindows={false}
+        saveFormDataDisabled
+        thirdPartyCookiesEnabled={false}
+        mixedContentMode="never"
+        geolocationEnabled={false}
+        mediaCapturePermissionGrantType="deny"
+        mediaPlaybackRequiresUserAction
+        allowsFullscreenVideo={false}
+        allowsInlineMediaPlayback={false}
+        allowsPictureInPictureMediaPlayback={false}
+        cacheEnabled={false}
+        injectedJavaScriptBeforeContentLoaded={
+          detail.type === 'html' ? ARTIFACT_ERROR_BRIDGE_JS : undefined
+        }
+        onMessage={detail.type === 'html' ? handleWebViewMessage : undefined}
+        onShouldStartLoadWithRequest={handleShouldStart}
+        showsHorizontalScrollIndicator={false}
+      />
+    ) : (
+      <Skeleton height={220} radius={radius.md} />
+    );
+
+  if (fullscreen && !loading && detail && !error && tab === 'preview') {
+    return (
+      <View style={styles.fullscreenRoot}>
+        {previewView}
+        <View
+          style={[
+            styles.fullscreenControls,
+            { top: insets.top + spacing.sm, right: spacing.sm },
+          ]}
+        >
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Reload preview"
+            hitSlop={8}
+            onPress={reloadPreview}
+            style={styles.fullscreenButton}
+          >
+            <Ionicons name="refresh-outline" size={20} color={colors.text} />
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Exit fullscreen preview"
+            hitSlop={8}
+            onPress={toggleFullscreen}
+            style={styles.fullscreenButton}
+          >
+            <Ionicons name="close" size={20} color={colors.text} />
+          </Pressable>
+        </View>
+        {runtimeError ? (
+          <View style={styles.fullscreenError}>
+            <Text numberOfLines={2} style={styles.fullscreenErrorText}>
+              {runtimeError}
+            </Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Fix this preview error with Orbit"
+              hitSlop={6}
+              onPress={fixRuntimeError}
+            >
+              <Text style={styles.fixLink}>Fix with Orbit</Text>
+            </Pressable>
+          </View>
+        ) : null}
+      </View>
+    );
+  }
 
   return (
     <View style={styles.root}>
@@ -493,41 +648,39 @@ export default function ArtifactScreen() {
           </View>
 
           {tab === 'preview' ? (
-            WebViewView ? (
-              <WebViewView
-                source={{ html: previewHtml, baseUrl: 'about:blank' }}
-                style={[styles.preview, { backgroundColor: colors.surface }]}
-                // react-native-webview auto-opens URLs that fail the whitelist before
-                // onShouldStartLoadWithRequest runs. Let link schemes reach the
-                // callback so the user gets a confirmation instead of a silent launch.
-                originWhitelist={['about:blank', 'data:*', 'http://*', 'https://*', 'mailto:*']}
-                javaScriptEnabled={detail.type === 'html'}
-                domStorageEnabled={false}
-                allowFileAccess={false}
-                allowFileAccessFromFileURLs={false}
-                allowUniversalAccessFromFileURLs={false}
-                javaScriptCanOpenWindowsAutomatically={false}
-                setSupportMultipleWindows={false}
-                saveFormDataDisabled
-                thirdPartyCookiesEnabled={false}
-                mixedContentMode="never"
-                geolocationEnabled={false}
-                mediaCapturePermissionGrantType="deny"
-                mediaPlaybackRequiresUserAction
-                allowsFullscreenVideo={false}
-                allowsInlineMediaPlayback={false}
-                allowsPictureInPictureMediaPlayback={false}
-                cacheEnabled={false}
-                injectedJavaScriptBeforeContentLoaded={
-                  detail.type === 'html' ? ARTIFACT_ERROR_BRIDGE_JS : undefined
-                }
-                onMessage={detail.type === 'html' ? handleWebViewMessage : undefined}
-                onShouldStartLoadWithRequest={handleShouldStart}
-                showsHorizontalScrollIndicator={false}
-              />
-            ) : (
-              <Skeleton height={220} radius={radius.md} />
-            )
+            <>
+              <View style={styles.previewToolbar}>
+                <Text style={styles.previewToolbarTitle}>Preview</Text>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Edit artifact content"
+                  hitSlop={8}
+                  onPress={openEditor}
+                  style={styles.previewTool}
+                >
+                  <Ionicons name="create-outline" size={18} color={colors.textMuted} />
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Reload preview"
+                  hitSlop={8}
+                  onPress={reloadPreview}
+                  style={styles.previewTool}
+                >
+                  <Ionicons name="refresh-outline" size={18} color={colors.textMuted} />
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="View preview fullscreen"
+                  hitSlop={8}
+                  onPress={toggleFullscreen}
+                  style={styles.previewTool}
+                >
+                  <Ionicons name="expand-outline" size={18} color={colors.textMuted} />
+                </Pressable>
+              </View>
+              {previewView}
+            </>
           ) : (
             <FlatList
               data={codeChunks}
@@ -571,6 +724,15 @@ export default function ArtifactScreen() {
             style={styles.scrim}
           />
           <View style={[styles.menu, { top: insets.top + 64, right: spacing.sm }]}>
+            <Pressable
+              accessibilityRole="menuitem"
+              accessibilityLabel="Edit artifact content"
+              onPress={openEditor}
+              style={styles.menuItem}
+            >
+              <Ionicons name="create-outline" size={18} color={colors.textMuted} />
+              <Text style={styles.menuItemText}>Edit</Text>
+            </Pressable>
             <Pressable
               accessibilityRole="menuitem"
               accessibilityLabel="Copy artifact content"
@@ -690,6 +852,81 @@ export default function ArtifactScreen() {
                 );
               }}
             />
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        transparent
+        visible={editOpen}
+        animationType="slide"
+        onRequestClose={() => {
+          if (!busy) {
+            setEditOpen(false);
+          }
+        }}
+      >
+        <View style={styles.modalRoot}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Close editor"
+            disabled={busy}
+            onPress={() => setEditOpen(false)}
+            style={styles.scrim}
+          />
+          <View style={[styles.editorSheet, { paddingBottom: insets.bottom + spacing.md }]}>
+            <View style={styles.sheetHeader}>
+              <Text accessibilityRole="header" style={styles.sheetTitle}>
+                Edit artifact
+              </Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Close editor"
+                disabled={busy}
+                onPress={() => setEditOpen(false)}
+                style={styles.iconButton}
+              >
+                <Ionicons name="close" size={20} color={colors.textMuted} />
+              </Pressable>
+            </View>
+            <Text style={styles.editorHint}>
+              Saving creates a new version. Ask Orbit when you want help with larger changes.
+            </Text>
+            <TextInput
+              accessibilityLabel="Artifact content"
+              autoCapitalize="none"
+              autoCorrect={false}
+              maxLength={ARTIFACT_CONTENT_MAX}
+              multiline
+              onChangeText={setEditDraft}
+              style={styles.editorInput}
+              textAlignVertical="top"
+              value={editDraft}
+            />
+            {editError ? <FormError message={editError} /> : null}
+            <View style={styles.editorFooter}>
+              <Text style={styles.editorCount}>
+                {editDraft.length.toLocaleString()} / {ARTIFACT_CONTENT_MAX.toLocaleString()}
+              </Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Cancel editing"
+                disabled={busy}
+                onPress={() => setEditOpen(false)}
+                style={styles.editorCancel}
+              >
+                <Text style={styles.editorCancelText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Save artifact version"
+                disabled={busy || !editDraft.trim()}
+                onPress={() => void saveEdit()}
+                style={styles.editorSave}
+              >
+                <Text style={styles.editorSaveText}>{busy ? 'Saving…' : 'Save version'}</Text>
+              </Pressable>
+            </View>
           </View>
         </View>
       </Modal>
@@ -840,6 +1077,66 @@ const makeStyles = ({ colors }: AppTheme) =>
     preview: {
       flex: 1,
     },
+    fullscreenRoot: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    fullscreenPreview: {
+      flex: 1,
+    },
+    fullscreenControls: {
+      position: 'absolute',
+      flexDirection: 'row',
+      gap: spacing.xs,
+    },
+    fullscreenButton: {
+      width: 44,
+      height: 44,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderRadius: radius.pill,
+      backgroundColor: colors.surface,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
+    },
+    fullscreenError: {
+      position: 'absolute',
+      left: spacing.md,
+      right: spacing.md,
+      bottom: spacing.md,
+      gap: spacing.xs,
+      padding: spacing.sm,
+      borderRadius: radius.md,
+      backgroundColor: colors.surface,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
+    },
+    fullscreenErrorText: {
+      color: colors.text,
+      fontSize: 13,
+    },
+    previewToolbar: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.xs,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.xs,
+    },
+    previewToolbarTitle: {
+      flex: 1,
+      color: colors.textMuted,
+      fontSize: 12,
+      fontWeight: '700',
+      letterSpacing: 1,
+      textTransform: 'uppercase',
+    },
+    previewTool: {
+      width: 40,
+      height: 40,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderRadius: radius.sm,
+    },
     codeList: {
       flex: 1,
     },
@@ -979,5 +1276,71 @@ const makeStyles = ({ colors }: AppTheme) =>
     versionSummary: {
       color: colors.textFaint,
       fontSize: 12,
+    },
+    editorSheet: {
+      position: 'absolute',
+      left: 0,
+      right: 0,
+      bottom: 0,
+      maxHeight: '88%',
+      gap: spacing.sm,
+      paddingHorizontal: spacing.md,
+      paddingTop: spacing.sm,
+      borderTopLeftRadius: radius.lg,
+      borderTopRightRadius: radius.lg,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border,
+      backgroundColor: colors.surface,
+    },
+    editorHint: {
+      color: colors.textMuted,
+      fontSize: 13,
+    },
+    editorInput: {
+      flex: 1,
+      minHeight: 180,
+      padding: spacing.sm,
+      borderRadius: radius.md,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
+      backgroundColor: colors.background,
+      color: colors.text,
+      fontFamily: fonts.mono,
+      fontSize: 13,
+      lineHeight: 20,
+    },
+    editorFooter: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+    },
+    editorCount: {
+      flex: 1,
+      color: colors.textFaint,
+      fontSize: 12,
+    },
+    editorCancel: {
+      minHeight: 44,
+      paddingHorizontal: spacing.sm,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    editorCancelText: {
+      color: colors.textMuted,
+      fontSize: 14,
+      fontWeight: '600',
+    },
+    editorSave: {
+      minHeight: 44,
+      paddingHorizontal: spacing.md,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderRadius: radius.sm,
+      backgroundColor: colors.accentSoft,
+    },
+    editorSaveText: {
+      color: colors.accent,
+      fontSize: 14,
+      fontWeight: '700',
     },
   });

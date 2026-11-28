@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import type { ToolExecutionEvent } from '../chat-store';
 import type { AgentIdentity } from '../permissions/types';
 import { secureExecuteTool } from '../permissions/executor';
 import { findSkillTool } from '../skills/manifest';
@@ -110,6 +111,34 @@ describe('hybrid dispatch boundary', () => {
     expect(result.success).toBe(false);
     expect(result.error).toMatch(/direct, exact approval/);
     expect(result.verification.verified).toBe(false);
+  });
+
+  it('emits artifact-specific progress without persisting artifact content', async () => {
+    vi.mocked(secureExecuteTool).mockResolvedValue(secured());
+    const events: ToolExecutionEvent[] = [];
+
+    await dispatchCapabilityCall(
+      {
+        toolName: 'artifact_create',
+        args: {
+          title: 'Launch plan',
+          type: 'html',
+          content: 'const secret = "never show this";',
+        },
+      },
+      context({
+        onToolEvent: (event) => {
+          events.push({ ...event });
+        },
+      })
+    );
+
+    expect(events[0]).toMatchObject({
+      status: 'running',
+      summary: 'Creating “Launch plan”',
+    });
+    expect(events[0].detail).toContain('Page');
+    expect(JSON.stringify(events)).not.toContain('never show this');
   });
 
   it('denies capabilities that are not enabled for the agent', async () => {
