@@ -7,6 +7,13 @@ import {
   ON_DEVICE_OLLAMA_BASE_URL,
 } from './ollama';
 
+// ollamaChat uses a dynamic import of the resolver for model discovery. In
+// unit tests the HTTP behavior under test is the chat call itself, so keep the
+// resolver deterministic and avoid pulling react-native/SecureStore into Node.
+vi.mock('./ollama-resolve', () => ({
+  resolveLocalOllamaSettings: async (settings: unknown) => settings,
+}));
+
 type FetchCall = { url: string; init?: RequestInit };
 
 function jsonResponse(data: unknown, status = 200) {
