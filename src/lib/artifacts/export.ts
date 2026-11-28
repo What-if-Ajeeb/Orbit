@@ -143,16 +143,41 @@ export async function prepareArtifactExport(
   };
 }
 
-/** Opens the system share sheet with the prepared artifact file. */
-export async function shareArtifactFile(file: PreparedArtifactFile): Promise<void> {
-  const Sharing = await import('expo-sharing');
+/** React Native's Android share module accepts `type` for the streamed file. */
+type NativeShareContent = {
+  url: string;
+  message: string;
+  title: string;
+  /** Consumed by ShareModule on Android; ignored by the public TypeScript API. */
+  type?: string;
+};
 
-  if (!(await Sharing.isAvailableAsync())) {
-    throw new Error('File sharing is not available on this device.');
+/**
+ * Opens the system share sheet with the prepared artifact file. `expo-sharing`
+ * is intentionally not used: the existing `expo-file-system` + React Native
+ * Share path keeps the Android native module graph unchanged while still
+ * sharing a real file (not pasted text).
+ */
+export async function shareArtifactFile(file: PreparedArtifactFile): Promise<void> {
+  const { Share } = await import('react-native');
+
+  let shareUri = file.uri;
+  if (shareUri.startsWith('file://')) {
+    try {
+      // Android exposes app-private files to other apps through a content URI.
+      const { getContentUriAsync } = await import('expo-file-system/legacy');
+      shareUri = await getContentUriAsync(shareUri);
+    } catch {
+      // iOS and other platforms can share the file URI directly.
+    }
   }
 
-  await Sharing.shareAsync(file.uri, {
-    dialogTitle: `Share ${file.fileName}`,
-    mimeType: file.mimeType,
-  });
+  const content: NativeShareContent = {
+    url: shareUri,
+    message: file.fileName,
+    title: `Share ${file.fileName}`,
+    type: file.mimeType,
+  };
+
+  await Share.share(content, { dialogTitle: `Share ${file.fileName}` });
 }

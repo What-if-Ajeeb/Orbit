@@ -79,7 +79,6 @@
       ],
       "./plugins/withLocalhostCleartext.js",
       "expo-asset",
-      "expo-sharing",
       [
         "expo-build-properties",
         {

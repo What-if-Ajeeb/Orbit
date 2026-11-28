@@ -28,7 +28,9 @@ const state = vi.hoisted(() => ({
   dirs: [] as MockDir[],
   files: [] as MockFile[],
   shareCalls: [] as unknown[][],
-  available: true,
+  contentUris: [] as string[],
+  contentUriFails: false,
+  shareError: null as Error | null,
 }));
 
 vi.mock('expo-file-system', () => ({
@@ -67,10 +69,25 @@ vi.mock('expo-file-system', () => ({
   },
 }));
 
-vi.mock('expo-sharing', () => ({
-  isAvailableAsync: async () => state.available,
-  shareAsync: async (...args: unknown[]) => {
-    state.shareCalls.push(args);
+vi.mock('expo-file-system/legacy', () => ({
+  getContentUriAsync: async (uri: string) => {
+    state.contentUris.push(uri);
+    if (state.contentUriFails) {
+      throw new Error('content URI unavailable');
+    }
+    return uri.replace('file://', 'content://');
+  },
+}));
+
+vi.mock('react-native', () => ({
+  Share: {
+    share: async (...args: unknown[]) => {
+      if (state.shareError) {
+        throw state.shareError;
+      }
+      state.shareCalls.push(args);
+      return { action: 'sharedAction' };
+    },
   },
 }));
 
@@ -79,7 +96,9 @@ describe('artifact file export', () => {
     state.dirs.length = 0;
     state.files.length = 0;
     state.shareCalls.length = 0;
-    state.available = true;
+    state.contentUris.length = 0;
+    state.contentUriFails = false;
+    state.shareError = null;
   });
 
   it('builds safe filenames and extensions from artifact metadata', () => {
@@ -106,24 +125,40 @@ describe('artifact file export', () => {
     expect(prepared.uri).toBe('file://artifact-export');
   });
 
-  it('shares the file with a matching MIME type and dialog title', async () => {
+  it('shares a content URI with the matching MIME type and dialog title', async () => {
     await shareArtifactFile({
       uri: 'file://plan.md',
       fileName: 'plan.md',
       mimeType: 'text/markdown',
     });
 
-    expect(state.shareCalls[0]).toEqual([
-      'file://plan.md',
-      { dialogTitle: 'Share plan.md', mimeType: 'text/markdown' },
-    ]);
+    expect(state.contentUris).toEqual(['file://plan.md']);
+    expect(state.shareCalls[0][0]).toEqual({
+      url: 'content://plan.md',
+      message: 'plan.md',
+      title: 'Share plan.md',
+      type: 'text/markdown',
+    });
+    expect(state.shareCalls[0][1]).toEqual({ dialogTitle: 'Share plan.md' });
   });
 
-  it('fails clearly when the platform share sheet is unavailable', async () => {
-    state.available = false;
+  it('falls back to the file URI when content URI conversion is unavailable', async () => {
+    state.contentUriFails = true;
+
+    await shareArtifactFile({
+      uri: 'file://plan.md',
+      fileName: 'plan.md',
+      mimeType: 'text/markdown',
+    });
+
+    expect(state.shareCalls[0][0]).toMatchObject({ url: 'file://plan.md' });
+  });
+
+  it('propagates share failures to the viewer', async () => {
+    state.shareError = new Error('Share cancelled');
 
     await expect(
       shareArtifactFile({ uri: 'file://plan.md', fileName: 'plan.md', mimeType: 'text/markdown' })
-    ).rejects.toThrow('File sharing is not available');
+    ).rejects.toThrow('Share cancelled');
   });
 });
