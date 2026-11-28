@@ -9,6 +9,7 @@ import { OrientationController } from '@/components/OrientationController';
 import { PermissionHost } from '@/components/permissions/PermissionHost';
 import { PluginApprovalHost } from '@/components/plugins/PluginApprovalHost';
 import { TabletShell } from '@/components/TabletShell';
+import { BuddyReactionProvider } from '@/context/buddy-reactions';
 import { BottomNavigationProvider } from '@/context/bottom-navigation';
 import { NavigationFooterProvider, useNavigationFooter } from '@/context/navigation-footer';
 import { PinnedPluginsProvider } from '@/context/pinned-plugins';
@@ -146,6 +147,11 @@ function AppLayoutContent() {
           <Stack.Screen name="buddy/tree" />
           <Stack.Screen name="buddy/evolve" />
           <Stack.Screen name="buddy/collection" />
+          <Stack.Screen name="buddy/profile" />
+          <Stack.Screen name="buddy/chat" />
+          <Stack.Screen name="buddy/progress" />
+          <Stack.Screen name="buddy/reactions" />
+          <Stack.Screen name="buddy/customize" />
         </Stack>
       </TabletShell>
 
@@ -165,7 +171,9 @@ export default function AppLayout() {
           <PinnedPluginsProvider>
             <TabletLayoutProvider>
               <NavigationFooterProvider>
-                <AppLayoutContent />
+                <BuddyReactionProvider>
+                  <AppLayoutContent />
+                </BuddyReactionProvider>
               </NavigationFooterProvider>
             </TabletLayoutProvider>
           </PinnedPluginsProvider>

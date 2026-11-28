@@ -3,6 +3,7 @@ import { randomUUID } from 'expo-crypto';
 
 import type { BuddyActivityLog, BuddyMood, EvolutionResult, UserBuddy } from './types';
 import { canEvolveTo, getDefaultActiveSpecies, getDefaultForm, getForm } from './species';
+import { grantBuddyReward } from './reward-ledger';
 import { xpForLevel } from './types';
 
 function now() { return Date.now(); }
@@ -152,20 +153,34 @@ export async function tryEvolve(db: SQLiteDatabase, userId: number, buddyId: str
   const check = canEvolveTo(buddy, target, inv);
   if (!check.ok) return { ok: true, evolved: false, reason: check.missing.join(', ') };
 
-  if (target.requirements?.items) {
-    for (const it of target.requirements.items) await addInventoryItem(db, userId, it.itemId, -it.quantity);
-  }
-  const unlocked = Array.from(new Set([...buddy.unlockedForms, targetFormId]));
+  const method = target.requirements?.items?.length
+    ? 'item'
+    : target.requirements?.bond && buddy.bond >= target.requirements.bond && !target.requirements.level
+      ? 'bond'
+      : target.requirements?.level && buddy.level >= target.requirements.level
+        ? 'level'
+        : 'event';
+
   const ts = now();
-  await db.runAsync(
-    'UPDATE user_buddies SET current_form_id = ?, unlocked_forms = ?, updated_at = ?, last_interacted_at = ?, mood = ? WHERE id = ? AND user_id = ?',
-    [targetFormId, JSON.stringify(unlocked), ts, ts, 'excited', buddyId, userId]
-  );
-  await db.runAsync(
-    'INSERT INTO buddy_evolution_log (user_id, user_buddy_id, from_form_id, to_form_id, level_at, bond_at, method, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-    [userId, buddyId, currentForm.id, target.id, buddy.level, buddy.bond, 'level', ts]
-  );
-  await logBuddyActivity(db, userId, buddyId, `Evolved into ${target.name}`, 50, 10);
+  await db.withTransactionAsync(async () => {
+    if (target.requirements?.items) {
+      for (const it of target.requirements.items) {
+        await addInventoryItem(db, userId, it.itemId, -it.quantity);
+      }
+    }
+    const unlocked = Array.from(new Set([...buddy.unlockedForms, targetFormId]));
+    await db.runAsync(
+      'UPDATE user_buddies SET current_form_id = ?, unlocked_forms = ?, updated_at = ?, last_interacted_at = ?, mood = ? WHERE id = ? AND user_id = ?',
+      [targetFormId, JSON.stringify(unlocked), ts, ts, 'excited', buddyId, userId]
+    );
+    await db.runAsync(
+      'INSERT INTO buddy_evolution_log (user_id, user_buddy_id, from_form_id, to_form_id, level_at, bond_at, method, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      [userId, buddyId, currentForm.id, target.id, buddy.level, buddy.bond, method, ts]
+    );
+  });
+
+  // Ledger-backed so replaying the same evolution cannot award XP again.
+  await grantBuddyReward(db, userId, buddyId, 'evolutionBonus', targetFormId, ts);
   const updated = (await getUserBuddy(db, userId, buddyId))!;
   return { ok: true, evolved: true, from: currentForm, to: target, buddy: updated };
 }

@@ -7,7 +7,7 @@ export const DATABASE_NAME = 'orbit.db';
  * tasks and the agent conversation) lives in SQLite on the device.
  */
 export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
-  const DATABASE_VERSION = 19;
+  const DATABASE_VERSION = 20;
 
   const result = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
   let currentDbVersion = result?.user_version ?? 0;
@@ -1283,6 +1283,95 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
     `);
 
     currentDbVersion = 19;
+  }
+
+  if (currentDbVersion === 19) {
+    // Event-driven Buddy companion: compact reaction history, idempotent
+    // progression rewards, achievements, unlocks and cosmetic choices.
+    await db.execAsync(`
+      CREATE TABLE IF NOT EXISTS buddy_reactions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        user_buddy_id TEXT NOT NULL,
+        event_key TEXT NOT NULL,
+        event_type TEXT NOT NULL,
+        template_id TEXT NOT NULL,
+        message TEXT NOT NULL,
+        animation TEXT NOT NULL,
+        mood TEXT NOT NULL,
+        presentation TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        UNIQUE (user_id, event_key),
+        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+        FOREIGN KEY (user_buddy_id) REFERENCES user_buddies (id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_buddy_reactions_user_created
+        ON buddy_reactions (user_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_buddy_reactions_buddy
+        ON buddy_reactions (user_buddy_id, created_at DESC);
+
+      CREATE TABLE IF NOT EXISTS buddy_reward_ledger (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        user_buddy_id TEXT NOT NULL,
+        reason TEXT NOT NULL,
+        source_key TEXT NOT NULL,
+        xp INTEGER NOT NULL,
+        bond INTEGER NOT NULL,
+        created_at INTEGER NOT NULL,
+        UNIQUE (user_id, user_buddy_id, source_key),
+        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+        FOREIGN KEY (user_buddy_id) REFERENCES user_buddies (id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_buddy_reward_ledger_user_reason
+        ON buddy_reward_ledger (user_id, reason, created_at DESC);
+
+      CREATE TABLE IF NOT EXISTS buddy_daily_counters (
+        user_id INTEGER NOT NULL,
+        user_buddy_id TEXT NOT NULL,
+        day TEXT NOT NULL,
+        action TEXT NOT NULL,
+        count INTEGER NOT NULL DEFAULT 0,
+        updated_at INTEGER NOT NULL,
+        PRIMARY KEY (user_id, user_buddy_id, day, action),
+        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+        FOREIGN KEY (user_buddy_id) REFERENCES user_buddies (id) ON DELETE CASCADE
+      );
+
+      CREATE TABLE IF NOT EXISTS buddy_achievements (
+        user_id INTEGER NOT NULL,
+        user_buddy_id TEXT NOT NULL,
+        achievement_id TEXT NOT NULL,
+        unlocked_at INTEGER NOT NULL,
+        PRIMARY KEY (user_id, user_buddy_id, achievement_id),
+        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+        FOREIGN KEY (user_buddy_id) REFERENCES user_buddies (id) ON DELETE CASCADE
+      );
+
+      CREATE TABLE IF NOT EXISTS buddy_character_unlocks (
+        user_id INTEGER NOT NULL,
+        species_id TEXT NOT NULL,
+        unlocked_at INTEGER NOT NULL,
+        reason TEXT NOT NULL,
+        PRIMARY KEY (user_id, species_id),
+        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+      );
+
+      CREATE TABLE IF NOT EXISTS buddy_customization (
+        user_id INTEGER NOT NULL,
+        user_buddy_id TEXT NOT NULL,
+        key TEXT NOT NULL,
+        value TEXT NOT NULL,
+        updated_at INTEGER NOT NULL,
+        PRIMARY KEY (user_id, user_buddy_id, key),
+        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+        FOREIGN KEY (user_buddy_id) REFERENCES user_buddies (id) ON DELETE CASCADE
+      );
+    `);
+
+    currentDbVersion = 20;
   }
 
   if (currentDbVersion !== DATABASE_VERSION) {

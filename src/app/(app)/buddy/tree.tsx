@@ -26,6 +26,10 @@ function FormNode({ form, isRoot }: { form: BuddyForm; isRoot?: boolean }) {
         <Text style={styles.nodeReq}>
           {form.requirements.level ? `Lv.${form.requirements.level}` : ''}
           {form.requirements.bond ? ` · Bond ${form.requirements.bond}%` : ''}
+          {form.requirements.tasksCompleted ? ` · ${form.requirements.tasksCompleted} tasks` : ''}
+          {form.requirements.items?.length
+            ? ` · ${form.requirements.items.map((item) => `${item.itemId} ×${item.quantity}`).join(', ')}`
+            : ''}
         </Text>
       ) : null}
     </View>

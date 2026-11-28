@@ -26,6 +26,8 @@ export type BuddyGroup = 'NT' | 'NF' | 'SJ' | 'SP';
 
 export type BuddyMood = 'calm' | 'happy' | 'curious' | 'sleepy' | 'focused' | 'sad' | 'excited';
 
+export type BuddyAccessory = 'none' | 'bow' | 'scarf' | 'crown' | 'star';
+
 export type BuddyAnimationState =
   | 'idle'
   | 'blink'

@@ -19,7 +19,9 @@ import { GlassView } from '@/components/GlassView';
 import { useSession } from '@/context/auth';
 import { useAppTheme, useStyles, type AppTheme } from '@/context/theme';
 import {
+  canEvolveTo,
   getForm,
+  getInventory,
   getUserBuddy,
   tryEvolve,
   type UserBuddy,
@@ -36,15 +38,20 @@ export default function EvolveScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
 
   const [buddy, setBuddy] = useState<UserBuddy | null>(null);
+  const [inventory, setInventory] = useState<{ itemId: string; quantity: number }[]>([]);
   const [loading, setLoading] = useState(true);
   const [evolving, setEvolving] = useState(false);
 
   const load = useCallback(async () => {
-    if (!id) return;
+    if (!id || !user) return;
     try {
       setLoading(true);
-      const b = user ? await getUserBuddy(db, user.id, id) : null;
+      const [b, items] = await Promise.all([
+        getUserBuddy(db, user.id, id),
+        getInventory(db, user.id),
+      ]);
       setBuddy(b);
+      setInventory(items);
     } finally {
       setLoading(false);
     }
@@ -142,7 +149,8 @@ export default function EvolveScreen() {
             const req = target.requirements;
             const levelOk = !req?.level || buddy.level >= req.level;
             const bondOk = !req?.bond || buddy.bond >= req.bond;
-            const ready = levelOk && bondOk;
+            const check = canEvolveTo(buddy, target, inventory);
+            const ready = check.ok;
 
             return (
               <GlassView key={fid} style={styles.pathCard}>
@@ -168,6 +176,15 @@ export default function EvolveScreen() {
                         Bond {req.bond}% {bondOk ? '✓' : `(now ${buddy.bond}%)`}
                       </Text>
                     ) : null}
+                    {req.items?.map((item) => {
+                      const have = inventory.find((entry) => entry.itemId === item.itemId)?.quantity ?? 0;
+                      const itemOk = have >= item.quantity;
+                      return (
+                        <Text key={item.itemId} style={[styles.req, !itemOk && styles.reqFail]}>
+                          {item.itemId} ×{item.quantity} {itemOk ? '✓' : `(have ${have})`}
+                        </Text>
+                      );
+                    })}
                   </View>
                 ) : null}
 

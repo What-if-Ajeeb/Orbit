@@ -12,6 +12,11 @@ import { parseArtifactToolRef } from '../ai/artifact-tools';
 import { runLocalAgent, type LocalToolExecutor } from '../ai/local-agent';
 import { agentToolRegistry, listAgentTools } from '../ai/tools';
 import type { LlmAttachment, LlmMessage } from '../ai/types';
+import {
+  publishAgentIdle,
+  publishApprovalRequired,
+  publishRuntimeEvent,
+} from '../buddy/event-sources';
 import { getActiveBuddy } from '../buddy/store';
 import type { ToolExecutionEvent } from '../chat-store';
 import { getChatStore } from '../chat';
@@ -294,8 +299,29 @@ export async function runAgentTurn(input: RuntimeTurnInput): Promise<RuntimeTurn
   const hookEngine = new HookEngine(db);
   const policyVersion = policyEngine.evaluatePolicyForExecution('', {}).policyVersion;
 
+  let observedTaskId: string | undefined;
   const emit = async (type: ToolEventType, payload: Record<string, unknown>) => {
     await eventStore.appendEvent(userId, conversationId, type, payload);
+
+    // Buddy receives only sanitized lifecycle facts. This subscription is not
+    // consulted for policy, approval, routing or continuation decisions.
+    try {
+      if (
+        type === 'tool_call' ||
+        type === 'tool_result' ||
+        type === 'step_started' ||
+        type === 'step_ended'
+      ) {
+        publishRuntimeEvent({
+          userId,
+          taskId: observedTaskId,
+          type,
+          payload,
+        });
+      }
+    } catch (error) {
+      console.warn('Buddy runtime observation failed', error);
+    }
   };
 
   let agentConfig: AgentConfig = defaultAgentConfig(userId, agent.id);
@@ -334,6 +360,7 @@ export async function runAgentTurn(input: RuntimeTurnInput): Promise<RuntimeTurn
     traceId: trace.traceId,
   });
   trace.taskId = task.id;
+  observedTaskId = task.id;
 
   const claimed = await claimAgentTask(db, task.id, `turn_${task.id}`, budget.maxWallMs + 60_000);
   if (!claimed) {
@@ -447,6 +474,17 @@ export async function runAgentTurn(input: RuntimeTurnInput): Promise<RuntimeTurn
         hybridState: runtimeState.value,
         traceId: trace.traceId,
       });
+      try {
+        publishApprovalRequired({
+          userId,
+          taskId: task.id,
+          toolName: call.toolName,
+          reasonCode: forceApproval ? 'risk' : 'policy',
+          occurrenceId: `${trace.traceId}:${stepId}:${call.toolName}`,
+        });
+      } catch (error) {
+        console.warn('Buddy approval observation failed', error);
+      }
     }
 
     let result: Awaited<ReturnType<typeof dispatchCapabilityCall>>;
@@ -1007,6 +1045,11 @@ export async function runAgentTurn(input: RuntimeTurnInput): Promise<RuntimeTurn
     traceId: trace.traceId,
     toolCalls: runtimeCalls.length,
   });
+  try {
+    publishAgentIdle(userId, task.id, Date.now());
+  } catch (error) {
+    console.warn('Buddy idle observation failed', error);
+  }
   await hookEngine.executeHook('after_agent_turn', {
     userId,
     conversationId,
