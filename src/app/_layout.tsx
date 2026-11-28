@@ -18,9 +18,12 @@ import {
   clearLaunchMarker,
   getStartupStage,
   installGlobalDiagnostics,
+  isUiReady,
   markLaunchStarted,
   markStartupStage,
+  markUiReady,
   reportDiagnostic,
+  subscribeUiReady,
 } from '@/lib/diagnostics';
 import { HarnessProvider } from '@/lib/harness/spine/boot';
 import { configureNotifications } from '@/lib/notifications';
@@ -38,7 +41,14 @@ const BOOT_WATCHDOG_MS = 12000;
  */
 function BootWatchdog() {
   useEffect(() => {
-    const timer = setTimeout(() => {
+    let timer: ReturnType<typeof setTimeout> | null = setTimeout(() => {
+      timer = null;
+
+      // Check again in case readiness landed between scheduling and firing.
+      if (isUiReady()) {
+        return;
+      }
+
       const early = getEarlyStartupErrors();
       const earlyDetail = early.length > 0 ? ` Early error: ${early[0]!.message}` : '';
 
@@ -52,7 +62,21 @@ function BootWatchdog() {
       void SplashScreen.hide();
     }, BOOT_WATCHDOG_MS);
 
-    return () => clearTimeout(timer);
+    const disarm = () => {
+      if (timer !== null) {
+        clearTimeout(timer);
+        timer = null;
+      }
+    };
+
+    // The navigator normally mounts well before the deadline. Once it does,
+    // this guard must not report a boot failure on top of a working UI.
+    const unsubscribe = subscribeUiReady(disarm);
+
+    return () => {
+      unsubscribe();
+      disarm();
+    };
   }, []);
 
   return null;
@@ -211,6 +235,7 @@ function RootNavigator() {
 
   useEffect(() => {
     markStartupStage('Navigator rendered');
+    markUiReady();
   }, []);
 
   return (
