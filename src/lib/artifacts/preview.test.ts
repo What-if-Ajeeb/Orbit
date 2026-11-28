@@ -133,6 +133,18 @@ describe('artifact preview documents', () => {
     expect(document).toContain('color: var(--orbit-text)');
   });
 
+  it('styles task and strikethrough markdown with theme variables', () => {
+    const document = buildPreviewDocument(
+      { type: 'markdown', content: '~~old~~\n\n- [x] done' },
+      theme
+    );
+
+    expect(document).toContain('<del>old</del>');
+    expect(document).toContain('class="task-done"');
+    expect(document).toContain('.task-done { color: var(--orbit-success)');
+    expect(document).toContain('del { color: var(--orbit-text-muted); }');
+  });
+
   it('exposes a content-free document-start error bridge for HTML only', () => {
     expect(ARTIFACT_ERROR_BRIDGE_JS).toContain("addEventListener('error'");
     expect(ARTIFACT_ERROR_BRIDGE_JS).toContain("addEventListener('unhandledrejection'");

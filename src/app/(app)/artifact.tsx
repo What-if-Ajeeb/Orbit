@@ -9,7 +9,6 @@ import {
   FlatList,
   Modal,
   Pressable,
-  Share,
   StyleSheet,
   Text,
   TextInput,
@@ -21,7 +20,15 @@ import { FormError } from '@/components/FormError';
 import { Skeleton } from '@/components/Skeleton';
 import { useSession } from '@/context/auth';
 import { useAppTheme, useStyles, type AppTheme } from '@/context/theme';
-import { ArtifactStore, ARTIFACT_CONTENT_MAX, type ArtifactDetail } from '@/lib/artifacts';
+import {
+  ArtifactStore,
+  ARTIFACT_CONTENT_MAX,
+  highlightCodeLine,
+  prepareArtifactExport,
+  shareArtifactFile,
+  type ArtifactDetail,
+  type CodeTokenKind,
+} from '@/lib/artifacts';
 import {
   ARTIFACT_ERROR_BRIDGE_JS,
   buildPreviewDocument,
@@ -77,7 +84,25 @@ function parseBridgeMessage(data: string): string | null {
   }
 }
 
-/** Read-only artifact viewer reached from an assistant message's artifact card. */
+function codeTokenColor(colors: AppTheme['colors'], kind: CodeTokenKind): string {
+  switch (kind) {
+    case 'keyword':
+      return colors.accent;
+    case 'string':
+      return colors.success;
+    case 'comment':
+      return colors.textFaint;
+    case 'number':
+      return colors.warning;
+    case 'type':
+      return colors.danger;
+    case 'plain':
+    default:
+      return colors.text;
+  }
+}
+
+/** Artifact viewer reached from an assistant message's artifact card. */
 export default function ArtifactScreen() {
   const { colors, isLight } = useAppTheme();
   const styles = useStyles(makeStyles);
@@ -229,14 +254,31 @@ export default function ArtifactScreen() {
     }
   }, [content]);
 
-  const shareContent = useCallback(async () => {
+  const exportArtifact = useCallback(async () => {
     setMenuOpen(false);
 
+    if (!detail) {
+      return;
+    }
+
     try {
-      await Share.share({ message: content, title: detail?.title ?? 'Artifact' });
-    } catch (shareError) {
-      console.warn('Could not share artifact.', shareError);
-      setError('Could not share this artifact.');
+      setBusy(true);
+      const file = await prepareArtifactExport({
+        title: detail.title,
+        type: detail.type,
+        language: detail.language,
+        content,
+      });
+      await shareArtifactFile(file);
+    } catch (exportError) {
+      console.warn('Could not export artifact.', exportError);
+      setError(
+        exportError instanceof Error
+          ? exportError.message
+          : 'Could not export this artifact as a file.'
+      );
+    } finally {
+      setBusy(false);
     }
   }, [content, detail]);
 
@@ -687,7 +729,19 @@ export default function ArtifactScreen() {
               keyExtractor={(_item, index) => String(index)}
               renderItem={({ item }) => (
                 <Text selectable style={styles.codeText}>
-                  {item}
+                  {item.split('\n').map((line, lineIndex) => (
+                    <Text key={lineIndex}>
+                      {highlightCodeLine(line, detail.language).map((token, tokenIndex) => (
+                        <Text
+                          key={tokenIndex}
+                          style={{ color: codeTokenColor(colors, token.kind) }}
+                        >
+                          {token.text}
+                        </Text>
+                      ))}
+                      {'\n'}
+                    </Text>
+                  ))}
                 </Text>
               )}
               style={styles.codeList}
@@ -744,12 +798,13 @@ export default function ArtifactScreen() {
             </Pressable>
             <Pressable
               accessibilityRole="menuitem"
-              accessibilityLabel="Share artifact content"
-              onPress={() => void shareContent()}
+              accessibilityLabel="Export artifact as a file"
+              disabled={busy}
+              onPress={() => void exportArtifact()}
               style={styles.menuItem}
             >
-              <Ionicons name="share-outline" size={18} color={colors.textMuted} />
-              <Text style={styles.menuItemText}>Share</Text>
+              <Ionicons name="download-outline" size={18} color={colors.textMuted} />
+              <Text style={styles.menuItemText}>Export file</Text>
             </Pressable>
             <Pressable
               accessibilityRole="menuitem"
