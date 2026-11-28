@@ -21,6 +21,7 @@ import { TelemetryStore } from '../telemetry';
 
 import { recordHybridEvent } from './audit';
 import { operationFingerprint } from './risk-controller';
+import { describeToolProgress } from './tool-progress';
 import type { HybridCapabilityCall, HybridTraceContext } from './types';
 
 type EventType =
@@ -92,12 +93,16 @@ export async function dispatchCapabilityCall(
   let permissionRequestId: string | null = null;
   let permissionAllowed: boolean | null = null;
 
+  const progress = describeToolProgress(call.toolName, args);
   const running: ToolExecutionEvent = {
     id: newToolEventId(),
     toolName: call.toolName,
     status: 'running',
     startedAt,
-    summary: `Running ${call.toolName}`,
+    summary: redactSecrets(progress.summary).slice(0, 200),
+    ...(progress.detail
+      ? { detail: redactSecrets(progress.detail).slice(0, 200) }
+      : {}),
   };
   toolEvents.push(running);
   context.onToolEvent?.(running);

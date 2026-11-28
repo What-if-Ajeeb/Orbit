@@ -192,12 +192,38 @@ function stripLeadingDoctype(html: string): string {
   return match ? html.slice(match[0].length) : html;
 }
 
-function headMeta(csp: string): string {
+function headMeta(csp: string, extra = ''): string {
   return (
     `<meta http-equiv="Content-Security-Policy" content="${csp}">` +
     '<meta charset="utf-8">' +
-    '<meta name="viewport" content="width=device-width, initial-scale=1">'
+    '<meta name="viewport" content="width=device-width, initial-scale=1">' +
+    extra
   );
+}
+
+/**
+ * Tokens exposed to HTML artifacts as CSS custom properties. They are added
+ * before the artifact's own markup, so an artifact can use or override them
+ * without the app having to rewrite its styles.
+ */
+export function themeCssVariables(theme: PreviewTheme): string {
+  const { colors } = theme;
+
+  return [
+    ':root {',
+    `  color-scheme: ${theme.isLight ? 'light' : 'dark'};`,
+    `  --orbit-background: ${colors.background};`,
+    `  --orbit-surface: ${colors.surface};`,
+    `  --orbit-surface-alt: ${colors.surfaceAlt};`,
+    `  --orbit-border: ${colors.border};`,
+    `  --orbit-text: ${colors.text};`,
+    `  --orbit-text-muted: ${colors.textMuted};`,
+    `  --orbit-accent: ${colors.accent};`,
+    `  --orbit-success: ${colors.success};`,
+    `  --orbit-warning: ${colors.warning};`,
+    `  --orbit-danger: ${colors.danger};`,
+    '}',
+  ].join('\n');
 }
 
 /**
@@ -206,8 +232,8 @@ function headMeta(csp: string): string {
  * script starts before one), a fresh head is created ahead of that script;
  * fragments get a complete page wrapper. The CSP itself is never weakened.
  */
-export function injectCsp(html: string, csp: string): string {
-  const meta = headMeta(csp);
+export function injectCsp(html: string, csp: string, extraHead = ''): string {
+  const meta = headMeta(csp, extraHead);
   const tags = scanTags(html);
   const head = tags.find((tag) => tag.name === 'head' && !tag.closing && !tag.selfClosing);
   const script = tags.find((tag) => tag.name === 'script' && !tag.closing && !tag.selfClosing);
@@ -237,16 +263,14 @@ export function injectCsp(html: string, csp: string): string {
 }
 
 function baseCss(theme: PreviewTheme): string {
-  const { colors } = theme;
-
   return `
-:root { color-scheme: ${theme.isLight ? 'light' : 'dark'}; }
+${themeCssVariables(theme)}
 * { box-sizing: border-box; }
 html, body {
   margin: 0;
   padding: 0;
-  background: ${colors.background};
-  color: ${colors.text};
+  background: var(--orbit-background);
+  color: var(--orbit-text);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   font-size: 16px;
   line-height: 1.6;
@@ -258,18 +282,18 @@ h1 { font-size: 1.7em; }
 h2 { font-size: 1.4em; }
 h3 { font-size: 1.2em; }
 p { margin: 0.8em 0; }
-a { color: ${colors.accent}; }
+a { color: var(--orbit-accent); }
 strong { font-weight: 700; }
 code {
   font-family: ui-monospace, Menlo, Consolas, monospace;
   font-size: 0.9em;
-  background: ${colors.surfaceAlt};
+  background: var(--orbit-surface-alt);
   border-radius: 4px;
   padding: 1px 5px;
 }
 pre {
-  background: ${colors.surfaceAlt};
-  border: 1px solid ${colors.border};
+  background: var(--orbit-surface-alt);
+  border: 1px solid var(--orbit-border);
   border-radius: 8px;
   padding: 12px;
   overflow-x: auto;
@@ -278,13 +302,13 @@ pre code { background: none; padding: 0; }
 blockquote {
   margin: 1em 0;
   padding: 4px 16px;
-  border-left: 3px solid ${colors.accent};
-  color: ${colors.textMuted};
+  border-left: 3px solid var(--orbit-accent);
+  color: var(--orbit-text-muted);
 }
 table { border-collapse: collapse; width: 100%; margin: 1em 0; }
-th, td { border: 1px solid ${colors.border}; padding: 6px 10px; text-align: left; }
-th { background: ${colors.surfaceAlt}; }
-hr { border: none; border-top: 1px solid ${colors.border}; margin: 1.6em 0; }
+th, td { border: 1px solid var(--orbit-border); padding: 6px 10px; text-align: left; }
+th { background: var(--orbit-surface-alt); }
+hr { border: none; border-top: 1px solid var(--orbit-border); margin: 1.6em 0; }
 ul, ol { padding-left: 1.4em; }
 img, svg { max-width: 100%; height: auto; }
 .graphic { display: flex; justify-content: center; padding: 8px 0; }
@@ -314,7 +338,8 @@ export function buildPreviewDocument(
   theme: PreviewTheme
 ): string {
   if (input.type === 'html') {
-    return injectCsp(input.content, ARTIFACT_CSP);
+    const variables = `<style>${themeCssVariables(theme)}</style>`;
+    return injectCsp(input.content, ARTIFACT_CSP, variables);
   }
 
   const csp = ARTIFACT_CSP_NO_SCRIPT;

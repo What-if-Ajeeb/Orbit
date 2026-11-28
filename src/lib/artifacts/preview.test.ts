@@ -12,11 +12,15 @@ const theme = {
   isLight: false,
   colors: {
     background: '#101010',
-    text: '#f5f5f5',
-    accent: '#ff7755',
+    surface: '#181818',
     surfaceAlt: '#202020',
     border: '#333333',
+    text: '#f5f5f5',
     textMuted: '#aaaaaa',
+    accent: '#ff7755',
+    success: '#55cc88',
+    warning: '#eebb55',
+    danger: '#ff6677',
   },
 } as unknown as PreviewTheme;
 
@@ -103,6 +107,30 @@ describe('artifact preview documents', () => {
     expect(document).toContain('const x = 1 &lt; 2;');
     expect(document).toContain('#101010');
     expect(firstHeadContents(document).startsWith(NO_SCRIPT_CSP_META)).toBe(true);
+  });
+
+  it('exposes theme tokens as CSS variables to HTML artifacts', () => {
+    const document = buildPreviewDocument(
+      { type: 'html', content: '<p>Hi</p>' },
+      theme
+    );
+
+    expect(document).toContain('--orbit-background: #101010');
+    expect(document).toContain('--orbit-surface: #181818');
+    expect(document).toContain('--orbit-text: #f5f5f5');
+    expect(document).toContain('--orbit-accent: #ff7755');
+    expect(document.indexOf('--orbit-background')).toBeLessThan(document.indexOf('<p>Hi</p>'));
+  });
+
+  it('renders non-HTML previews through the shared theme variables', () => {
+    const document = buildPreviewDocument(
+      { type: 'markdown', content: '# Hi' },
+      theme
+    );
+
+    expect(document).toContain('--orbit-background: #101010');
+    expect(document).toContain('background: var(--orbit-background)');
+    expect(document).toContain('color: var(--orbit-text)');
   });
 
   it('exposes a content-free document-start error bridge for HTML only', () => {
