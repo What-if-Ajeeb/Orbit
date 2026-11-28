@@ -110,6 +110,7 @@ describe('bottom navigation footer visibility', () => {
     '/settings/navigation',
     '/artifact',
     '/agent-action',
+    '/task/task-1',
     '/agents/agent-1',
     '/agents/agent-1/tools',
     '/projects/project-1',

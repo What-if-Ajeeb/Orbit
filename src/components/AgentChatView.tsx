@@ -8,6 +8,7 @@ import {
   Image,
   Keyboard,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -31,7 +32,7 @@ import { useTabletLayout } from '@/context/tablet-layout';
 import { useAppTheme, useStyles, type AppTheme } from '@/context/theme';
 import { runAgent } from '@/lib/ai/agent';
 import { AgentTurnCancelledError } from '@/lib/agent-runtime/orchestrator';
-import type { AgentTaskStatus, AgentTaskVerification } from '@/lib/agent-runtime/types';
+import type { AgentTask, AgentTaskStatus, AgentTaskVerification } from '@/lib/agent-runtime/types';
 import type { HybridTaskState } from '@/lib/hybrid-agent/types';
 import type { LlmAttachment } from '@/lib/ai/types';
 import { OllamaRequestError } from '@/lib/ai/ollama';
@@ -59,6 +60,15 @@ import type { ActivityRecord } from '@/lib/safety/types';
 import { useVoiceInput } from '@/lib/voice-input';
 import { fonts, layout, radius, spacing } from '@/theme';
 
+export type TaskDetailHeaderInfo = {
+  title: string;
+  status: string;
+  conversationId: number | null;
+  task?: AgentTask | null;
+  onBack?: () => void;
+  onMenu?: () => void;
+};
+
 type AgentChatViewProps = {
   agent: AgentIdentity;
   /** Conversation scope. Defaults to the agent id; master chat uses `master`. */
@@ -66,6 +76,8 @@ type AgentChatViewProps = {
   allowCreatorMode?: boolean;
   /** Master chat exposes the composer add menu; specialist chats stay unchanged. */
   showAddMenu?: boolean;
+  /** Task detail reuses the same conversation engine with a task-specific header. */
+  detail?: TaskDetailHeaderInfo | null;
 };
 
 type RetryPayload = {
@@ -143,6 +155,7 @@ export function AgentChatView({
   agentId,
   allowCreatorMode = false,
   showAddMenu = false,
+  detail = null,
 }: AgentChatViewProps) {
   const { colors } = useAppTheme();
   const styles = useStyles(makeStyles);
@@ -154,6 +167,8 @@ export function AgentChatView({
   const { open: openSidebar } = useSidebar();
   const { layout: responsive } = useTabletLayout();
   const scopeAgentId = agentId ?? agent.id;
+  const lockedConversationId = detail?.conversationId ?? null;
+  const isTaskDetail = detail !== null;
   const {
     prompt,
     t: promptStamp,
@@ -194,6 +209,7 @@ export function AgentChatView({
   const [webSearchEnabled, setWebSearchEnabled] = useState(true);
   const [selectedProject, setSelectedProject] = useState<ChatProjectScope | null>(null);
   const [projectScopes, setProjectScopes] = useState<ChatProjectScope[]>([WORKSPACE_PROJECT_SCOPE]);
+  const [detailMenuVisible, setDetailMenuVisible] = useState(false);
   const voice = useVoiceInput(setInput);
 
   const historyNavKey = historyParam ? `${promptStamp ?? ''}|${historyParam}` : null;
@@ -207,6 +223,13 @@ export function AgentChatView({
 
     setLoading(true);
 
+    if (isTaskDetail && lockedConversationId === null) {
+      setActiveId(null);
+      setMessages([]);
+      setLoading(false);
+      return;
+    }
+
     try {
       const [list, settings] = await Promise.all([
         store.listConversations(user.id, 50, scopeAgentId),
@@ -219,7 +242,11 @@ export function AgentChatView({
 
       let currentId = activeIdRef.current;
 
-      if (currentId === null || !list.some((item) => item.id === currentId)) {
+      if (lockedConversationId !== null) {
+        currentId = lockedConversationId;
+        activeIdRef.current = currentId;
+        setActiveId(currentId);
+      } else if (currentId === null || !list.some((item) => item.id === currentId)) {
         currentId = list[0]?.id ?? null;
         activeIdRef.current = currentId;
         setActiveId(currentId);
@@ -235,7 +262,7 @@ export function AgentChatView({
     } finally {
       setLoading(false);
     }
-  }, [scopeAgentId, store, user]);
+  }, [isTaskDetail, lockedConversationId, scopeAgentId, store, user]);
 
   useFocusEffect(
     useCallback(() => {
@@ -259,7 +286,7 @@ export function AgentChatView({
   }, [prompt, promptStamp]);
 
   useEffect(() => {
-    if (!user || (!conversationParam && !newParam && !historyParam)) {
+    if (!user || isTaskDetail || (!conversationParam && !newParam && !historyParam)) {
       return;
     }
 
@@ -315,7 +342,7 @@ export function AgentChatView({
         );
       }
     })();
-  }, [conversationParam, historyParam, newParam, promptStamp, scopeAgentId, store, user]);
+  }, [conversationParam, historyParam, isTaskDetail, newParam, promptStamp, scopeAgentId, store, user]);
 
   useEffect(() => {
     const subscription = Keyboard.addListener('keyboardDidShow', () => {
@@ -408,7 +435,10 @@ export function AgentChatView({
 
   const activeUser = user;
   const canSend =
-    !isSending && !agentStopped && (input.trim().length > 0 || attachments.length > 0);
+    (!isTaskDetail || activeId !== null) &&
+    !isSending &&
+    !agentStopped &&
+    (input.trim().length > 0 || attachments.length > 0);
   const activeTitle = conversations.find((item) => item.id === activeId)?.title ?? 'New chat';
 
   async function stopCurrentAgent() {
@@ -851,65 +881,105 @@ export function AgentChatView({
           ]}
         >
           <View style={styles.headerRow}>
-            <SidebarButton onPress={openSidebar} />
-
-            <View style={styles.headerTitleWrap}>
-              <Text accessibilityRole="header" numberOfLines={1} style={styles.headerTitle}>
-                {agent.name}
-              </Text>
-              <Text numberOfLines={1} style={styles.headerSubtitle}>
-                {activeTitle}
-              </Text>
-            </View>
-
-            <View style={styles.headerActions}>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Open chat history"
-                onPress={openHistory}
-                style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
-              >
-                <Ionicons name="time-outline" size={20} color={colors.text} />
-                {conversations.length > 0 ? (
-                  <View style={styles.historyBadge}>
-                    <Text style={styles.historyBadgeText}>
-                      {conversations.length > 9 ? '9+' : conversations.length}
-                    </Text>
-                  </View>
-                ) : null}
-              </Pressable>
-
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={`${agent.name} tools and memory`}
-                onPress={() =>
-                  router.push(`/agents/${encodeURIComponent(agent.id)}/tools` as Href)
-                }
-                style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
-              >
-                <Ionicons name="options-outline" size={18} color={colors.text} />
-              </Pressable>
-
-              {allowCreatorMode ? (
+            {detail ? (
+              <>
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel={creatorMode ? 'Disable creator mode' : 'Enable creator mode'}
-                  accessibilityState={{ selected: creatorMode }}
-                  onPress={() => setCreatorMode((prev) => !prev)}
-                  style={({ pressed }) => [
-                    styles.iconButton,
-                    creatorMode && { backgroundColor: colors.accentSoft },
-                    pressed && styles.pressed,
-                  ]}
+                  accessibilityLabel="Back to tasks"
+                  hitSlop={8}
+                  onPress={detail.onBack ?? (() => router.back())}
+                  style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
                 >
-                  <Ionicons
-                    name={creatorMode ? 'construct' : 'construct-outline'}
-                    size={18}
-                    color={creatorMode ? colors.accent : colors.text}
-                  />
+                  <Ionicons name="arrow-back" size={20} color={colors.text} />
                 </Pressable>
-              ) : null}
-            </View>
+
+                <View style={styles.detailTitleWrap}>
+                  <View style={styles.detailIcon}>
+                    <Ionicons name="document-text-outline" size={18} color={colors.accent} />
+                  </View>
+                  <View style={styles.headerTitleWrap}>
+                    <Text accessibilityRole="header" numberOfLines={1} style={styles.headerTitle}>
+                      {detail.title}
+                    </Text>
+                    <Text numberOfLines={1} style={styles.headerSubtitle}>
+                      {detail.status}
+                    </Text>
+                  </View>
+                </View>
+
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Task options"
+                  hitSlop={8}
+                  onPress={detail.onMenu ?? (() => setDetailMenuVisible(true))}
+                  style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
+                >
+                  <Ionicons name="ellipsis-vertical" size={19} color={colors.text} />
+                </Pressable>
+              </>
+            ) : (
+              <>
+                <SidebarButton onPress={openSidebar} />
+
+                <View style={styles.headerTitleWrap}>
+                  <Text accessibilityRole="header" numberOfLines={1} style={styles.headerTitle}>
+                    {agent.name}
+                  </Text>
+                  <Text numberOfLines={1} style={styles.headerSubtitle}>
+                    {activeTitle}
+                  </Text>
+                </View>
+
+                <View style={styles.headerActions}>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Open chat history"
+                    onPress={openHistory}
+                    style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
+                  >
+                    <Ionicons name="time-outline" size={20} color={colors.text} />
+                    {conversations.length > 0 ? (
+                      <View style={styles.historyBadge}>
+                        <Text style={styles.historyBadgeText}>
+                          {conversations.length > 9 ? '9+' : conversations.length}
+                        </Text>
+                      </View>
+                    ) : null}
+                  </Pressable>
+
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`${agent.name} tools and memory`}
+                    onPress={() =>
+                      router.push(`/agents/${encodeURIComponent(agent.id)}/tools` as Href)
+                    }
+                    style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
+                  >
+                    <Ionicons name="options-outline" size={18} color={colors.text} />
+                  </Pressable>
+
+                  {allowCreatorMode ? (
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={creatorMode ? 'Disable creator mode' : 'Enable creator mode'}
+                      accessibilityState={{ selected: creatorMode }}
+                      onPress={() => setCreatorMode((prev) => !prev)}
+                      style={({ pressed }) => [
+                        styles.iconButton,
+                        creatorMode && { backgroundColor: colors.accentSoft },
+                        pressed && styles.pressed,
+                      ]}
+                    >
+                      <Ionicons
+                        name={creatorMode ? 'construct' : 'construct-outline'}
+                        size={18}
+                        color={creatorMode ? colors.accent : colors.text}
+                      />
+                    </Pressable>
+                  ) : null}
+                </View>
+              </>
+            )}
           </View>
 
           {aiReady === false ? (
@@ -957,15 +1027,34 @@ export function AgentChatView({
           ) : messages.length === 0 ? (
             <View style={styles.empty}>
               <View style={styles.emptyIcon}>
-                <Ionicons name={agent.icon as keyof typeof Ionicons.glyphMap} size={28} color={colors.accent} />
+                <Ionicons
+                  name={
+                    isTaskDetail
+                      ? 'document-text-outline'
+                      : (agent.icon as keyof typeof Ionicons.glyphMap)
+                  }
+                  size={28}
+                  color={colors.accent}
+                />
               </View>
               <Text accessibilityRole="header" style={styles.emptyTitle}>
-                Chat with {agent.name}
+                {isTaskDetail ? 'No conversation for this task yet' : `Chat with ${agent.name}`}
               </Text>
-              <Text style={styles.emptyText}>{agent.description}</Text>
+              <Text style={styles.emptyText}>
+                {isTaskDetail
+                  ? 'This task has no linked conversation. Its recorded status is shown in the header.'
+                  : agent.description}
+              </Text>
             </View>
           ) : (
-            messages.map((message) => <ChatBubble key={message.id} message={message} />)
+            messages.map((message) => (
+              <ChatBubble
+                key={message.id}
+                message={message}
+                structured={isTaskDetail}
+                task={detail?.task ?? null}
+              />
+            ))
           )}
 
           {streamedText ? (
@@ -978,6 +1067,8 @@ export function AgentChatView({
                 artifacts: [],
                 createdAt: 0,
               }}
+              structured={isTaskDetail}
+              task={detail?.task ?? null}
             />
           ) : null}
           {liveToolEvents.length > 0 ? <ToolStatusList events={liveToolEvents} /> : null}
@@ -1101,8 +1192,8 @@ export function AgentChatView({
           <TextInput
             value={input}
             onChangeText={setInput}
-            placeholder={`Message ${agent.name}`}
-            accessibilityLabel={`Message ${agent.name}`}
+            placeholder={isTaskDetail ? 'Reply to Orbit...' : `Message ${agent.name}`}
+            accessibilityLabel={isTaskDetail ? 'Reply to Orbit...' : `Message ${agent.name}`}
             placeholderTextColor={colors.textFaint}
             selectionColor={colors.accent}
             style={styles.input}
@@ -1249,6 +1340,51 @@ export function AgentChatView({
         }}
         onDelete={confirmDeleteConversation}
       />
+
+      {detail ? (
+        <Modal
+          visible={detailMenuVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setDetailMenuVisible(false)}
+        >
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Close task options"
+            style={styles.menuBackdrop}
+            onPress={() => setDetailMenuVisible(false)}
+          >
+            <View style={styles.menuCard}>
+              {lockedConversationId !== null ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Open full conversation"
+                  onPress={() => {
+                    setDetailMenuVisible(false);
+                    router.push({
+                      pathname: '/chat',
+                      params: { c: String(lockedConversationId) },
+                    } as Href);
+                  }}
+                  style={({ pressed }) => [styles.menuItem, pressed && styles.pressed]}
+                >
+                  <Ionicons name="chatbubble-outline" size={18} color={colors.text} />
+                  <Text style={styles.menuText}>Open full conversation</Text>
+                </Pressable>
+              ) : null}
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Close options"
+                onPress={() => setDetailMenuVisible(false)}
+                style={({ pressed }) => [styles.menuItem, pressed && styles.pressed]}
+              >
+                <Ionicons name="close-outline" size={18} color={colors.text} />
+                <Text style={styles.menuText}>Close</Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Modal>
+      ) : null}
     </KeyboardAvoidingView>
   );
 }
@@ -1295,6 +1431,50 @@ const makeStyles = ({ colors }: AppTheme) =>
       color: colors.textFaint,
       fontSize: 11,
       textAlign: 'left',
+    },
+    detailTitleWrap: {
+      flex: 1,
+      minWidth: 0,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+    },
+    detailIcon: {
+      width: 34,
+      height: 34,
+      borderRadius: 17,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.accentSoft,
+    },
+    menuBackdrop: {
+      flex: 1,
+      backgroundColor: 'rgba(20, 20, 19, 0.28)',
+      alignItems: 'flex-end',
+      justifyContent: 'flex-start',
+      paddingTop: 72,
+      paddingRight: spacing.md,
+    },
+    menuCard: {
+      minWidth: 220,
+      borderRadius: radius.md,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+      padding: 6,
+      gap: 2,
+    },
+    menuItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: 10,
+      borderRadius: radius.sm,
+    },
+    menuText: {
+      color: colors.text,
+      fontSize: 14,
     },
     headerActions: {
       flexDirection: 'row',

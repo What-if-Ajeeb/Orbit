@@ -112,6 +112,7 @@ function AppLayoutContent() {
           }}
         >
           <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="task/[id]" />
           <Stack.Screen name="projects" />
           <Stack.Screen name="artifact" />
           <Stack.Screen name="agents/index" />
