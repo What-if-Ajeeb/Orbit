@@ -194,6 +194,16 @@ export default function SettingsScreen() {
         title: 'Security',
         items: [
           {
+            id: 'artifact-settings',
+            group: 'Security',
+            title: 'Artifacts',
+            description: 'Preview security and persistent interactive state.',
+            icon: Database,
+            href: '/settings/artifacts' as Href,
+            value: aiSettings?.artifactCdnjsAllowed ? 'CDN on' : 'CDN off',
+            keywords: ['artifacts', 'html', 'preview', 'cdnjs', 'storage', 'cdn'],
+          },
+          {
             id: 'agent-permissions',
             group: 'Security',
             title: 'Agent Permissions',
@@ -303,7 +313,13 @@ export default function SettingsScreen() {
         ],
       },
     ],
-    [aiConfigured, aiSettings?.model, permission, snapshot.stats.installed]
+    [
+      aiConfigured,
+      aiSettings?.artifactCdnjsAllowed,
+      aiSettings?.model,
+      permission,
+      snapshot.stats.installed,
+    ]
   );
 
   useFocusEffect(

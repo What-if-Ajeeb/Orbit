@@ -132,6 +132,7 @@ function AppLayoutContent() {
           <Stack.Screen name="plugins/builder" />
           <Stack.Screen name="plugins/[pluginId]" />
           <Stack.Screen name="plugin/[pluginId]" />
+          <Stack.Screen name="settings/artifacts" />
           <Stack.Screen name="settings/appearance" />
           <Stack.Screen name="settings/ai-connection" />
           <Stack.Screen name="settings/models" />

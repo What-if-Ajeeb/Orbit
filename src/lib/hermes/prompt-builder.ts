@@ -53,6 +53,7 @@ export async function buildHermesPromptBundle(input: {
   availableTools?: ReadonlySet<string>;
   availableToolsets?: ReadonlySet<string>;
   webSearchDisabled?: boolean;
+  artifactCdnjsAllowed?: boolean;
   toolsetIds?: string[];
   memorySnapshot?: HermesMemorySnapshot;
   sessionHits?: HermesSessionHit[];
@@ -92,6 +93,7 @@ export async function buildHermesPromptBundle(input: {
     ]
       .filter(Boolean)
       .join('\n\n'),
+    artifactCdnjsAllowed: input.artifactCdnjsAllowed === true,
   });
 
   const visible = visibleSkillManifests(input.manifests ?? [], {

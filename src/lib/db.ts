@@ -7,7 +7,7 @@ export const DATABASE_NAME = 'orbit.db';
  * tasks and the agent conversation) lives in SQLite on the device.
  */
 export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
-  const DATABASE_VERSION = 18;
+  const DATABASE_VERSION = 19;
 
   const result = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
   let currentDbVersion = result?.user_version ?? 0;
@@ -1263,6 +1263,26 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
     `);
 
     currentDbVersion = 18;
+  }
+
+  if (currentDbVersion === 18) {
+    // Persistent state for interactive HTML artifacts. Keys are scoped to the
+    // account and artifact; deleting either parent cascades to its values.
+    await db.execAsync(`
+      CREATE TABLE IF NOT EXISTS artifact_kv (
+        artifact_id TEXT NOT NULL,
+        user_id INTEGER NOT NULL,
+        key TEXT NOT NULL,
+        value TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        PRIMARY KEY (user_id, artifact_id, key),
+        FOREIGN KEY (artifact_id) REFERENCES artifacts (id) ON DELETE CASCADE,
+        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+      );
+    `);
+
+    currentDbVersion = 19;
   }
 
   if (currentDbVersion !== DATABASE_VERSION) {

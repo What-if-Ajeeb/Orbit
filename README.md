@@ -28,7 +28,7 @@ and **expo-notifications**.
 - Responsive tablet workspace: phones keep the existing portrait UI, portrait tablets use the overlay drawer, landscape tablets get a persistent sidebar, and large landscape tablets can show a resizable Context panel
 - Individual AI agents with dedicated chats, instructions/memory, and per-agent tool allowlists
 - Image and text-document attachments, streaming replies, cancellation, retry, and offline/local states
-- **Artifacts**: live sandboxed previews for markdown, HTML, SVG and code; safe markdown (headings, task/nested lists, tables, quotes, fenced code, strikethrough), theme-aware pages, native syntax highlighting, manual editing, version history, Ask Orbit iteration, runtime error reporting, and real file export through the system share sheet
+- **Artifacts**: live sandboxed previews for markdown, HTML, SVG and code; safe markdown (headings, task/nested lists, tables, quotes, fenced code, strikethrough), theme-aware pages, native syntax highlighting, manual editing, version history, Ask Orbit iteration, runtime error reporting, real file export through the system share sheet, local `window.orbit.storage` state for interactive HTML, and a default-off opt-in for scripts from cdnjs.cloudflare.com — see [`docs/ARTIFACTS.md`](docs/ARTIFACTS.md)
 - Config-driven Google connections (Gmail, Calendar, Drive) using real OAuth and Keystore-backed tokens; unconfigured integrations show a setup state, never a fake “connected” state
 - Tool Marketplace, Connected Accounts, Tool Permissions, and Tool Approvals screens that reuse the existing plugin, MCP, and permission runtimes
 - **Orbit Harness** registry for providers, tools, storage, and MCP servers

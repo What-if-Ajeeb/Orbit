@@ -7,6 +7,7 @@ import {
   onDeviceOllamaSettings,
   PROVIDER_PRESETS,
   saveAiSettings,
+  setArtifactCdnjsAllowed,
 } from './settings';
 
 vi.mock('react-native', () => ({ Platform: { OS: 'web' } }));
@@ -54,6 +55,7 @@ describe('AI settings', () => {
     expect(settings.baseUrl).toBe('http://127.0.0.1:11434');
     expect(settings.model).toBe('');
     expect(settings.apiKey).toBe('');
+    expect(settings.artifactCdnjsAllowed).toBe(false);
     // System-first: a local URL alone is enough; model is discovered later.
     expect(isAiConfigured(settings)).toBe(true);
   });
@@ -121,5 +123,24 @@ describe('AI settings', () => {
     expect(local.provider).toBe('ollama');
     expect(local.baseUrl).toBe('http://127.0.0.1:11434');
     expect(local.model).toBe('');
+  });
+
+  it('keeps artifact CDN scripts off until explicitly enabled', async () => {
+    const legacy = await saveAiSettings({
+      provider: 'ollama',
+      mode: 'local',
+      baseUrl: 'http://127.0.0.1:11434',
+      model: 'local-model',
+      apiKey: '',
+    });
+    expect(legacy.artifactCdnjsAllowed).toBe(false);
+
+    const enabled = await setArtifactCdnjsAllowed(true);
+    expect(enabled.artifactCdnjsAllowed).toBe(true);
+    expect((await loadAiSettings()).artifactCdnjsAllowed).toBe(true);
+
+    const disabled = await setArtifactCdnjsAllowed(false);
+    expect(disabled.artifactCdnjsAllowed).toBe(false);
+    expect((await loadAiSettings()).artifactCdnjsAllowed).toBe(false);
   });
 });

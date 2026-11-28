@@ -11,6 +11,29 @@ import type { ArtifactType } from './types';
 export const ARTIFACT_CSP =
   "default-src 'none'; img-src data: blob:; media-src data: blob:; font-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'none'; form-action 'none'; base-uri 'none'; frame-src 'none';";
 
+/** The only external script origin an opt-in user setting can unlock. */
+export const ARTIFACT_CDNJS_HOST = 'https://cdnjs.cloudflare.com';
+
+export type PreviewOptions = {
+  /** Explicit user opt-in: allow scripts from cdnjs.cloudflare.com only. */
+  cdnjsAllowed?: boolean;
+};
+
+/**
+ * Returns the artifact CSP. Network access stays off; the single opt-in host
+ * is added to script-src only, never to connect-src or any other directive.
+ */
+export function artifactCsp(options: PreviewOptions = {}): string {
+  if (!options.cdnjsAllowed) {
+    return ARTIFACT_CSP;
+  }
+
+  return ARTIFACT_CSP.replace(
+    "script-src 'unsafe-inline'",
+    `script-src 'unsafe-inline' ${ARTIFACT_CDNJS_HOST}`
+  );
+}
+
 /**
  * Only html artifacts may run JavaScript. Everything else (markdown, svg,
  * code) is rendered with scripts disabled, which also matters on iOS where
@@ -338,11 +361,12 @@ function renderBody(input: PreviewInput): string {
  */
 export function buildPreviewDocument(
   input: PreviewInput,
-  theme: PreviewTheme
+  theme: PreviewTheme,
+  options: PreviewOptions = {}
 ): string {
   if (input.type === 'html') {
     const variables = `<style>${themeCssVariables(theme)}</style>`;
-    return injectCsp(input.content, ARTIFACT_CSP, variables);
+    return injectCsp(input.content, artifactCsp(options), variables);
   }
 
   const csp = ARTIFACT_CSP_NO_SCRIPT;
