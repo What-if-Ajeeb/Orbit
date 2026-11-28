@@ -11,8 +11,15 @@ import { useSession } from '@/context/auth';
 import { parseAgentActionRef } from '@/lib/agent-actions/service';
 import { ArtifactStore } from '@/lib/artifacts/store';
 import { artifactTypeLabel, type ArtifactRef, type ArtifactType } from '@/lib/artifacts/types';
+import type { AgentTask } from '@/lib/agent-runtime/types';
 import type { ChatAttachment, ChatMessage } from '@/lib/chat';
 import { radius, spacing } from '@/theme';
+
+import {
+  ReportPreviewCard,
+  ResearchSummaryCard,
+  TaskResultCard,
+} from './tasks/TaskOutputCards';
 
 const TYPE_ICONS: Record<ArtifactType, keyof typeof Ionicons.glyphMap> = {
   markdown: 'document-text-outline',
@@ -100,6 +107,9 @@ function ArtifactCard({ artifact }: ArtifactCardProps) {
 
 type ChatBubbleProps = {
   message: ChatMessage;
+  /** Task detail renders agent output as structured cards. */
+  structured?: boolean;
+  task?: AgentTask | null;
 };
 
 function AttachmentCard({ attachment }: { attachment: ChatAttachment }) {
@@ -127,7 +137,7 @@ function AttachmentCard({ attachment }: { attachment: ChatAttachment }) {
   );
 }
 
-export function ChatBubble({ message }: ChatBubbleProps) {
+export function ChatBubble({ message, structured = false, task = null }: ChatBubbleProps) {
   const { colors } = useAppTheme();
   const styles = useStyles(makeStyles);
   const isUser = message.role === 'user';
@@ -149,7 +159,13 @@ export function ChatBubble({ message }: ChatBubbleProps) {
 
   return (
     <View style={[styles.wrap, isUser ? styles.wrapUser : styles.wrapAssistant]}>
-      <View style={[styles.bubble, isUser ? styles.userBubble : styles.assistantBubble]}>
+      <View
+        style={[
+          styles.bubble,
+          isUser ? styles.userBubble : styles.assistantBubble,
+          structured && !isUser && styles.structuredBubble,
+        ]}
+      >
         <Text style={[styles.text, isUser && styles.userText]}>{message.content}</Text>
       </View>
 
@@ -163,13 +179,19 @@ export function ChatBubble({ message }: ChatBubbleProps) {
 
       {message.artifacts.length > 0 ? (
         <View style={styles.artifacts}>
-          {message.artifacts.map((artifact) => (
-            <ArtifactCard key={artifact.id} artifact={artifact} />
-          ))}
+          {message.artifacts.map((artifact) =>
+            structured ? (
+              <ReportPreviewCard key={artifact.id} artifact={artifact} />
+            ) : (
+              <ArtifactCard key={artifact.id} artifact={artifact} />
+            )
+          )}
         </View>
       ) : null}
 
-      {message.traces.length > 0 ? (
+      {structured ? (
+        <ResearchSummaryCard traces={message.traces} events={toolEvents} />
+      ) : message.traces.length > 0 ? (
         <View style={styles.traces}>
           {message.traces.map((trace, index) => (
             <View key={`${trace}-${index}`} style={styles.traceRow}>
@@ -180,7 +202,9 @@ export function ChatBubble({ message }: ChatBubbleProps) {
         </View>
       ) : null}
 
-      {message.agentTaskId && taskStatus ? (
+      {structured && task ? (
+        <TaskResultCard task={task} />
+      ) : message.agentTaskId && taskStatus ? (
         <View style={styles.taskRow}>
           <Ionicons
             name={message.agentVerified === true ? 'checkmark-circle-outline' : 'alert-circle-outline'}
@@ -193,10 +217,13 @@ export function ChatBubble({ message }: ChatBubbleProps) {
         </View>
       ) : null}
 
-      <ToolStatusList events={toolEvents} />
+      {!structured ? <ToolStatusList events={toolEvents} /> : null}
 
       {actionIds.length > 0 ? (
         <View style={styles.actionCards}>
+          {structured ? (
+            <Text style={styles.cardSectionLabel}>Approval request — exact payload</Text>
+          ) : null}
           {actionIds.map((actionId) => (
             <AgentActionCard key={actionId} actionId={actionId} />
           ))}
@@ -242,6 +269,22 @@ const makeStyles = ({ colors }: AppTheme) =>
   // Assistant replies are plain text on the page, like a document — no bubble.
   assistantBubble: {
     paddingVertical: 2,
+  },
+  structuredBubble: {
+    width: '100%',
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm + 2,
+  },
+  cardSectionLabel: {
+    color: colors.textMuted,
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
   },
   text: {
     color: colors.text,

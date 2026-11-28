@@ -64,6 +64,7 @@ const mockAgent = {
 };
 
 const mockBottomSheetProps: Record<string, unknown> = {};
+const mockChatBubbleProps: Record<string, unknown>[] = [];
 
 const mockAttachments = {
   pickImages: jest.fn(async () => [
@@ -240,12 +241,15 @@ jest.mock('@/lib/chat-attachments', () => ({
 }));
 
 jest.mock('@/components/ChatBubble', () => ({
-  ChatBubble: ({ message }: { message: { content: string } }) =>
-    require('react').createElement(
+  ChatBubble: (props: { message: { content: string } }) => {
+    mockChatBubbleProps.push(props);
+
+    return require('react').createElement(
       require('react-native').Text,
       null,
-      message.content
-    ),
+      props.message.content
+    );
+  },
 }));
 
 jest.mock('@/components/ChatHistoryPanel', () => ({
@@ -263,6 +267,7 @@ const AGENT = {
 describe('AgentChatView', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockChatBubbleProps.length = 0;
     for (const key of Object.keys(mockBottomSheetProps)) {
       delete mockBottomSheetProps[key];
     }
@@ -620,5 +625,46 @@ describe('AgentChatView', () => {
     });
 
     expect(mockRouter.navigate).toHaveBeenCalledWith('/connections');
+  });
+
+  it('locks task detail to its conversation and renders structured output', async () => {
+    mockStore.listMessages.mockResolvedValue([
+      {
+        id: 1,
+        role: 'assistant',
+        content: 'Report ready',
+        traces: ['Checked sources'],
+        artifacts: [],
+        createdAt: 1,
+      },
+    ]);
+
+    const task = {
+      id: 'task-1',
+      status: 'needs_review',
+      title: 'Draft Q3 report',
+    };
+
+    const view = await render(
+      <AgentChatView
+        agent={AGENT}
+        detail={{
+          title: 'Draft Q3 report',
+          status: 'Ready for review',
+          conversationId: 7,
+          task: task as never,
+        }}
+      />
+    );
+
+    await waitFor(() => expect(view.getByText('Draft Q3 report')).toBeTruthy());
+
+    expect(view.getByLabelText('Reply to Orbit...')).toBeTruthy();
+    expect(view.getByLabelText('Back to tasks')).toBeTruthy();
+    expect(view.getByLabelText('Task options')).toBeTruthy();
+    expect(view.queryByLabelText('Message Research Agent')).toBeNull();
+    expect(mockStore.listMessages).toHaveBeenCalledWith(1, 7, 200);
+    expect(mockChatBubbleProps.length).toBeGreaterThan(0);
+    expect(mockChatBubbleProps.every((props) => props.structured === true)).toBe(true);
   });
 });
