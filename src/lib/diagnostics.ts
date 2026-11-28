@@ -21,7 +21,9 @@ const STARTUP_MARKER = 'orbit.startup.marker.v1';
 
 let current: DiagnosticReport | null = null;
 let startupStage = 'Bundle loaded';
+let uiReady = false;
 const listeners = new Set<() => void>();
+const uiReadyListeners = new Set<() => void>();
 
 /** Records the last completed startup stage for timeout diagnostics. */
 export function markStartupStage(stage: string): void {
@@ -30,6 +32,39 @@ export function markStartupStage(stage: string): void {
 
 export function getStartupStage(): string {
   return startupStage;
+}
+
+/**
+ * Signals that the root navigator mounted, i.e. the UI actually appeared.
+ * Boot timeout guards use this to disarm themselves after a healthy launch.
+ */
+export function markUiReady(): void {
+  if (uiReady) {
+    return;
+  }
+
+  uiReady = true;
+
+  for (const listener of uiReadyListeners) {
+    listener();
+  }
+}
+
+export function isUiReady(): boolean {
+  return uiReady;
+}
+
+/** Subscribes to UI readiness; a late subscriber is notified immediately. */
+export function subscribeUiReady(listener: () => void): () => void {
+  uiReadyListeners.add(listener);
+
+  if (uiReady) {
+    listener();
+  }
+
+  return () => {
+    uiReadyListeners.delete(listener);
+  };
 }
 
 export function getDiagnosticReport(): DiagnosticReport | null {
